@@ -17,4 +17,13 @@ public sealed class RoomStoreRegistrationTests(WebApplicationFactory<Program> fa
         Assert.IsType<InMemoryRoomStore>(first);
         Assert.Same(first, second);
     }
+
+    [Fact]
+    public void RoomCoordinator_IsRegisteredAsSingleton()
+    {
+        var first = factory.Services.GetRequiredService<RoomCoordinator>();
+        var second = factory.Services.GetRequiredService<RoomCoordinator>();
+
+        Assert.Same(first, second);
+    }
 }

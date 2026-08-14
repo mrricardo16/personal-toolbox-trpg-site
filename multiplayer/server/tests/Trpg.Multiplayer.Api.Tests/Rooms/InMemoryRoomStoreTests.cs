@@ -38,6 +38,27 @@ public sealed class InMemoryRoomStoreTests
     }
 
     [Fact]
+    public void TryReplace_ReplacesOnlyTheExpectedSnapshot()
+    {
+        var store = new InMemoryRoomStore();
+        var room = NewRoom(Guid.NewGuid());
+        var replacement = new RoomSession(
+            room.RoomId,
+            room.HostPlayerId,
+            room.MaxPlayers,
+            room.Status,
+            room.Revision + 1,
+            room.CreatedAt,
+            room.Players);
+        store.TryAdd(room);
+
+        Assert.True(store.TryReplace(room, replacement));
+        Assert.False(store.TryReplace(room, replacement));
+        Assert.True(store.TryGet(room.RoomId, out var loaded));
+        Assert.Same(replacement, loaded);
+    }
+
+    [Fact]
     public void Exists_TracksRoomPresence()
     {
         var store = new InMemoryRoomStore();

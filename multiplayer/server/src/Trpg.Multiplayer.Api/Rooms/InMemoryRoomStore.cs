@@ -16,6 +16,11 @@ public sealed class InMemoryRoomStore : IRoomStore
         return rooms.TryGetValue(roomId, out room);
     }
 
+    public bool TryReplace(RoomSession expectedRoom, RoomSession replacementRoom)
+    {
+        return rooms.TryUpdate(replacementRoom.RoomId, replacementRoom, expectedRoom);
+    }
+
     public bool TryRemove(Guid roomId, out RoomSession? room)
     {
         return rooms.TryRemove(roomId, out room);
