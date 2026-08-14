@@ -1,0 +1,36 @@
+name: TRPG DM Assistant Real API Acceptance
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  real-api-acceptance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Current-runtime deterministic preflight
+        shell: bash
+        run: |
+          node build/test-v158-api-response-resilience.js
+          node build/test-v1512-ending-resolution-gate.js
+          node build/test-v1513-full-case-e2e.js
+          node build/build-single-html.js
+          node build/verify-single-html.js
+          git diff --exit-code -- outputs/trpg-dm-assistant.html
+          git diff --check
+
+      - name: Real DeepSeek current-runtime full-case E2E
+        env:
+          TRPG_TEST_API_KEY: ${{ secrets.DS_KEY }}
+          TRPG_TEST_API_URL: https://api.deepseek.com/v1/chat/completions
+          TRPG_TEST_MODEL: deepseek-v4-flash
+        run: |
+          test -n "$TRPG_TEST_API_KEY"
+          node build/test-real-api-v1513.js

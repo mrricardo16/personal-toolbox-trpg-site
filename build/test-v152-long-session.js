@@ -1,0 +1,37 @@
+"use strict";
+const fs=require("fs"),path=require("path"),vm=require("vm"),assert=require("assert");
+const root=path.resolve(__dirname,"..");
+const scenario=fs.readFileSync(path.join(root,"src/scenario-engine.js"),"utf8"),ai=fs.readFileSync(path.join(root,"src/ai-protocol.js"),"utf8"),stateSource=fs.readFileSync(path.join(root,"src/state.js"),"utf8"),library=fs.readFileSync(path.join(root,"src/scenarios/library.js"),"utf8"),memory=fs.readFileSync(path.join(root,"src/memory.js"),"utf8");
+let passed=0;function test(name,fn){fn();passed++;console.log(`PASS ${name}`)}
+function extract(startMarker,endMarker){const start=scenario.indexOf(startMarker),end=scenario.indexOf(endMarker,start);assert.ok(start>=0&&end>start,`无法提取 ${startMarker}`);return scenario.slice(start,end)}
+test("版本不低于 v1.5.2",()=>{const match=library.match(/const APP_VERSION = "(\d+)\.(\d+)\.(\d+)";/);assert.ok(match);const [,major,minor,patch]=match.map(Number);assert.ok(major>1||(major===1&&minor>5)||(major===1&&minor===5&&patch>=2))});
+test("Schema 保持 8",()=>assert.ok(library.includes('const SCHEMA_VERSION = 8;')));
+test("运行态记录长团诊断",()=>assert.ok(stateSource.includes("longSessionDiagnostics:null")));
+const helpers=extract("const MAX_WORLD_CONTINUITY_EVENTS=12;","function pacingDirective()");
+const sandbox={state:{campaign:{currentLocation:"大厅",directorState:{sceneTurns:8,totalTurns:20,lastProgressTurn:2,worldEvents:[],narrativeHistory:[]}},runtime:{lastTurnImpact:"neutral",lastNarrativeRepetition:null},messages:[]},isPlainObject:v=>!!v&&typeof v==="object"&&!Array.isArray(v),asString:(v,m)=>typeof v==="string"?v.slice(0,m):"",countChars:v=>typeof v==="string"?v.length:JSON.stringify(v??"").length,defaultDirectorState:()=>({sceneTurns:0,totalTurns:0,lastProgressTurn:0}),getCurrentNode:()=>({title:"大厅"}),Math,Number,Set,Array,Object};sandbox.globalThis=sandbox;vm.runInNewContext(helpers+"\n;globalThis.api={ensureWorldContinuityState,narrativeSimilarity,narrativeRepetitionScore,actionTemporalIntent,worldContinuityContext,selectRecentMessagesForContext};",sandbox);const api=sandbox.api;
+test("旧存档世界连续性自动补默认",()=>{const d={};api.ensureWorldContinuityState(d);assert.deepEqual(Array.from(d.worldEvents),[]);assert.deepEqual(Array.from(d.narrativeHistory),[]);assert.equal(d.lastWorldChangeTurn,-1)});
+test("世界事件历史限制为 12",()=>{const d={worldEvents:Array.from({length:20},(_,i)=>({turn:i})),narrativeHistory:[]};api.ensureWorldContinuityState(d);assert.equal(d.worldEvents.length,12);assert.equal(d.worldEvents[0].turn,8)});
+test("近似重复叙事得分高",()=>assert.ok(api.narrativeSimilarity("走廊尽头传来滴水声，你停下来聆听。","走廊尽头又传来滴水声，你再次停下聆听。")>0.55));
+test("不同叙事得分较低",()=>assert.ok(api.narrativeSimilarity("走廊尽头传来滴水声。","管家把账本放到桌上并否认去过书房。")<0.45));
+test("等待行动识别为 wait",()=>assert.equal(api.actionTemporalIntent("我就在大厅等半小时"),"wait"));
+test("长时间搜索识别",()=>assert.equal(api.actionTemporalIntent("我重新仔细搜查整个桌子"),"extended_search"));
+test("普通行动不伪装为耗时",()=>assert.equal(api.actionTemporalIntent("我问管家昨晚看见了什么"),"normal"));
+test("世界连续性包含停滞轮数",()=>{const view=api.worldContinuityContext({debug:false});assert.equal(view.turnClock.stalledTurns,6);assert.equal(view.lastTurnImpact,"neutral")});
+test("最近消息选择保留最新",()=>{const msgs=Array.from({length:100},(_,i)=>({role:i%2?"ai":"player",content:`消息${i}`+"x".repeat(20)}));const out=api.selectRecentMessagesForContext(msgs,12,500);assert.ok(out.length<=12);assert.ok(out.at(-1).content.startsWith("消息99"))});
+const pacing=extract("function pacingDirective()","function buildContextSnapshot(");
+test("重复叙事不直接抛事务错误",()=>assert.ok(pacing.includes("不要换词复述同一异常")));
+test("五轮停滞优先既有 NPC/威胁",()=>assert.ok(pacing.includes("优先让已有 NPC 按当前意图行动")));
+const context=extract("function buildContextSnapshot(","function endingConditionMatches");
+test("上下文加入 worldContinuity",()=>assert.ok(context.includes("worldContinuity:worldContinuityContext")));
+test("上下文加入 temporalIntent",()=>assert.ok(context.includes("temporalIntent")));
+test("聊天通过独立预算裁剪",()=>assert.ok(context.includes("selectRecentMessagesForContext")));
+test("长团诊断记录丢弃消息数",()=>assert.ok(context.includes("droppedRecent")));
+test("优先级明确 NPC 和世界连续性高于最近聊天",()=>{const i=context.indexOf('priorityOrder:['),npc=context.indexOf('"npcContinuity"',i),world=context.indexOf('"worldContinuity"',i),recent=context.indexOf('"recentMessages"',i);assert.ok(npc>=0&&world>npc&&recent>world)});
+test("系统提示禁止换词重复异常",()=>assert.ok(ai.includes("不要重复换词描述同一个异常")));
+test("系统提示明确等待时间感",()=>assert.ok(ai.includes("玩家明确等待、休息或进行长时间搜索时")));
+test("提交后记录世界连续性",()=>assert.ok(ai.includes("recordWorldContinuityEvent(transaction,requestId)")));
+test("诊断包默认不泄露长团内部诊断",()=>assert.ok(memory.includes("longSessionDiagnostics:includeSecrets?snapshot.diagnostics:undefined")));
+test("KP 调试查看世界连续性",()=>assert.ok(memory.includes('section("世界连续性",snapshot.worldContinuity)')));
+test("KP 调试查看长团诊断",()=>assert.ok(memory.includes('section("长团诊断",snapshot.diagnostics||{})')));
+test("100轮压力样本不会超过消息选择上限",()=>{const msgs=Array.from({length:100},(_,i)=>({role:"ai",content:"第"+i+"轮"+"内容".repeat(100)}));const out=api.selectRecentMessagesForContext(msgs,12,1200);assert.ok(out.length<=12);assert.ok(out.at(-1).content.startsWith("第99轮"))});
+console.log(`V152_LONG_SESSION_TESTS:${passed}:PASS`);

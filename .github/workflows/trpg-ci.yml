@@ -1,0 +1,163 @@
+name: TRPG DM Assistant CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'README.md'
+      - 'src/**'
+      - 'build/**'
+      - 'outputs/trpg-dm-assistant.html'
+      - 'reports/**'
+      - '.github/workflows/trpg-ci.yml'
+  pull_request:
+    paths:
+      - 'README.md'
+      - 'src/**'
+      - 'build/**'
+      - 'outputs/trpg-dm-assistant.html'
+      - 'reports/**'
+      - '.github/workflows/trpg-ci.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Runtime security and protocol tests
+        run: node build/test-security-hardening.js
+
+      - name: Save management interaction regression
+        run: node build/test-save-ui.js
+
+      - name: CoC outcome regression
+        run: node build/test-coc-outcomes.js
+
+      - name: Situation sidebar regression
+        run: node build/test-situation-ui.js
+
+      - name: AI JSON repair corpus
+        run: node build/test-ai-json-repair.js
+
+      - name: v1.5.0 experience regression
+        run: node build/test-v150-experience.js
+
+      - name: v1.5.1 investigation stability regression
+        run: node build/test-v151-investigation-stability.js
+
+      - name: v1.5.2 long-session regression
+        run: node build/test-v152-long-session.js
+
+      - name: v1.5.3 clue-route regression
+        run: node build/test-v153-clue-routes.js
+
+      - name: v1.5.4 protocol routing regression
+        run: node build/test-v154-protocol-routing.js
+
+      - name: v1.5.4 NPC materialization regression
+        run: node build/test-v154-npc-materialization.js
+
+      - name: v1.5.4 location alias regression
+        run: node build/test-v154-location-alias.js
+
+      - name: v1.5.4 empty-response retry regression
+        run: node build/test-v154-empty-response-retry.js
+
+      - name: v1.5.4 operation ID alias regression
+        run: node build/test-v154-operation-id-alias.js
+
+      - name: v1.5.5 location transition alias regression
+        run: node build/test-v155-location-transition-alias.js
+
+      - name: v1.5.6 player assertion guard regression
+        run: node build/test-v156-player-assertion-guard.js
+
+      - name: v1.5.7 case integrity and interaction availability regression
+        run: node build/test-v157-case-integrity.js
+
+      - name: v1.5.7 canonical assertion state regression
+        run: node build/test-v157-canonical-assertion-state.js
+
+      - name: v1.5.8 API response resilience regression
+        run: node build/test-v158-api-response-resilience.js
+
+      - name: v1.5.9 progress semantics regression
+        run: node build/test-v159-progress-semantics.js
+
+      - name: v1.5.10 authored threat clock regression
+        run: node build/test-v1510-authored-threat-clock.js
+
+      - name: v1.5.11 NPC knowledge boundary regression
+        run: node build/test-v1511-npc-knowledge-boundary.js
+
+      - name: v1.5.12 ending resolution gate regression
+        run: node build/test-v1512-ending-resolution-gate.js
+
+      - name: v1.5.13 full-case E2E regression
+        run: node build/test-v1513-full-case-e2e.js
+
+      - name: v1.6.0 CoC resolution engine regression
+        run: node build/test-v160-coc-resolution-engine.js
+
+      - name: v1.6.0 CoC resolution diagnostic boundary regression
+        run: node build/test-v160-coc-resolution-diagnostics.js
+
+      - name: v1.6.0 transport abort classification regression
+        run: node build/test-v160-transport-abort-classification.js
+
+      - name: v1.6.1 mechanical consequence contract regression
+        run: node build/test-v161-mechanical-consequence-contract.js
+
+      - name: v1.6.2 failure-forward cost engine regression
+        run: node build/test-v162-failure-forward-cost-engine.js
+
+      - name: v1.6.3 SAN loss resolution regression
+        run: node build/test-v163-san-loss-resolution.js
+
+      - name: v1.6.4 indefinite insanity tracking regression
+        run: node build/test-v164-indefinite-insanity-tracking.js
+
+      - name: v1.6.5 HP damage state regression
+        run: node build/test-v165-hp-damage-state.js
+
+      - name: v1.6.6 health stabilization regression
+        run: node build/test-v166-health-stabilization.js
+
+      - name: v1.6.7 healing recovery regression
+        run: node build/test-v167-healing-recovery.js
+
+      - name: v1.6.8 combat opposed regression
+        run: node build/test-v168-combat-opposed.js
+
+      - name: v1.6.9 combat damage regression
+        run: node build/test-v169-combat-damage.js
+
+      - name: v1.6.10 firearms and impaling regression
+        run: node build/test-v1610-firearms-impaling.js
+
+      - name: JavaScript syntax
+        shell: bash
+        run: |
+          while IFS= read -r -d '' file; do
+            node --check "$file"
+          done < <(find src build -name '*.js' -print0)
+
+      - name: Build and verify
+        shell: bash
+        run: |
+          node build/build-single-html.js
+          node build/verify-single-html.js
+          first=$(sha256sum outputs/trpg-dm-assistant.html | cut -d' ' -f1)
+          node build/build-single-html.js
+          second=$(sha256sum outputs/trpg-dm-assistant.html | cut -d' ' -f1)
+          test "$first" = "$second"
+          test "$(find . -path './.git' -prune -o -type f -name '*.html' -print | wc -l)" -eq 1
+          git diff --exit-code -- outputs/trpg-dm-assistant.html
+          git diff --check

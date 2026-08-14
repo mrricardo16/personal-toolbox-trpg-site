@@ -1,0 +1,24 @@
+"use strict";
+const fs=require("fs"),path=require("path"),vm=require("vm"),assert=require("assert"),{webcrypto}=require("crypto"),{TextEncoder,TextDecoder}=require("util");
+const root=path.resolve(__dirname,"..");
+const files=["scenarios/library.js","state.js","check-engine.js","scenario-engine.js","memory.js","ai-protocol.js","saves.js"];
+function storage(){const map=new Map();return{getItem:k=>map.has(String(k))?map.get(String(k)):null,setItem:(k,v)=>map.set(String(k),String(v)),removeItem:k=>map.delete(String(k)),clear:()=>map.clear(),key:i=>Array.from(map.keys())[i]??null,get length(){return map.size}}}
+const localStorage=storage(),sessionStorage=storage();
+const sandbox={Object,Array,JSON,Map,Set,console,crypto:webcrypto,TextEncoder,TextDecoder,URL,AbortController,Blob,structuredClone,fetch:async()=>{throw new Error("fetch not expected")},setTimeout:()=>0,clearTimeout(){},setInterval:()=>0,clearInterval(){},window:{localStorage,sessionStorage,addEventListener(){}},document:{querySelector(){return null},querySelectorAll(){return[]},createElement(){return{className:"",textContent:"",style:{},classList:{add(){},remove(){},toggle(){}},appendChild(){},remove(){},click(){}}},body:{appendChild(){}}},confirm:()=>false,renderAll(){},renderTopbar(){},renderSidebar(){},renderChat(){},renderChatLog(){},renderChatComposer(){},renderSaves(){},toast(){}};
+sandbox.globalThis=sandbox;
+const source=files.map(file=>fs.readFileSync(path.join(root,"src",file),"utf8")).join("\n\n")+`\n;scheduleAutosave=()=>{};renderAll=()=>{};renderTopbar=()=>{};renderSidebar=()=>{};renderChat=()=>{};renderChatLog=()=>{};renderChatComposer=()=>{};renderSaves=()=>{};toast=()=>{};globalThis.__test={APP_VERSION,SCHEMA_VERSION,scenarioById:id=>deepClone(SCENARIO_LIBRARY.find(x=>x.id===id)),activateScenario,enterNode,materializeNodeNpcs,sanitizeRuntimeAfterLoad,prepareStateChanges,snapshot:()=>deepClone(state),reset:()=>{state=makeInitialState();state.character={system:"coc7",name:"E2E",hp:12,maxHp:12,san:65,maxSan:99,luck:50,attributes:{str:55,con:60,siz:60,dex:65,app:50,int:70,pow:65,edu:70},skills:[{id:"spot_hidden",name:"侦查",value:75},{id:"psychology",name:"心理学",value:65}]};return deepClone(state)}};`;
+vm.createContext(sandbox);vm.runInContext(source,sandbox,{filename:"v154-npc-runtime.js"});
+const api=sandbox.__test;let passed=0;function test(name,fn){fn();passed++;console.log(`PASS ${name}`)}
+function activateOldHouse(){api.reset();api.activateScenario(api.scenarioById("scenario-old-house"));return api.snapshot()}
+
+test("版本基线不低于 v1.5.3",()=>{const [major,minor,patch]=api.APP_VERSION.split(".").map(Number);assert.ok(major>1||major===1&&(minor>5||minor===5&&patch>=3))});
+test("Schema 保持 8",()=>assert.equal(api.SCHEMA_VERSION,8));
+test("启用结构化模组会实体化首节点 NPC",()=>{const s=activateOldHouse();assert.ok(s.npcs.some(n=>n.id==="old-butler"));assert.equal(s.npcs.filter(n=>n.id==="old-butler").length,1)});
+test("首节点不会提前实体化未来 NPC",()=>{const s=activateOldHouse();assert.equal(s.npcs.some(n=>n.id==="old-shen"),false)});
+test("重复实体化不会产生重复 NPC",()=>{activateOldHouse();const node=api.snapshot().scenario.chapters[0].scenes[0].nodes[0];api.materializeNodeNpcs(node);api.materializeNodeNpcs(node);const s=api.snapshot();assert.equal(s.npcs.filter(n=>n.id==="old-butler").length,1)});
+test("已有 NPC 连续性不会被节点模板覆盖",()=>{activateOldHouse();const node=api.snapshot().scenario.chapters[0].scenes[0].nodes[1];const target=[{id:"old-butler",name:"管家周铭",description:"已建立描述",attitude:"合作",continuity:{claims:["已经答应作证"],relationship:"谨慎合作",currentIntent:"保护调查员",lastInteraction:"交换证词",lastInteractionTurn:3}}];api.materializeNodeNpcs(node,target);assert.equal(target.length,1);assert.equal(target[0].attitude,"合作");assert.deepEqual(target[0].continuity.claims,["已经答应作证"])});
+test("进入新节点会实体化该节点首次出现 NPC",()=>{activateOldHouse();api.enterNode("old-rescue",{meaningfulProgress:true,reason:"测试"});const s=api.snapshot();assert.ok(s.npcs.some(n=>n.id==="old-shen"));assert.equal(s.npcs.filter(n=>n.id==="old-shen").length,1)});
+test("载入旧存档时补齐当前节点声明 NPC",()=>{activateOldHouse();vm.runInContext(`state.npcs=[];sanitizeRuntimeAfterLoad();`,sandbox);const s=api.snapshot();assert.ok(s.npcs.some(n=>n.id==="old-butler"))});
+test("已实体化的当前 NPC 可直接 updateNpc",()=>{activateOldHouse();const prepared=api.prepareStateChanges([{operation:"updateNpc",npcId:"old-butler",claim:"沈先生并未从正门离开",currentIntent:"避免商会追责"}],[]);const npc=prepared.draft.npcs.find(n=>n.id==="old-butler");assert.ok(npc);assert.ok(npc.continuity.claims.includes("沈先生并未从正门离开"));assert.equal(npc.continuity.currentIntent,"避免商会追责")});
+test("未声明且未实体化的 NPC 仍严格拒绝",()=>{activateOldHouse();assert.throws(()=>api.prepareStateChanges([{operation:"updateNpc",npcId:"npc-does-not-exist",claim:"x"}],[]),/NPC 不存在/)});
+console.log(`V154_NPC_MATERIALIZATION_TESTS:${passed}:PASS`);

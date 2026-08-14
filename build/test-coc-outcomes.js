@@ -1,0 +1,21 @@
+"use strict";
+const fs=require("fs"),path=require("path"),vm=require("vm"),assert=require("assert");
+const engine=fs.readFileSync(path.resolve(__dirname,"../src/check-engine.js"),"utf8"),ai=fs.readFileSync(path.resolve(__dirname,"../src/ai-protocol.js"),"utf8"),ui=fs.readFileSync(path.resolve(__dirname,"../src/ui.js"),"utf8"),scenario=fs.readFileSync(path.resolve(__dirname,"../src/scenario-engine.js"),"utf8");
+const start=engine.indexOf("const COC_DIFFICULTY_LABELS="),end=engine.indexOf("function rollDnd(",start);assert.ok(start>=0&&end>start,"无法提取 CoC 判定函数");
+const sandbox={clamp:(n,min,max)=>Math.min(max,Math.max(min,n)),Number,String,Boolean,Math,Error};sandbox.globalThis=sandbox;vm.runInNewContext(engine.slice(start,end)+"\n;globalThis.api={cocRank,cocDifficultyPass,cocDifficultyTarget,validateCocRollOutcome,clueDiscoveryQuality,cocDifficultyLabel,cocRankLabel};",sandbox);
+const a=sandbox.api;let passed=0;function test(name,fn){fn();passed++;console.log(`PASS ${name}`)}
+test("70/70 普通难度为普通成功",()=>{assert.equal(a.cocRank(70,70),"regular");assert.equal(a.cocDifficultyPass("regular","regular"),true);assert.equal(a.cocDifficultyTarget(70,"regular"),70)});
+test("35/70 困难边界成功",()=>{assert.equal(a.cocRank(35,70),"hard");assert.equal(a.cocDifficultyPass("hard","hard"),true);assert.equal(a.cocDifficultyTarget(70,"hard"),35)});
+test("14/70 极难边界成功",()=>{assert.equal(a.cocRank(14,70),"extreme");assert.equal(a.cocDifficultyPass("extreme","extreme"),true);assert.equal(a.cocDifficultyTarget(70,"extreme"),14)});
+test("普通成功不满足困难要求",()=>assert.equal(a.cocDifficultyPass(a.cocRank(70,70),"hard"),false));
+test("技能 70 时 100 为大失败",()=>assert.equal(a.cocRank(100,70),"fumble"));
+test("技能 40 时 96 为大失败",()=>assert.equal(a.cocRank(96,40),"fumble"));
+test("判定一致性接受等值成功",()=>assert.equal(a.validateCocRollOutcome({total:70,target:70,difficulty:"regular",difficultyTarget:70,rank:"regular",result:true}),true));
+test("判定一致性拒绝 70/70 普通失败",()=>assert.throws(()=>a.validateCocRollOutcome({total:70,target:70,difficulty:"regular",difficultyTarget:70,rank:"regular",result:false}),/判定不一致/));
+test("线索质量区分失败和高等级成功",()=>{assert.equal(a.clueDiscoveryQuality({rank:"regular",result:false}),"failure");assert.equal(a.clueDiscoveryQuality({rank:"hard",result:true}),"hard");assert.equal(a.clueDiscoveryQuality({rank:"fumble",result:false}),"fumble")});
+test("界面展示难度和实际通过线",()=>{assert.ok(ui.includes("实际通过线：≤"));assert.ok(ui.includes("cocDifficultyLabel(c.difficulty)"))});
+test("检定记录展示成功等级和最终判定",()=>{assert.ok(ai.includes("成功等级：${cocRankLabel(record.rank)}"));assert.ok(ai.includes("最终判定：${formatCheckResult(record)}"))});
+test("续写携带 outcomeGuidance",()=>assert.ok(ai.includes("outcomeGuidance:checkOutcomeGuidance(record)")));
+test("线索保存发现质量和玩家描述",()=>{assert.ok(ai.includes("clue.discoveryQuality=quality"));assert.ok(ai.includes("clue.playerDescription=playerDescription"))});
+test("大失败前进代价至少为 2",()=>assert.ok(scenario.includes('quality==="fumble"?Math.max(2,baseCost):baseCost')));
+console.log(`COC_OUTCOME_TESTS:${passed}:PASS`);

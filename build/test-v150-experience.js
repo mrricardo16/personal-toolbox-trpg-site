@@ -1,0 +1,24 @@
+"use strict";
+const fs=require("fs"),path=require("path"),assert=require("assert");
+const root=path.resolve(__dirname,"..");
+const state=fs.readFileSync(path.join(root,"src/state.js"),"utf8"),ai=fs.readFileSync(path.join(root,"src/ai-protocol.js"),"utf8"),ui=fs.readFileSync(path.join(root,"src/ui.js"),"utf8"),saves=fs.readFileSync(path.join(root,"src/saves.js"),"utf8"),library=fs.readFileSync(path.join(root,"src/scenarios/library.js"),"utf8");
+let passed=0;function test(name,fn){fn();passed++;console.log(`PASS ${name}`)}
+test("版本不低于 v1.5.0",()=>{const match=library.match(/const APP_VERSION = "(\d+)\.(\d+)\.(\d+)";/);assert.ok(match);const version=match.slice(1).map(Number);assert.ok(version[0]>1||(version[0]===1&&version[1]>=5))});
+test("输入框使用独立 actionDraft",()=>assert.ok(ui.includes('state.ui.actionDraft||""')));
+test("发送动作立即清空草稿",()=>assert.match(ai,/submitPlayerAction\(action\)\{state\.ui\.actionDraft=""/));
+test("输入事件持续同步草稿",()=>assert.ok(ui.includes('actionInput.oninput=()=>{state.ui.actionDraft=actionInput.value}')));
+test("失败恢复卡提供重试编辑放弃",()=>{for(const action of ["retry-failed-turn","edit-failed-turn","discard-failed-turn"])assert.ok(ui.includes(action))});
+test("旧的底部恢复按钮已移除",()=>assert.ok(!ui.includes('id="retryInitialRequestBtn"')));
+test("请求前保存完整回滚快照",()=>assert.ok(ai.includes('captureRequestRollback(action);captureTurnSnapshot(action)')));
+test("编辑和放弃会恢复请求前状态",()=>{assert.ok(ai.includes('function editFailedAction()'));assert.ok(ai.includes('function discardFailedTurn()'));assert.ok(ai.includes('restoreRequestRollback()'))});
+test("请求回滚不进入存档",()=>assert.ok(saves.includes('snapshot.runtime.requestRollback=null')));
+test("地点支持无进展结果",()=>{for(const type of ["blocked","searched","returned","uncertain"])assert.ok(state.includes(`"${type}"`))});
+test("无进展地点结果不要求节点提议",()=>assert.ok(state.includes('nonTransition=["stay","blocked","searched","returned","uncertain"]')));
+test("后台唯一地点映射不渲染出口菜单",()=>{assert.ok(ai.includes('function inferUniqueNodeTarget'));assert.ok(!ui.includes('当前可用出口'));assert.ok(!ui.includes('confirm-failed-navigation'))});
+test("地点校正限制不可变业务字段",()=>assert.ok(ai.includes('assertLocationRepairImmutable(parsed,repaired)')));
+test("地点校正温度固定为 0.1",()=>assert.ok(ai.includes('jsonMode:true,temperature:0.1')));
+test("初始和续写链路都使用地点校正事务",()=>assert.equal((ai.match(/prepareAiTransactionWithLocationRepair\(/g)||[]).length>=3,true));
+test("系统提示允许没有奖励的行动",()=>assert.match(ai,/普通行动允许没有线索、没有进度、没有状态变化/));
+test("技术详情默认折叠",()=>{assert.ok(ui.includes("<details><summary>技术详情"))});
+test("取消请求进入统一失败恢复",()=>assert.match(ai,/function cancelActiveRequest\(\)[\s\S]*recordRequestFailure/));
+console.log(`V150_EXPERIENCE_TESTS:${passed}:PASS`);

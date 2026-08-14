@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>TRPG AI 主持助手</title>
+<style>
+<!-- STYLES -->
+</style>
+</head>
+<body>
+<div id="app" class="app">
+  <header class="topbar">
+    <button id="toggleSidebar" class="icon-btn" type="button">☰</button>
+    <div class="brand">TRPG / 调查档案</div>
+    <div id="topSlot" class="status-pill">未建档</div>
+    <div id="topSystem" class="status-pill optional">系统：未选择</div>
+    <div id="topPhase" class="status-pill">阶段：setup</div>
+    <div id="topConnection" class="status-pill optional">API：未测试</div>
+    <div class="top-actions">
+      <button type="button" data-nav="setup">配置</button>
+      <button type="button" data-nav="character">角色</button>
+      <button type="button" data-nav="scenario">剧本</button>
+      <button type="button" data-nav="chat">跑团</button>
+      <button type="button" data-nav="saves">存档</button>
+    </div>
+  </header>
+
+  <aside id="sidebar" class="sidebar"></aside>
+
+  <main class="main">
+    <section id="view-setup" class="view active"></section>
+    <section id="view-character" class="view"></section>
+    <section id="view-scenario" class="view"></section>
+    <section id="view-chat" class="view chat-view"></section>
+    <section id="view-saves" class="view"></section>
+  </main>
+</div>
+<div id="modalRoot"></div>
+<div id="toastWrap" class="toast-wrap"></div>
+<input id="scenarioFileInput" class="hidden" type="file" accept=".txt,.md,text/plain,text/markdown">
+<input id="saveFileInput" class="hidden" type="file" accept=".json,application/json">
+<input id="improvSeedFileInput" class="hidden" type="file" accept=".json,application/json">
+<script>
+<!-- SCRIPTS -->
+</script>
+</body>
+</html>

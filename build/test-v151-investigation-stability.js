@@ -1,0 +1,36 @@
+"use strict";
+const fs=require("fs"),path=require("path"),vm=require("vm"),assert=require("assert");
+const root=path.resolve(__dirname,"..");
+const scenario=fs.readFileSync(path.join(root,"src/scenario-engine.js"),"utf8"),ai=fs.readFileSync(path.join(root,"src/ai-protocol.js"),"utf8"),stateSource=fs.readFileSync(path.join(root,"src/state.js"),"utf8"),library=fs.readFileSync(path.join(root,"src/scenarios/library.js"),"utf8"),memory=fs.readFileSync(path.join(root,"src/memory.js"),"utf8");
+let passed=0;function test(name,fn){fn();passed++;console.log(`PASS ${name}`)}
+function extract(startMarker,endMarker){const start=scenario.indexOf(startMarker),end=scenario.indexOf(endMarker,start);assert.ok(start>=0&&end>start,`无法提取 ${startMarker}`);return scenario.slice(start,end)}
+const helperCode=extract("const MAX_NPC_CONTINUITY_CLAIMS=12;","function safeContextCoreState");
+const sandbox={state:{campaign:{directorState:{totalTurns:7}},npcs:[],scenario:{director:{npcMotives:[]}}},isPlainObject:v=>!!v&&typeof v==="object"&&!Array.isArray(v),listStrings:(v,l,m)=>Array.isArray(v)?v.map(x=>String(x).slice(0,m)).slice(0,l):[],asString:(v,m)=>typeof v==="string"?v.slice(0,m):"",getCurrentNode:()=>({id:"node",title:"大厅",npcs:[]}),deepClone:v=>JSON.parse(JSON.stringify(v)),Number,Math,Set,Map,Array,Object};sandbox.globalThis=sandbox;vm.runInNewContext(helperCode+"\n;globalThis.api={ensureNpcContinuity,applyNpcContinuityPatch,npcContinuityContext};",sandbox,{filename:"v151-npc-helpers.js"});const api=sandbox.api;
+test("版本不低于 v1.5.1",()=>{const m=library.match(/const APP_VERSION = \"(\d+)\.(\d+)\.(\d+)\";/);assert.ok(m);assert.ok(Number(m[1])>1||Number(m[2])>5||(Number(m[2])===5&&Number(m[3])>=1))});
+test("新会话最近消息默认 12",()=>assert.ok(stateSource.includes('recentMessageLimit:12')));
+test("运行态记录 lastTurnImpact",()=>assert.ok(stateSource.includes('lastTurnImpact:null')));
+test("旧 NPC 自动补 continuity",()=>{const npc={id:"n1",name:"管家"};const c=api.ensureNpcContinuity(npc);assert.deepEqual(Array.from(c.claims),[]);assert.equal(c.lastInteractionTurn,-1)});
+test("updateNpc 可追加 claim",()=>{const npc={id:"n1",name:"管家"};api.applyNpcContinuityPatch(npc,{claim:"我没有进入书房"});assert.equal(npc.continuity.claims[0],"我没有进入书房");assert.equal(npc.continuity.lastInteractionTurn,7)});
+test("重复 claim 自动去重",()=>{const npc={id:"n1"};api.applyNpcContinuityPatch(npc,{claim:"同一句"});api.applyNpcContinuityPatch(npc,{claim:"同一句"});assert.equal(npc.continuity.claims.length,1)});
+test("claims 限制为 12 条",()=>{const npc={id:"n1"};for(let i=0;i<20;i++)api.applyNpcContinuityPatch(npc,{claim:`说法${i}`});assert.equal(npc.continuity.claims.length,12);assert.equal(npc.continuity.claims.at(-1),"说法19")});
+test("关系意图与最近互动可更新",()=>{const npc={id:"n1"};api.applyNpcContinuityPatch(npc,{relationship:"戒备",currentIntent:"拖延调查员",lastInteraction:"拒绝打开书房"});assert.equal(npc.continuity.relationship,"戒备");assert.equal(npc.continuity.currentIntent,"拖延调查员");assert.equal(npc.continuity.lastInteraction,"拒绝打开书房")});
+test("普通 NPC continuity 不包含隐藏意图",()=>{sandbox.state.npcs=[{id:"n1",name:"管家",continuity:{claims:["A"],relationship:"戒备",currentIntent:"隐藏证据",lastInteraction:"谈话",lastInteractionTurn:7}}];const publicView=api.npcContinuityContext({debug:false})[0],debugView=api.npcContinuityContext({debug:true})[0];assert.equal(publicView.currentIntent,undefined);assert.equal(debugView.currentIntent,"隐藏证据")});
+const impactCode=extract("function classifyTurnImpact(parsed)","function pacingDirective");vm.runInNewContext(impactCode+"\n;globalThis.classifyTurnImpact=classifyTurnImpact;",sandbox);const classify=sandbox.classifyTurnImpact;
+test("空变化行动分类 neutral",()=>assert.equal(classify({stateChanges:[],campaignChanges:[],locationEffect:{type:"stay"},nodeProposal:null}),"neutral"));
+test("NPC 互动分类 informational",()=>assert.equal(classify({stateChanges:[{operation:"updateNpc"}],campaignChanges:[],locationEffect:{type:"stay"}}),"informational"));
+test("线索分类 progress",()=>assert.equal(classify({stateChanges:[{operation:"revealClue"}],campaignChanges:[],locationEffect:{type:"stay"}}),"progress"));
+test("张力分类 risk",()=>assert.equal(classify({stateChanges:[],campaignChanges:[{operation:"adjustTension",amount:1}],locationEffect:{type:"stay"}}),"risk"));
+test("地点切换分类 transition",()=>assert.equal(classify({stateChanges:[],campaignChanges:[],locationEffect:{type:"transition_proposal"},nodeProposal:{}}),"transition"));
+test("3 轮无进展不再强制失败前进线索",()=>{const pacing=extract("function pacingDirective()","function buildContextSnapshot");assert.ok(!pacing.includes("采用失败前进：提供可继续调查的信息"));assert.ok(pacing.includes("不要强制线索、奖励、检定或进度"))});
+test("5 轮无进展让世界行动但不送答案",()=>{const pacing=extract("function pacingDirective()","function buildContextSnapshot");assert.ok(pacing.includes("不得为了推进而强送关键线索"));assert.ok(pacing.includes("正确答案"))});
+const contextFn=extract("function buildContextSnapshot(","function endingConditionMatches");
+test("上下文包含 NPC continuity",()=>assert.ok(contextFn.includes("npcContinuity:npcContinuityContext")));
+test("API memory 最近消息上限为 12",()=>assert.ok(contextFn.includes("Math.min(12")));
+test("Lore 优先于最近消息分配预算",()=>{const loreIndex=contextFn.indexOf("loreAllowance"),recentIndex=contextFn.includes("selectRecentMessagesForContext")?contextFn.indexOf("selectRecentMessagesForContext"):contextFn.indexOf("while(recent.length");assert.ok(loreIndex>=0&&recentIndex>loreIndex)});
+test("上下文使用精简核心状态",()=>assert.ok(contextFn.includes("trueState:safeContextCoreState()")));
+test("系统提示明确允许无收益行动",()=>assert.ok(ai.includes("单轮行动可以没有收益")));
+test("系统提示区分环境信息与正式线索",()=>assert.ok(ai.includes("普通环境信息不等于正式线索")));
+test("updateNpc 复用连续性字段",()=>assert.ok(ai.includes('["claim","relationship","currentIntent","lastInteraction"]')));
+test("请求提示允许空变化合法返回",()=>assert.ok(ai.includes("允许本轮 narrative 有内容而 stateChanges=[]、campaignChanges=[]")));
+test("上下文查看器显示 NPC 连续性",()=>assert.ok(memory.includes('section("NPC 连续性",snapshot.npcContinuity)')));
+console.log(`V151_INVESTIGATION_STABILITY_TESTS:${passed}:PASS`);

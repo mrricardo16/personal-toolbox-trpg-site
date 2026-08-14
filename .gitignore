@@ -1,0 +1,30 @@
+# Operating system
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editors and local IDE state
+.vscode/
+.idea/
+.vs/
+*.swp
+*.swo
+*.user
+
+# Local secrets and configuration overrides
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+config.local.*
+local.settings.json
+secrets.local.*
+
+# Dependency and build caches
+node_modules/
+dist/
+bin/
+obj/
+logs/
+*.log
