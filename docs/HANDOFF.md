@@ -8,22 +8,28 @@
 
 ## Current Phase
 
-Current verified phase (2026-08-14): Multiplayer Phase 1 Foundation started.
+Current verified phase (2026-08-14): Multiplayer Phase 1 Room Lifecycle Foundation completed.
 
 Completed:
 
 - ASP.NET Core server skeleton and `/health` integration test
 - `RoomSession`, `RoomPlayer`, `IRoomStore`, and `InMemoryRoomStore`
 - Room Store create/get, unknown, remove, duplicate, isolation, existence, and concurrency tests
+- `RoomCoordinator` Create / Join / Leave / Ready lifecycle semantics
+- Per-room mutation serialization and revision/error-result contracts
+- Ephemeral CSPRNG `PlayerSessionToken` session store
+- Server-generated `InviteCode` registry with collision retry and close invalidation
+- Minimal HTTP Create / Join / Leave / Ready bootstrap API
+- Public room/player snapshot DTOs without session credentials
 
-Next: Room lifecycle, Create / Join / Leave / Ready, and SignalR planning.
+Next: SignalR realtime foundation and reconnect design.
 
 ```text
 Single Player v1.6.10        ✅ stable
 Architecture Audit          ✅ complete
 Context Consolidation       ✅ this package
 Dedicated Repo Bootstrap    ✅ complete
-Multiplayer Phase 1         ✅ foundation complete
+Multiplayer Phase 1         ✅ room lifecycle and HTTP bootstrap complete
 ```
 
 ---
@@ -139,7 +145,7 @@ Phase 1 Memory Only。
 
 ## Next Task
 
-Phase 1 Foundation 已完成。下一阶段建议：Room lifecycle、Create / Join / Leave / Ready，以及 SignalR planning。
+Phase 1 Room Lifecycle Foundation 已完成。下一阶段建议：SignalR realtime foundation，以及 reconnect/disconnect design。
 
 ---
 

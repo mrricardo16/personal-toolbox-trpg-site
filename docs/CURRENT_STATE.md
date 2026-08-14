@@ -80,7 +80,7 @@ Current `trpg-real-api.yml`：
 Phase 0 Architecture Audit       ✅ completed
 Project Context Consolidation    ✅ completed
 Dedicated Repository Bootstrap   ✅ completed
-Multiplayer Phase 1              ✅ foundation complete
+Multiplayer Phase 1              ✅ room lifecycle and HTTP bootstrap complete
 ```
 
 ---
@@ -137,9 +137,9 @@ Multiplayer Phase 1              ✅ foundation complete
 
 ---
 
-# 7. In Progress
+# 7. Current Phase Status
 
-Current verified phase (2026-08-14): Multiplayer Phase 1 Foundation started.
+Current verified phase (2026-08-14): Multiplayer Phase 1 Room Lifecycle Foundation completed.
 
 Completed in this phase:
 
@@ -147,8 +147,14 @@ Completed in this phase:
 - `/health` integration test
 - `RoomSession`, `RoomPlayer`, `IRoomStore`, and `InMemoryRoomStore`
 - In-memory Room Store behavior and concurrency tests
+- `RoomCoordinator` Create / Join / Leave / Ready lifecycle semantics
+- Per-room mutation serialization and revision/error-result contracts
+- Ephemeral CSPRNG `PlayerSessionToken` session store
+- Server-generated `InviteCode` registry with collision retry and close invalidation
+- Minimal HTTP Create / Join / Leave / Ready bootstrap API
+- Public room/player snapshot DTOs without session credentials
 
-Next after this bounded foundation: Room lifecycle, Create / Join / Leave / Ready, and SignalR planning.
+Next after this bounded foundation: SignalR realtime foundation and reconnect design.
 
 当前没有 Multiplayer code implementation 正在进行。
 
@@ -158,9 +164,9 @@ Next after this bounded foundation: Room lifecycle, Create / Join / Leave / Read
 
 ---
 
-# 8. Next — Room Lifecycle Foundation
+# 8. Next — SignalR Realtime Foundation
 
-下一阶段建议：Room lifecycle、Create / Join / Leave / Ready，以及 SignalR planning。
+下一阶段建议：SignalR realtime foundation，以及 reconnect/disconnect design。
 
 ---
 

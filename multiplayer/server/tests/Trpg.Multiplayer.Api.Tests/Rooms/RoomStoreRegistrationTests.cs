@@ -26,4 +26,18 @@ public sealed class RoomStoreRegistrationTests(WebApplicationFactory<Program> fa
 
         Assert.Same(first, second);
     }
+
+    [Fact]
+    public void SessionAndInviteServices_AreRegisteredAsSingleton()
+    {
+        Assert.Same(
+            factory.Services.GetRequiredService<IPlayerSessionStore>(),
+            factory.Services.GetRequiredService<IPlayerSessionStore>());
+        Assert.Same(
+            factory.Services.GetRequiredService<IInviteCodeRegistry>(),
+            factory.Services.GetRequiredService<IInviteCodeRegistry>());
+        Assert.Same(
+            factory.Services.GetRequiredService<IInviteCodeGenerator>(),
+            factory.Services.GetRequiredService<IInviteCodeGenerator>());
+    }
 }
