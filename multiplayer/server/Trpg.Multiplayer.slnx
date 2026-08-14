@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Trpg.Multiplayer.Api/Trpg.Multiplayer.Api.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Trpg.Multiplayer.Api.Tests/Trpg.Multiplayer.Api.Tests.csproj" />
+  </Folder>
+</Solution>
