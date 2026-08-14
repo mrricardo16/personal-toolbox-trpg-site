@@ -8,12 +8,22 @@
 
 ## Current Phase
 
+Current verified phase (2026-08-14): Multiplayer Phase 1 Foundation started.
+
+Completed:
+
+- ASP.NET Core server skeleton and `/health` integration test
+- `RoomSession`, `RoomPlayer`, `IRoomStore`, and `InMemoryRoomStore`
+- Room Store create/get, unknown, remove, duplicate, isolation, existence, and concurrency tests
+
+Next: Room lifecycle, Create / Join / Leave / Ready, and SignalR planning.
+
 ```text
 Single Player v1.6.10        ✅ stable
 Architecture Audit          ✅ complete
 Context Consolidation       ✅ this package
 Dedicated Repo Bootstrap    ✅ complete
-Multiplayer Phase 1         ⏸ not started
+Multiplayer Phase 1         ✅ foundation complete
 ```
 
 ---
@@ -129,15 +139,7 @@ Phase 1 Memory Only。
 
 ## Next Task
 
-开始 Multiplayer Phase 1 时，严格只执行以下两个提交：
-
-### Commit 1
-ASP.NET Core server skeleton + tests。
-
-### Commit 2
-`IRoomStore` + `InMemoryRoomStore` + minimal Room model/tests。
-
-然后 STOP。
+Phase 1 Foundation 已完成。下一阶段建议：Room lifecycle、Create / Join / Leave / Ready，以及 SignalR planning。
 
 ---
 

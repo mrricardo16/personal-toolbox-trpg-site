@@ -80,7 +80,7 @@ Current `trpg-real-api.yml`：
 Phase 0 Architecture Audit       ✅ completed
 Project Context Consolidation    ✅ completed
 Dedicated Repository Bootstrap   ✅ completed
-Multiplayer Phase 1              ⏸ not started
+Multiplayer Phase 1              ✅ foundation complete
 ```
 
 ---
@@ -139,22 +139,28 @@ Multiplayer Phase 1              ⏸ not started
 
 # 7. In Progress
 
+Current verified phase (2026-08-14): Multiplayer Phase 1 Foundation started.
+
+Completed in this phase:
+
+- ASP.NET Core server skeleton
+- `/health` integration test
+- `RoomSession`, `RoomPlayer`, `IRoomStore`, and `InMemoryRoomStore`
+- In-memory Room Store behavior and concurrency tests
+
+Next after this bounded foundation: Room lifecycle, Create / Join / Leave / Ready, and SignalR planning.
+
 当前没有 Multiplayer code implementation 正在进行。
 
 当前 Bootstrap 已完成：稳定 Single Player 已导入 standalone repository，CI 路径已适配，Context Docs 已固化。
 
-本轮未创建 Multiplayer implementation。
+本轮已完成 Multiplayer Foundation Commit 1 与 Commit 2。
 
 ---
 
-# 8. Next — Multiplayer Phase 1 First Two Commits
+# 8. Next — Room Lifecycle Foundation
 
-仅：
-
-1. ASP.NET Core server skeleton；
-2. `IRoomStore` + `InMemoryRoomStore` + minimal Room model/tests。
-
-完成后 STOP。
+下一阶段建议：Room lifecycle、Create / Join / Leave / Ready，以及 SignalR planning。
 
 ---
 
