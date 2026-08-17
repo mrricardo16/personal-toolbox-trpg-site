@@ -9,5 +9,8 @@ public enum RoomErrorCode
     PlayerNotFound,
     InvalidNickname,
     InvalidMaxPlayers,
-    NotMember
+    InvalidAiConfiguration,
+    AiConfigurationNotFound,
+    NotMember,
+    NotHost
 }

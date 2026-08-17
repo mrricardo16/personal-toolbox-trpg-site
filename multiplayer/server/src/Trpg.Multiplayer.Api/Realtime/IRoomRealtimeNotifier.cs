@@ -2,6 +2,8 @@ namespace Trpg.Multiplayer.Api.Realtime;
 
 public interface IRoomRealtimeNotifier
 {
+    Task PublishRoomSnapshotAsync(RoomSnapshot snapshot);
+
     Task PublishMemberJoinedAsync(RoomSnapshot snapshot, PlayerSnapshot player);
 
     Task PublishReadyChangedAsync(RoomSnapshot snapshot, Guid playerId, bool isReady);

@@ -11,7 +11,8 @@ public sealed class RoomSession
         RoomStatus status,
         long revision,
         DateTimeOffset createdAt,
-        IEnumerable<RoomPlayer>? players = null)
+        IEnumerable<RoomPlayer>? players = null,
+        RoomAiConfiguration? aiConfiguration = null)
     {
         RoomId = roomId;
         HostPlayerId = hostPlayerId;
@@ -20,6 +21,7 @@ public sealed class RoomSession
         Revision = revision;
         CreatedAt = createdAt;
         Players = new ReadOnlyCollection<RoomPlayer>((players ?? []).ToArray());
+        AiConfiguration = aiConfiguration;
     }
 
     public Guid RoomId { get; }
@@ -35,4 +37,6 @@ public sealed class RoomSession
     public DateTimeOffset CreatedAt { get; }
 
     public IReadOnlyList<RoomPlayer> Players { get; }
+
+    public RoomAiConfiguration? AiConfiguration { get; }
 }

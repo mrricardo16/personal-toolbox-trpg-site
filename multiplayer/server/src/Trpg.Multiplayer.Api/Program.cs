@@ -5,6 +5,7 @@ using Trpg.Multiplayer.Api;
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddSignalR();
 builder.Services.AddSingleton<IRoomStore, InMemoryRoomStore>();
+builder.Services.AddSingleton<IRoomCredentialStore, InMemoryRoomCredentialStore>();
 builder.Services.AddSingleton<RoomCoordinator>();
 builder.Services.AddSingleton<RoomMutationDeliveryGate>();
 builder.Services.AddSingleton<IPlayerSessionStore, InMemoryPlayerSessionStore>();

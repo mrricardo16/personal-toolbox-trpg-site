@@ -24,6 +24,7 @@ public static class RoomSnapshotMapper
                     player.IsHost,
                     player.IsReady,
                     player.IsConnected))
-                .ToArray());
+                .ToArray(),
+            room.AiConfiguration);
     }
 }

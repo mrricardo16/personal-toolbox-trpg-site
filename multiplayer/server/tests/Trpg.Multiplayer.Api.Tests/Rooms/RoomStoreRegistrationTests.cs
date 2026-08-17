@@ -40,4 +40,14 @@ public sealed class RoomStoreRegistrationTests(WebApplicationFactory<Program> fa
             factory.Services.GetRequiredService<IInviteCodeGenerator>(),
             factory.Services.GetRequiredService<IInviteCodeGenerator>());
     }
+
+    [Fact]
+    public void CredentialStore_IsRegisteredAsInMemorySingleton()
+    {
+        var first = factory.Services.GetRequiredService<IRoomCredentialStore>();
+        var second = factory.Services.GetRequiredService<IRoomCredentialStore>();
+
+        Assert.IsType<InMemoryRoomCredentialStore>(first);
+        Assert.Same(first, second);
+    }
 }

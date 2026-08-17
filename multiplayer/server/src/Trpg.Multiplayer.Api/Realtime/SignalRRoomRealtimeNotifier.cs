@@ -6,6 +6,13 @@ public sealed class SignalRRoomRealtimeNotifier(
     IHubContext<RoomHub, IRoomClient> hubContext,
     IPlayerConnectionRegistry connections) : IRoomRealtimeNotifier
 {
+    public Task PublishRoomSnapshotAsync(RoomSnapshot snapshot)
+    {
+        return hubContext.Clients
+            .Group(RoomGroupNames.For(snapshot.RoomId))
+            .RoomSnapshot(snapshot);
+    }
+
     public async Task PublishMemberJoinedAsync(RoomSnapshot snapshot, PlayerSnapshot player)
     {
         var roomClients = hubContext.Clients.Group(RoomGroupNames.For(snapshot.RoomId));

@@ -12,6 +12,8 @@ public static class RoomApi
         app.MapPost("/api/rooms/join", JoinAsync);
         app.MapPost("/api/rooms/{roomId:guid}/leave", LeaveAsync);
         app.MapPost("/api/rooms/{roomId:guid}/ready", SetReadyAsync);
+        app.MapPut("/api/rooms/{roomId:guid}/ai-config", SetAiConfigurationAsync);
+        app.MapDelete("/api/rooms/{roomId:guid}/credential", RemoveAiCredentialAsync);
     }
 
     private static async Task<IResult> CreateAsync(CreateRoomRequest? request, RoomCoordinator coordinator, IInviteCodeRegistry inviteCodes, IPlayerSessionStore sessions)
@@ -184,6 +186,94 @@ public static class RoomApi
         });
     }
 
+    private static async Task<IResult> SetAiConfigurationAsync(
+        Guid roomId,
+        UpdateRoomAiConfigurationRequest? request,
+        HttpRequest httpRequest,
+        RoomCoordinator coordinator,
+        IInviteCodeRegistry inviteCodes,
+        IPlayerSessionStore sessions,
+        IRoomRealtimeNotifier notifier,
+        RoomMutationDeliveryGate mutationGate)
+    {
+        if (request is null)
+        {
+            return Results.BadRequest();
+        }
+
+        if (!TryGetSession(httpRequest, sessions, out _, out var session))
+        {
+            return Results.Unauthorized();
+        }
+
+        if (session!.RoomId != roomId)
+        {
+            return Results.StatusCode((int)HttpStatusCode.Forbidden);
+        }
+
+        return await mutationGate.RunAsync(roomId, async () =>
+        {
+            var result = await coordinator.SetAiConfigurationAsync(
+                new SetRoomAiConfigurationCommand(
+                    roomId,
+                    session.PlayerId,
+                    request.Provider,
+                    request.Endpoint,
+                    request.Model,
+                    request.ApiKey));
+            if (!result.IsSuccess)
+            {
+                return ToError(result.Error!.Code);
+            }
+
+            var snapshot = RoomSnapshotMapper.ToSnapshot(result.Value!, inviteCodes);
+            if (result.Changed)
+            {
+                await notifier.PublishRoomSnapshotAsync(snapshot);
+            }
+
+            return Results.Ok(result.Value!.AiConfiguration);
+        });
+    }
+
+    private static async Task<IResult> RemoveAiCredentialAsync(
+        Guid roomId,
+        HttpRequest httpRequest,
+        RoomCoordinator coordinator,
+        IInviteCodeRegistry inviteCodes,
+        IPlayerSessionStore sessions,
+        IRoomRealtimeNotifier notifier,
+        RoomMutationDeliveryGate mutationGate)
+    {
+        if (!TryGetSession(httpRequest, sessions, out _, out var session))
+        {
+            return Results.Unauthorized();
+        }
+
+        if (session!.RoomId != roomId)
+        {
+            return Results.StatusCode((int)HttpStatusCode.Forbidden);
+        }
+
+        return await mutationGate.RunAsync(roomId, async () =>
+        {
+            var result = await coordinator.RemoveAiCredentialAsync(
+                new RemoveRoomAiCredentialCommand(roomId, session.PlayerId));
+            if (!result.IsSuccess)
+            {
+                return ToError(result.Error!.Code);
+            }
+
+            var snapshot = RoomSnapshotMapper.ToSnapshot(result.Value!, inviteCodes);
+            if (result.Changed)
+            {
+                await notifier.PublishRoomSnapshotAsync(snapshot);
+            }
+
+            return Results.Ok(result.Value!.AiConfiguration);
+        });
+    }
+
     private static bool TryGetSession(HttpRequest request, IPlayerSessionStore sessions, out string? token, out PlayerSessionContext? session)
     {
         token = null;
@@ -203,10 +293,10 @@ public static class RoomApi
 
     private static IResult ToError(RoomErrorCode errorCode) => errorCode switch
     {
-        RoomErrorCode.InvalidNickname or RoomErrorCode.InvalidMaxPlayers => Results.BadRequest(),
-        RoomErrorCode.RoomNotFound => Results.NotFound(),
+        RoomErrorCode.InvalidNickname or RoomErrorCode.InvalidMaxPlayers or RoomErrorCode.InvalidAiConfiguration => Results.BadRequest(),
+        RoomErrorCode.RoomNotFound or RoomErrorCode.AiConfigurationNotFound => Results.NotFound(),
         RoomErrorCode.RoomFull or RoomErrorCode.PlayerAlreadyExists or RoomErrorCode.RoomClosed => Results.Conflict(),
-        RoomErrorCode.PlayerNotFound or RoomErrorCode.NotMember => Results.StatusCode((int)HttpStatusCode.Forbidden),
+        RoomErrorCode.PlayerNotFound or RoomErrorCode.NotMember or RoomErrorCode.NotHost => Results.StatusCode((int)HttpStatusCode.Forbidden),
         _ => Results.StatusCode((int)HttpStatusCode.InternalServerError)
     };
 
@@ -215,7 +305,26 @@ public static class RoomApi
 public sealed record CreateRoomRequest(string? Nickname, int MaxPlayers);
 public sealed record JoinRoomRequest(string? InviteCode, string? Nickname);
 public sealed record SetReadyRequest(bool IsReady);
+public sealed class UpdateRoomAiConfigurationRequest
+{
+    public string? Provider { get; init; }
+
+    public string? Endpoint { get; init; }
+
+    public string? Model { get; init; }
+
+    public string? ApiKey { get; init; }
+}
+
 public sealed record RoomCreatedResponse(Guid RoomId, string InviteCode, Guid PlayerId, string PlayerSessionToken, RoomSnapshot Room);
 public sealed record RoomJoinedResponse(Guid PlayerId, string PlayerSessionToken, RoomSnapshot Room);
-public sealed record RoomSnapshot(Guid RoomId, string InviteCode, Guid HostPlayerId, int MaxPlayers, string Status, long Revision, IReadOnlyList<PlayerSnapshot> Players);
+public sealed record RoomSnapshot(
+    Guid RoomId,
+    string InviteCode,
+    Guid HostPlayerId,
+    int MaxPlayers,
+    string Status,
+    long Revision,
+    IReadOnlyList<PlayerSnapshot> Players,
+    RoomAiConfiguration? AiConfiguration = null);
 public sealed record PlayerSnapshot(Guid PlayerId, string Nickname, bool IsHost, bool IsReady, bool IsConnected);

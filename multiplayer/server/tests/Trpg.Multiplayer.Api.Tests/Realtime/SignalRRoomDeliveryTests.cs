@@ -962,6 +962,8 @@ public sealed class SignalRRoomDeliveryTests(WebApplicationFactory<Program> fact
 
         public IReadOnlyCollection<long> PublishedReadyRevisions => publishedReadyRevisions.ToArray();
 
+        public Task PublishRoomSnapshotAsync(RoomSnapshot snapshot) => Task.CompletedTask;
+
         public Task PublishMemberJoinedAsync(RoomSnapshot snapshot, PlayerSnapshot player) => Task.CompletedTask;
 
         public async Task PublishReadyChangedAsync(RoomSnapshot snapshot, Guid playerId, bool isReady)
@@ -1001,6 +1003,8 @@ public sealed class SignalRRoomDeliveryTests(WebApplicationFactory<Program> fact
 
         public IReadOnlyCollection<long> PublishedRevisions => publishedRevisions.ToArray();
 
+        public Task PublishRoomSnapshotAsync(RoomSnapshot snapshot) => Task.CompletedTask;
+
         public Task PublishMemberJoinedAsync(RoomSnapshot snapshot, PlayerSnapshot player) => Task.CompletedTask;
 
         public Task PublishReadyChangedAsync(RoomSnapshot snapshot, Guid playerId, bool isReady) => Task.CompletedTask;
@@ -1033,6 +1037,9 @@ public sealed class SignalRRoomDeliveryTests(WebApplicationFactory<Program> fact
 
         public TaskCompletionSource RoomClosedEntered { get; } = NewCompletion();
 
+        public Task PublishRoomSnapshotAsync(RoomSnapshot snapshot) =>
+            inner.PublishRoomSnapshotAsync(snapshot);
+
         public Task PublishMemberJoinedAsync(RoomSnapshot snapshot, PlayerSnapshot player) =>
             inner.PublishMemberJoinedAsync(snapshot, player);
 
@@ -1060,6 +1067,8 @@ public sealed class SignalRRoomDeliveryTests(WebApplicationFactory<Program> fact
 
     private sealed class ThrowingMemberLeftNotifier : IRoomRealtimeNotifier
     {
+        public Task PublishRoomSnapshotAsync(RoomSnapshot snapshot) => Task.CompletedTask;
+
         public Task PublishMemberJoinedAsync(RoomSnapshot snapshot, PlayerSnapshot player) => Task.CompletedTask;
 
         public Task PublishReadyChangedAsync(RoomSnapshot snapshot, Guid playerId, bool isReady) => Task.CompletedTask;
@@ -1075,6 +1084,8 @@ public sealed class SignalRRoomDeliveryTests(WebApplicationFactory<Program> fact
 
     private sealed class NoOpRoomRealtimeNotifier : IRoomRealtimeNotifier
     {
+        public Task PublishRoomSnapshotAsync(RoomSnapshot snapshot) => Task.CompletedTask;
+
         public Task PublishMemberJoinedAsync(RoomSnapshot snapshot, PlayerSnapshot player) => Task.CompletedTask;
 
         public Task PublishReadyChangedAsync(RoomSnapshot snapshot, Guid playerId, bool isReady) => Task.CompletedTask;
