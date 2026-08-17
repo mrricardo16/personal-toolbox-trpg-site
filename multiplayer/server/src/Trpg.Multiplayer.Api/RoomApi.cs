@@ -1,4 +1,5 @@
 using System.Net;
+using Trpg.Multiplayer.Api.Ai;
 using Trpg.Multiplayer.Api.Realtime;
 using Trpg.Multiplayer.Api.Rooms;
 
@@ -14,6 +15,7 @@ public static class RoomApi
         app.MapPost("/api/rooms/{roomId:guid}/ready", SetReadyAsync);
         app.MapPut("/api/rooms/{roomId:guid}/ai-config", SetAiConfigurationAsync);
         app.MapDelete("/api/rooms/{roomId:guid}/credential", RemoveAiCredentialAsync);
+        app.MapPost("/api/rooms/{roomId:guid}/ai-config/test", TestAiConnectionAsync);
     }
 
     private static async Task<IResult> CreateAsync(CreateRoomRequest? request, RoomCoordinator coordinator, IInviteCodeRegistry inviteCodes, IPlayerSessionStore sessions)
@@ -272,6 +274,81 @@ public static class RoomApi
 
             return Results.Ok(result.Value!.AiConfiguration);
         });
+    }
+
+    private static async Task<IResult> TestAiConnectionAsync(
+        Guid roomId,
+        HttpRequest httpRequest,
+        IRoomStore rooms,
+        IPlayerSessionStore sessions,
+        IRoomCredentialStore credentials,
+        IAiConnectionTester tester,
+        IRoomConnectionTestGate testGate,
+        CancellationToken cancellationToken)
+    {
+        if (!TryGetSession(httpRequest, sessions, out _, out var session))
+        {
+            return Results.Unauthorized();
+        }
+
+        if (session!.RoomId != roomId)
+        {
+            return Results.StatusCode((int)HttpStatusCode.Forbidden);
+        }
+
+        if (!rooms.TryGet(roomId, out var room) || room is null)
+        {
+            return Results.NotFound();
+        }
+
+        var player = room.Players.SingleOrDefault(candidate => candidate.PlayerId == session.PlayerId);
+        if (player is null || room.HostPlayerId != session.PlayerId || !player.IsHost)
+        {
+            return Results.StatusCode((int)HttpStatusCode.Forbidden);
+        }
+
+        var configuration = room.AiConfiguration;
+        if (!testGate.TryEnter(roomId, out var lease))
+        {
+            return Results.Conflict(new AiConnectionTestResult(
+                false,
+                configuration?.Provider,
+                configuration?.Model,
+                null,
+                AiConnectionTestCodes.TestBusy));
+        }
+
+        using (lease)
+        {
+            if (!rooms.TryGet(roomId, out room) || room is null)
+            {
+                return Results.NotFound();
+            }
+
+            configuration = room.AiConfiguration;
+            if (configuration is null)
+            {
+                return Results.Ok(new AiConnectionTestResult(
+                    false,
+                    null,
+                    null,
+                    null,
+                    AiConnectionTestCodes.ConfigurationMissing));
+            }
+
+            if (!credentials.TryGet(roomId, out var credential) || string.IsNullOrWhiteSpace(credential))
+            {
+                return Results.Ok(new AiConnectionTestResult(
+                    false,
+                    configuration.Provider,
+                    configuration.Model,
+                    null,
+                    AiConnectionTestCodes.CredentialMissing));
+            }
+
+            var result = await tester.TestAsync(configuration, credential, cancellationToken);
+            return Results.Ok(result);
+        }
     }
 
     private static bool TryGetSession(HttpRequest request, IPlayerSessionStore sessions, out string? token, out PlayerSessionContext? session)

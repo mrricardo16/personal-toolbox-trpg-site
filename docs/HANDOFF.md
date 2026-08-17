@@ -2,13 +2,13 @@
 
 ## Current Goal
 
-在 dedicated TRPG repository 中维护稳定 Single Player，并以小提交开始 Multiplayer Foundation。
+在 dedicated TRPG repository 中维护稳定 Single Player，并以小提交推进 Multiplayer Foundation。
 
 ---
 
 ## Current Phase
 
-Current verified phase (2026-08-17): Multiplayer Phase 1 Room Lifecycle and SignalR Realtime Foundation completed.
+Current verified phase (2026-08-17): Multiplayer Phase 1 Host Provided Credential Foundation completed.
 
 Completed:
 
@@ -29,15 +29,23 @@ Completed:
 - Membership/readiness preservation across disconnect and same-session reattach
 - Explicit Leave/host close token invalidation and group/registry cleanup
 - Shared per-room mutation gate for HTTP and Hub lifecycle ordering
+- Host-only public AI configuration with DeepSeek and OpenAI-compatible provider values
+- In-memory server-private credential lifecycle: set, replace, read, exists, remove
+- Credential cleanup on explicit host room close; ordinary leave and disconnect preserve it
+- Server-side host-only API connection test without GameState or Room revision mutation
+- HTTPS-only outbound endpoint policy with localhost, loopback, private, link-local, unique-local, multicast, and metadata-range rejection
+- DNS resolution and resolved-address validation before outbound request
+- Disabled automatic redirects, 64 KiB response bound, 10-second timeout, and sanitized result codes
+- Per-room connection-test concurrency guard and fake resolver/fake handler coverage
 
-Next: Host Credential foundation. Reconnect expiry/grace timers remain a future decision.
+Next: Minimal Vue 3 + Vite + TypeScript Multiplayer Lobby client. Reconnect expiry/grace timers remain a future decision.
 
 ```text
 Single Player v1.6.10        ✅ stable
 Architecture Audit          ✅ complete
 Context Consolidation       ✅ this package
 Dedicated Repo Bootstrap    ✅ complete
-Multiplayer Phase 1         ✅ room lifecycle and HTTP bootstrap complete
+Multiplayer Phase 1         ✅ Host Provided Credential Foundation complete
 ```
 
 ---
@@ -66,7 +74,7 @@ Dedicated target：
 mrricardo16/personal-toolbox-trpg-site
 ```
 
-Dedicated Repository Bootstrap is complete. This repository is the primary development repository. `mrricardo16/personal-toolbox` remains a read-only legacy/stable source. The two SignalR Phase 1 feature commits are now the current dedicated `main` history after remote verification.
+Dedicated Repository Bootstrap is complete. This repository is the primary development repository. `mrricardo16/personal-toolbox` remains a read-only legacy/stable source. The two Credential Foundation feature commits are now the current dedicated `main` history after remote verification.
 
 ## Real API Secret Configuration
 
@@ -153,7 +161,9 @@ Phase 1 Memory Only。
 
 ## Next Task
 
-Phase 1 Room Lifecycle and SignalR Realtime Foundation 已完成。下一阶段建议：Host Credential foundation。Reconnect expiry/grace、Credential/API key、Host API、Vue、gameplay、GameState、Scenario migration、DB、Redis 与 Azure SignalR 均明确留待后续任务。
+Host Provided Credential Foundation 已完成。下一阶段建议：Minimal Vue 3 + Vite + TypeScript Multiplayer Lobby client。
+
+AI gameplay、Multiplayer AI Protocol、Scenario/GameState migration、持久化 credential、reconnect expiry/grace、完整 rate limiting、DB、Redis 与 Azure SignalR 均明确留待后续任务。
 
 ---
 

@@ -1,11 +1,23 @@
 using Trpg.Multiplayer.Api.Rooms;
 using Trpg.Multiplayer.Api.Realtime;
 using Trpg.Multiplayer.Api;
+using Trpg.Multiplayer.Api.Ai;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddSignalR();
+builder.Services.AddHttpClient(AiConnectionTester.HttpClientName, client =>
+{
+    client.Timeout = AiConnectionTester.ConnectionTimeout;
+}).ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+{
+    AllowAutoRedirect = false
+});
 builder.Services.AddSingleton<IRoomStore, InMemoryRoomStore>();
 builder.Services.AddSingleton<IRoomCredentialStore, InMemoryRoomCredentialStore>();
+builder.Services.AddSingleton<IHostAddressResolver, DnsHostAddressResolver>();
+builder.Services.AddSingleton<IAiEndpointPolicy, AiEndpointPolicy>();
+builder.Services.AddSingleton<IAiConnectionTester, AiConnectionTester>();
+builder.Services.AddSingleton<IRoomConnectionTestGate, InMemoryRoomConnectionTestGate>();
 builder.Services.AddSingleton<RoomCoordinator>();
 builder.Services.AddSingleton<RoomMutationDeliveryGate>();
 builder.Services.AddSingleton<IPlayerSessionStore, InMemoryPlayerSessionStore>();

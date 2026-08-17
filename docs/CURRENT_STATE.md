@@ -80,7 +80,7 @@ Current `trpg-real-api.yml`：
 Phase 0 Architecture Audit       ✅ completed
 Project Context Consolidation    ✅ completed
 Dedicated Repository Bootstrap   ✅ completed
-Multiplayer Phase 1              ✅ room lifecycle and HTTP bootstrap complete
+Multiplayer Phase 1              ✅ Host Provided Credential Foundation complete
 ```
 
 ---
@@ -139,7 +139,7 @@ Multiplayer Phase 1              ✅ room lifecycle and HTTP bootstrap complete
 
 # 7. Current Phase Status
 
-Current verified phase (2026-08-17): Multiplayer Phase 1 Room Lifecycle and SignalR Realtime Foundation completed.
+Current verified phase (2026-08-17): Multiplayer Phase 1 Host Provided Credential Foundation completed.
 
 Completed in this phase:
 
@@ -163,19 +163,30 @@ Completed in this phase:
 - Explicit Leave and host close invalidate session tokens and clean group/registry state
 - Shared per-room mutation delivery gate covering HTTP and Hub lifecycle ordering
 
-Next after this bounded foundation: SignalR realtime foundation and reconnect design.
+### Host Provided Credential Foundation
 
-当前没有 Multiplayer code implementation 正在进行。
+- Host-only public AI configuration (`Provider`, `Endpoint`, `Model`, `CredentialPresent`)
+- Process-memory `IRoomCredentialStore` with set, replace, read, exists, and remove lifecycle
+- Credential cleanup on explicit room close; disconnect does not delete credentials
+- Server-side host-only connection test at `POST /api/rooms/{roomId}/ai-config/test`
+- HTTPS-only outbound endpoint policy with userinfo, localhost, loopback, private, link-local, unique-local, multicast, and metadata-range rejection
+- DNS resolution and resolved-address validation before outbound request
+- No automatic redirects, bounded 64 KiB response body, 10-second timeout, and finite sanitized failure codes
+- Connection tests use `IHttpClientFactory`, do not mutate canonical room state, and enforce one active test per room
+
+当前没有 Vue、Multiplayer gameplay 或 AI Protocol migration 正在进行。
 
 当前 Bootstrap 已完成：稳定 Single Player 已导入 standalone repository，CI 路径已适配，Context Docs 已固化。
 
-本轮已完成 Multiplayer Foundation Commit 1 与 Commit 2，且两次 feature commit 均已通过测试并推送到 dedicated repository `main`。
+本轮已完成 Multiplayer Phase 1 Credential Foundation Commit 1 与 Commit 2，且两次 feature commit 均已通过测试并推送到 dedicated repository `main`。
 
 ---
 
-# 8. Next — Host Credential Foundation
+# 8. Next — Minimal Vue Lobby
 
-下一阶段建议：Host Credential foundation。Reconnect expiry/grace timers、Credential/API key、Host API、Vue client、gameplay、GameState、Scenario migration、DB、Redis 与 Azure SignalR 当前均未实现，不属于本阶段交付。
+Credential foundation 已完成。下一阶段建议：Minimal Vue 3 + Vite + TypeScript Multiplayer Lobby client。
+
+当前明确未实现且留待后续任务：AI gameplay、Multiplayer AI Protocol、Scenario/GameState/Character/Check/SAN/HP/Combat migration、持久化 credential、reconnect expiry/grace、完整 rate limiting、DB、Redis 与 Azure SignalR。
 
 ---
 
