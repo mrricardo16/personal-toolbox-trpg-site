@@ -99,9 +99,11 @@ public sealed class RoomCoordinatorTests
         var repeated = await coordinator.SetReadyAsync(new SetRoomReadyCommand(room.RoomId, playerId, true));
 
         Assert.True(changed.IsSuccess);
+        Assert.True(changed.Changed);
         Assert.Equal(3, changed.Value!.Revision);
         Assert.True(changed.Value.Players.Single(player => player.PlayerId == playerId).IsReady);
         Assert.True(repeated.IsSuccess);
+        Assert.False(repeated.Changed);
         Assert.Equal(3, repeated.Value!.Revision);
     }
 

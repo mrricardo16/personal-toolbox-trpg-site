@@ -138,7 +138,7 @@ public sealed class RoomCoordinator(IRoomStore roomStore)
 
         if (player.IsReady == command.IsReady)
         {
-            return RoomResult<RoomSession>.Success(room);
+            return RoomResult<RoomSession>.Success(room, changed: false);
         }
 
         var updatedPlayers = room.Players.Select(candidate => candidate.PlayerId == command.PlayerId

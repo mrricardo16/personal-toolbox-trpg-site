@@ -1,4 +1,5 @@
 using System.Net;
+using Trpg.Multiplayer.Api.Realtime;
 using Trpg.Multiplayer.Api.Rooms;
 
 namespace Trpg.Multiplayer.Api;
@@ -35,10 +36,21 @@ public static class RoomApi
         }
 
         var token = sessions.Create(playerId, room.RoomId, true);
-        return Results.Created($"/api/rooms/{room.RoomId}", new RoomCreatedResponse(room.RoomId, inviteCode, playerId, token, ToSnapshot(room, inviteCode)));
+        return Results.Created($"/api/rooms/{room.RoomId}", new RoomCreatedResponse(
+            room.RoomId,
+            inviteCode,
+            playerId,
+            token,
+            RoomSnapshotMapper.ToSnapshot(room, inviteCodes)));
     }
 
-    private static async Task<IResult> JoinAsync(JoinRoomRequest? request, RoomCoordinator coordinator, IInviteCodeRegistry inviteCodes, IPlayerSessionStore sessions)
+    private static async Task<IResult> JoinAsync(
+        JoinRoomRequest? request,
+        RoomCoordinator coordinator,
+        IInviteCodeRegistry inviteCodes,
+        IPlayerSessionStore sessions,
+        IRoomRealtimeNotifier notifier,
+        RoomMutationDeliveryGate mutationGate)
     {
         if (request is not { Nickname: { } nickname, InviteCode: { } suppliedInviteCode } || !IsValid(nickname) || string.IsNullOrWhiteSpace(suppliedInviteCode))
         {
@@ -51,23 +63,36 @@ public static class RoomApi
             return Results.NotFound();
         }
 
-        var playerId = Guid.NewGuid();
-        var result = await coordinator.JoinAsync(new JoinRoomCommand(roomId, playerId, nickname));
-        if (!result.IsSuccess)
+        return await mutationGate.RunAsync(roomId, async () =>
         {
-            if (result.Error!.Code == RoomErrorCode.RoomNotFound)
+            var playerId = Guid.NewGuid();
+            var result = await coordinator.JoinAsync(new JoinRoomCommand(roomId, playerId, nickname));
+            if (!result.IsSuccess)
             {
-                inviteCodes.Remove(roomId);
+                if (result.Error!.Code == RoomErrorCode.RoomNotFound)
+                {
+                    inviteCodes.Remove(roomId);
+                }
+
+                return ToError(result.Error.Code);
             }
 
-            return ToError(result.Error.Code);
-        }
-
-        var token = sessions.Create(playerId, roomId, false);
-        return Results.Ok(new RoomJoinedResponse(playerId, token, ToSnapshot(result.Value!, normalizedCode)));
+            var token = sessions.Create(playerId, roomId, false);
+            var snapshot = RoomSnapshotMapper.ToSnapshot(result.Value!, inviteCodes);
+            var player = snapshot.Players.Single(candidate => candidate.PlayerId == playerId);
+            await notifier.PublishMemberJoinedAsync(snapshot, player);
+            return Results.Ok(new RoomJoinedResponse(playerId, token, snapshot));
+        });
     }
 
-    private static async Task<IResult> LeaveAsync(Guid roomId, HttpRequest request, RoomCoordinator coordinator, IInviteCodeRegistry inviteCodes, IPlayerSessionStore sessions)
+    private static async Task<IResult> LeaveAsync(
+        Guid roomId,
+        HttpRequest request,
+        RoomCoordinator coordinator,
+        IInviteCodeRegistry inviteCodes,
+        IPlayerSessionStore sessions,
+        IRoomRealtimeNotifier notifier,
+        RoomMutationDeliveryGate mutationGate)
     {
         if (!TryGetSession(request, sessions, out var token, out var session))
         {
@@ -79,24 +104,52 @@ public static class RoomApi
             return Results.StatusCode((int)HttpStatusCode.Forbidden);
         }
 
-        var result = await coordinator.LeaveAsync(new LeaveRoomCommand(roomId, session.PlayerId));
-        if (!result.IsSuccess)
+        return await mutationGate.RunAsync(roomId, async () =>
         {
-            return ToError(result.Error!.Code);
-        }
+            var result = await coordinator.LeaveAsync(new LeaveRoomCommand(roomId, session.PlayerId));
+            if (!result.IsSuccess)
+            {
+                return ToError(result.Error!.Code);
+            }
 
-        if (result.Value!.RoomWasClosed)
-        {
-            sessions.RemoveByRoom(roomId);
-            inviteCodes.Remove(roomId);
-            return Results.Ok(new { roomWasClosed = true });
-        }
+            if (result.Value!.RoomWasClosed)
+            {
+                try
+                {
+                    await notifier.PublishRoomClosedAsync(roomId);
+                }
+                finally
+                {
+                    sessions.RemoveByRoom(roomId);
+                    inviteCodes.Remove(roomId);
+                }
 
-        sessions.Remove(token!);
-        return Results.Ok(ToSnapshot(result.Value.Room!, GetInviteCode(inviteCodes, roomId)));
+                return Results.Ok(new { roomWasClosed = true });
+            }
+
+            var snapshot = RoomSnapshotMapper.ToSnapshot(result.Value.Room!, inviteCodes);
+            try
+            {
+                await notifier.PublishMemberLeftAsync(snapshot, session.PlayerId);
+            }
+            finally
+            {
+                sessions.Remove(token!);
+            }
+
+            return Results.Ok(snapshot);
+        });
     }
 
-    private static async Task<IResult> SetReadyAsync(Guid roomId, SetReadyRequest? request, HttpRequest httpRequest, RoomCoordinator coordinator, IInviteCodeRegistry inviteCodes, IPlayerSessionStore sessions)
+    private static async Task<IResult> SetReadyAsync(
+        Guid roomId,
+        SetReadyRequest? request,
+        HttpRequest httpRequest,
+        RoomCoordinator coordinator,
+        IInviteCodeRegistry inviteCodes,
+        IPlayerSessionStore sessions,
+        IRoomRealtimeNotifier notifier,
+        RoomMutationDeliveryGate mutationGate)
     {
         if (request is null)
         {
@@ -113,10 +166,22 @@ public static class RoomApi
             return Results.StatusCode((int)HttpStatusCode.Forbidden);
         }
 
-        var result = await coordinator.SetReadyAsync(new SetRoomReadyCommand(roomId, session.PlayerId, request.IsReady));
-        return result.IsSuccess
-            ? Results.Ok(ToSnapshot(result.Value!, GetInviteCode(inviteCodes, roomId)))
-            : ToError(result.Error!.Code);
+        return await mutationGate.RunAsync(roomId, async () =>
+        {
+            var result = await coordinator.SetReadyAsync(new SetRoomReadyCommand(roomId, session.PlayerId, request.IsReady));
+            if (!result.IsSuccess)
+            {
+                return ToError(result.Error!.Code);
+            }
+
+            var snapshot = RoomSnapshotMapper.ToSnapshot(result.Value!, inviteCodes);
+            if (result.Changed)
+            {
+                await notifier.PublishReadyChangedAsync(snapshot, session.PlayerId, request.IsReady);
+            }
+
+            return Results.Ok(snapshot);
+        });
     }
 
     private static bool TryGetSession(HttpRequest request, IPlayerSessionStore sessions, out string? token, out PlayerSessionContext? session)
@@ -136,9 +201,6 @@ public static class RoomApi
 
     private static bool IsValid(string? nickname) => !string.IsNullOrWhiteSpace(nickname);
 
-    private static string GetInviteCode(IInviteCodeRegistry inviteCodes, Guid roomId) =>
-        inviteCodes.TryGetInviteCode(roomId, out var inviteCode) ? inviteCode! : string.Empty;
-
     private static IResult ToError(RoomErrorCode errorCode) => errorCode switch
     {
         RoomErrorCode.InvalidNickname or RoomErrorCode.InvalidMaxPlayers => Results.BadRequest(),
@@ -148,14 +210,6 @@ public static class RoomApi
         _ => Results.StatusCode((int)HttpStatusCode.InternalServerError)
     };
 
-    private static RoomSnapshot ToSnapshot(RoomSession room, string inviteCode) => new(
-        room.RoomId,
-        inviteCode,
-        room.HostPlayerId,
-        room.MaxPlayers,
-        room.Status.ToString(),
-        room.Revision,
-        room.Players.Select(player => new PlayerSnapshot(player.PlayerId, player.Nickname, player.IsHost, player.IsReady, player.IsConnected)).ToArray());
 }
 
 public sealed record CreateRoomRequest(string? Nickname, int MaxPlayers);
