@@ -30,6 +30,7 @@ builder.Services.AddSingleton<IInviteCodeGenerator, RandomInviteCodeGenerator>()
 builder.Services.AddSingleton<IInviteCodeRegistry, InMemoryInviteCodeRegistry>();
 builder.Services.AddSingleton<IPlayerConnectionRegistry, InMemoryPlayerConnectionRegistry>();
 builder.Services.AddSingleton<IRoomRealtimeNotifier, SignalRRoomRealtimeNotifier>();
+builder.Services.AddSingleton<IGameRealtimeNotifier, SignalRGameRealtimeNotifier>();
 
 var app = builder.Build();
 

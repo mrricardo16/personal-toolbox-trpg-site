@@ -13,6 +13,7 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging.Abstractions;
+using Trpg.Multiplayer.Api.Gameplay;
 using Trpg.Multiplayer.Api.Realtime;
 using Trpg.Multiplayer.Api.Rooms;
 using Xunit;
@@ -822,6 +823,7 @@ public sealed class SignalRRoomDeliveryTests(WebApplicationFactory<Program> fact
             registry,
             new RoomCoordinator(rooms),
             new NoOpRoomRealtimeNotifier(),
+            new NoOpGameRealtimeNotifier(),
             new RoomMutationDeliveryGate(),
             NullLogger<RoomHub>.Instance)
         {
@@ -948,6 +950,10 @@ public sealed class SignalRRoomDeliveryTests(WebApplicationFactory<Program> fact
 
         public Task RoomClosed(RoomClosedEvent message) =>
             throw new InvalidOperationException("RoomClosed delivery failed.");
+
+        public Task GameSnapshot(GameSnapshot snapshot) => Task.CompletedTask;
+
+        public Task CheckResolved(CheckResolvedEvent message) => Task.CompletedTask;
     }
 
     private sealed class BlockingReadyNotifier : IRoomRealtimeNotifier
@@ -1096,6 +1102,15 @@ public sealed class SignalRRoomDeliveryTests(WebApplicationFactory<Program> fact
             Task.CompletedTask;
 
         public Task PublishRoomClosedAsync(Guid roomId) => Task.CompletedTask;
+    }
+
+    private sealed class NoOpGameRealtimeNotifier : IGameRealtimeNotifier
+    {
+        public Task PublishGameSnapshotAsync(Guid roomId) => Task.CompletedTask;
+
+        public Task PublishCheckResolvedAsync(Guid roomId, CheckResolvedEvent message) => Task.CompletedTask;
+
+        public Task SendGameSnapshotAsync(string connectionId, Guid roomId, Guid playerId) => Task.CompletedTask;
     }
 
     private sealed class StubInviteCodeRegistry(Guid roomId, string inviteCode) : IInviteCodeRegistry

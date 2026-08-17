@@ -10,6 +10,7 @@ public sealed class RoomHub(
     IPlayerConnectionRegistry connections,
     RoomCoordinator coordinator,
     IRoomRealtimeNotifier notifier,
+    IGameRealtimeNotifier gameNotifier,
     RoomMutationDeliveryGate mutationGate,
     ILogger<RoomHub> logger) : Hub<IRoomClient>
 {
@@ -63,25 +64,32 @@ public sealed class RoomHub(
                 throw;
             }
 
+            RoomSnapshot snapshot;
             if (!isFirstConnection)
             {
-                return RoomSnapshotMapper.ToSnapshot(room, inviteCodes);
+                snapshot = RoomSnapshotMapper.ToSnapshot(room, inviteCodes);
             }
-
-            var result = await coordinator.SetConnectedAsync(
-                new SetConnectedRoomCommand(session.RoomId, session.PlayerId, true));
-            if (!result.IsSuccess)
+            else
             {
-                await CleanupRejectedAttachAsync(session.RoomId);
-                throw new HubException(AttachRejectedMessage);
+                var result = await coordinator.SetConnectedAsync(
+                    new SetConnectedRoomCommand(session.RoomId, session.PlayerId, true));
+                if (!result.IsSuccess)
+                {
+                    await CleanupRejectedAttachAsync(session.RoomId);
+                    throw new HubException(AttachRejectedMessage);
+                }
+
+                snapshot = RoomSnapshotMapper.ToSnapshot(result.Value!, inviteCodes);
+                if (result.Changed)
+                {
+                    await notifier.PublishMemberConnectionChangedAsync(snapshot, session.PlayerId, true);
+                }
             }
 
-            var snapshot = RoomSnapshotMapper.ToSnapshot(result.Value!, inviteCodes);
-            if (result.Changed)
-            {
-                await notifier.PublishMemberConnectionChangedAsync(snapshot, session.PlayerId, true);
-            }
-
+            await gameNotifier.SendGameSnapshotAsync(
+                Context.ConnectionId,
+                session.RoomId,
+                session.PlayerId);
             return snapshot;
         });
     }

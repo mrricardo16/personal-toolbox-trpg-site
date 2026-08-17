@@ -11,13 +11,13 @@ public sealed record GameSnapshot(
     long Revision,
     string Status,
     DateTimeOffset CreatedAt,
-    IReadOnlyList<CharacterSnapshot> Characters);
+    IReadOnlyList<CharacterSnapshot> Characters,
+    GameCheckRecord? LastCheck = null);
 
 public static class GameProjection
 {
     public static GameSnapshot Build(MultiplayerGameState state, Guid viewerPlayerId)
     {
-        _ = viewerPlayerId;
         return new GameSnapshot(
             state.RoomId,
             state.Revision,
@@ -28,7 +28,10 @@ public static class GameProjection
                     character.CharacterId,
                     character.OwnerPlayerId,
                     character.Name,
-                    new Dictionary<string, int>(character.CheckValues, StringComparer.OrdinalIgnoreCase)))
-                .ToArray());
+                    character.OwnerPlayerId == viewerPlayerId
+                        ? new Dictionary<string, int>(character.CheckValues, StringComparer.OrdinalIgnoreCase)
+                        : new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)))
+                .ToArray(),
+            state.LastCheck);
     }
 }

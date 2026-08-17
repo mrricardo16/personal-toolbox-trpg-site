@@ -1,5 +1,6 @@
 using System.Net;
 using Trpg.Multiplayer.Api.Gameplay;
+using Trpg.Multiplayer.Api.Realtime;
 using Trpg.Multiplayer.Api.Rooms;
 
 namespace Trpg.Multiplayer.Api;
@@ -19,7 +20,8 @@ public static class GameApi
         HttpRequest httpRequest,
         IPlayerSessionStore sessions,
         IGameCoordinator games,
-        RoomMutationDeliveryGate mutationGate)
+        RoomMutationDeliveryGate mutationGate,
+        IGameRealtimeNotifier notifier)
     {
         if (request is null || request.Characters is null)
         {
@@ -53,9 +55,13 @@ public static class GameApi
             }
 
             var projection = await games.GetProjectionAsync(roomId, session.PlayerId);
-            return projection.IsSuccess
-                ? Results.Created($"/api/rooms/{roomId}/game", projection.Value)
-                : ToError(projection.Error!.Code);
+            if (!projection.IsSuccess)
+            {
+                return ToError(projection.Error!.Code);
+            }
+
+            await notifier.PublishGameSnapshotAsync(roomId);
+            return Results.Created($"/api/rooms/{roomId}/game", projection.Value);
         });
     }
 
@@ -89,7 +95,8 @@ public static class GameApi
         HttpRequest httpRequest,
         IPlayerSessionStore sessions,
         IGameCoordinator games,
-        RoomMutationDeliveryGate mutationGate)
+        RoomMutationDeliveryGate mutationGate,
+        IGameRealtimeNotifier notifier)
     {
         if (request is null || request.CharacterId == Guid.Empty || string.IsNullOrWhiteSpace(request.CheckKey))
         {
@@ -116,7 +123,23 @@ public static class GameApi
                 string.IsNullOrWhiteSpace(request.Difficulty) ? "regular" : request.Difficulty.Trim(),
                 request.BonusDice,
                 request.PenaltyDice));
-            return result.IsSuccess ? Results.Ok(result.Value) : ToError(result.Error!.Code);
+            if (!result.IsSuccess)
+            {
+                return ToError(result.Error!.Code);
+            }
+
+            var check = result.Value!.Snapshot.LastCheck!;
+            await notifier.PublishGameSnapshotAsync(roomId);
+            await notifier.PublishCheckResolvedAsync(
+                roomId,
+                new CheckResolvedEvent(
+                    roomId,
+                    check.CheckId,
+                    check.PlayerId,
+                    check.CharacterId,
+                    check.CheckKey,
+                    check.GameRevision));
+            return Results.Ok(result.Value);
         });
     }
 

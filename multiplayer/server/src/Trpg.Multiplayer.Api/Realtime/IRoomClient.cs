@@ -1,3 +1,5 @@
+using Trpg.Multiplayer.Api.Gameplay;
+
 namespace Trpg.Multiplayer.Api.Realtime;
 
 public interface IRoomClient
@@ -13,4 +15,8 @@ public interface IRoomClient
     Task MemberConnectionChanged(MemberConnectionChangedEvent message);
 
     Task RoomClosed(RoomClosedEvent message);
+
+    Task GameSnapshot(GameSnapshot snapshot);
+
+    Task CheckResolved(CheckResolvedEvent message);
 }
