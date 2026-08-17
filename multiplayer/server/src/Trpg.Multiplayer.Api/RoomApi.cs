@@ -11,11 +11,42 @@ public static class RoomApi
     {
         app.MapPost("/api/rooms", CreateAsync);
         app.MapPost("/api/rooms/join", JoinAsync);
+        app.MapGet("/api/rooms/{roomId:guid}", GetSnapshotAsync);
         app.MapPost("/api/rooms/{roomId:guid}/leave", LeaveAsync);
         app.MapPost("/api/rooms/{roomId:guid}/ready", SetReadyAsync);
         app.MapPut("/api/rooms/{roomId:guid}/ai-config", SetAiConfigurationAsync);
         app.MapDelete("/api/rooms/{roomId:guid}/credential", RemoveAiCredentialAsync);
         app.MapPost("/api/rooms/{roomId:guid}/ai-config/test", TestAiConnectionAsync);
+    }
+
+    private static IResult GetSnapshotAsync(
+        Guid roomId,
+        HttpRequest request,
+        IRoomStore rooms,
+        IPlayerSessionStore sessions,
+        IInviteCodeRegistry inviteCodes)
+    {
+        if (!TryGetSession(request, sessions, out _, out var session))
+        {
+            return Results.Unauthorized();
+        }
+
+        if (session!.RoomId != roomId)
+        {
+            return Results.StatusCode((int)HttpStatusCode.Forbidden);
+        }
+
+        if (!rooms.TryGet(roomId, out var room) || room is null)
+        {
+            return Results.NotFound();
+        }
+
+        if (!room.Players.Any(player => player.PlayerId == session.PlayerId))
+        {
+            return Results.StatusCode((int)HttpStatusCode.Forbidden);
+        }
+
+        return Results.Ok(RoomSnapshotMapper.ToSnapshot(room, inviteCodes));
     }
 
     private static async Task<IResult> CreateAsync(CreateRoomRequest? request, RoomCoordinator coordinator, IInviteCodeRegistry inviteCodes, IPlayerSessionStore sessions)

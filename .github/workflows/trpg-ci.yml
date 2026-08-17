@@ -9,6 +9,8 @@ on:
       - 'build/**'
       - 'outputs/trpg-dm-assistant.html'
       - 'reports/**'
+      - 'multiplayer/client/**'
+      - 'multiplayer/server/**'
       - '.github/workflows/trpg-ci.yml'
   pull_request:
     paths:
@@ -17,6 +19,8 @@ on:
       - 'build/**'
       - 'outputs/trpg-dm-assistant.html'
       - 'reports/**'
+      - 'multiplayer/client/**'
+      - 'multiplayer/server/**'
       - '.github/workflows/trpg-ci.yml'
 
 permissions:
@@ -158,6 +162,39 @@ jobs:
           node build/build-single-html.js
           second=$(sha256sum outputs/trpg-dm-assistant.html | cut -d' ' -f1)
           test "$first" = "$second"
-          test "$(find . -path './.git' -prune -o -type f -name '*.html' -print | wc -l)" -eq 1
+          test "$(find outputs -maxdepth 1 -type f -name '*.html' | wc -l)" -eq 1
           git diff --exit-code -- outputs/trpg-dm-assistant.html
           git diff --check
+
+  multiplayer-client:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: multiplayer/client
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: multiplayer/client/package-lock.json
+      - name: Client install
+        run: npm ci
+      - name: Client tests
+        run: npm test -- --run
+      - name: Client build
+        run: npm run build
+
+  multiplayer-server:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.x'
+      - name: Server restore
+        run: dotnet restore multiplayer/server/Trpg.Multiplayer.slnx --nologo
+      - name: Server build
+        run: dotnet build multiplayer/server/Trpg.Multiplayer.slnx --no-restore --nologo -v:minimal
+      - name: Server tests
+        run: dotnet test multiplayer/server/Trpg.Multiplayer.slnx --no-restore --nologo -v:minimal
