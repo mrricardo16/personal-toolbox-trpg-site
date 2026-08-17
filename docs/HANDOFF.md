@@ -178,7 +178,9 @@ Phase 1 Memory Only。
 
 Phase 2B 已完成 MultiplayerGameState realtime synchronization、Attach/reconnect recovery、viewer-safe GameSnapshot、CheckResolved semantic delivery，以及最小 Vue Check gameplay client。Phase 2A 的 deterministic Check/Dice contract 继续作为服务端权威规则来源。
 
-本轮之后必须停止；后续如继续开发，应先审计并选择下一个 deterministic gameplay rule slice，再另行规划 Phase 3。SAN、HP、healing、combat、firearms、Scenario/GameState migration、AI gameplay、Multiplayer AI Protocol、持久化 credential、DB、Redis、matchmaking 与 Azure SignalR 均明确留待后续任务。
+本轮 Phase 2C audit 已完成并停止：下一条 deterministic gameplay slice 选择为 `HP / Damage State`；runner-up 为 `SAN Loss Resolution + SAN Loss Window`，因 scenario lifecycle 与 projection pressure 暂缓。下一步必须使用独立 implementation prompt。SAN、Stabilization、Healing、Combat、Firearms、Scenario/GameState migration、AI gameplay、Multiplayer AI Protocol、持久化 credential、DB、Redis、matchmaking 与 Azure SignalR 仍明确留待后续任务。
+
+本轮只新增 `docs/PHASE2_RULE_SLICE_AUDIT.md` 及同步更新 current state/handoff；没有修改 production code、Single Player rule code、Multiplayer behavior 或 formal HTML。
 
 ---
 
