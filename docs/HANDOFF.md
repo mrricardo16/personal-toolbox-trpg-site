@@ -8,7 +8,7 @@
 
 ## Current Phase
 
-Current verified phase (2026-08-17): Multiplayer Phase 1 Host Provided Credential Foundation completed.
+Current verified phase (2026-08-17): Multiplayer Phase 1 Lobby MVP completed.
 
 Completed:
 
@@ -37,15 +37,19 @@ Completed:
 - DNS resolution and resolved-address validation before outbound request
 - Disabled automatic redirects, 64 KiB response bound, 10-second timeout, and sanitized result codes
 - Per-room connection-test concurrency guard and fake resolver/fake handler coverage
+- Vue 3 + Vite + TypeScript Lobby client with Home/Create/Join/Lobby/Ready/Leave flows
+- Authenticated member-only room snapshot recovery after page reload
+- SignalR snapshot replacement, reconnect reattach, connection status UX, and RoomClosed cleanup
+- Host-only AI configuration and safe connection-test UI; API key remains memory-only and clears after submit
 
-Next: Minimal Vue 3 + Vite + TypeScript Multiplayer Lobby client. Reconnect expiry/grace timers remain a future decision.
+Phase 1 Lobby MVP is complete. Reconnect expiry/grace timers remain a future decision.
 
 ```text
 Single Player v1.6.10        ✅ stable
 Architecture Audit          ✅ complete
 Context Consolidation       ✅ this package
 Dedicated Repo Bootstrap    ✅ complete
-Multiplayer Phase 1         ✅ Host Provided Credential Foundation complete
+Multiplayer Phase 1         ✅ Lobby MVP complete
 ```
 
 ---
@@ -161,9 +165,9 @@ Phase 1 Memory Only。
 
 ## Next Task
 
-Host Provided Credential Foundation 已完成。下一阶段建议：Minimal Vue 3 + Vite + TypeScript Multiplayer Lobby client。
+Phase 1 Lobby MVP 已完成。下一阶段是单独的 Phase 2 Shared GameState design/implementation task。
 
-AI gameplay、Multiplayer AI Protocol、Scenario/GameState migration、持久化 credential、reconnect expiry/grace、完整 rate limiting、DB、Redis 与 Azure SignalR 均明确留待后续任务。
+AI gameplay、Multiplayer AI Protocol、Scenario/GameState migration、持久化 credential、reconnect expiry/grace、完整 rate limiting、DB、Redis、matchmaking 与 Azure SignalR 均明确留待后续任务。
 
 ---
 

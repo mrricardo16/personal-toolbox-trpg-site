@@ -22,6 +22,10 @@ export function safeApiMessage(error: unknown): string {
   return 'Request failed';
 }
 
+export function isTerminalSessionError(error: unknown): boolean {
+  return error instanceof ApiRequestError && [401, 403, 404].includes(error.status);
+}
+
 function statusToSafeCode(status: number): string {
   switch (status) {
     case 400:
@@ -42,7 +46,7 @@ function statusToSafeCode(status: number): string {
 export class ApiClient {
   constructor(private readonly fetcher: FetchLike = fetch.bind(globalThis)) {}
 
-  async request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  async request<T>(path: string, init: RequestInit = {}, acceptedStatuses: readonly number[] = []): Promise<T> {
     let response: Response;
     try {
       response = await this.fetcher(path, {
@@ -56,7 +60,7 @@ export class ApiClient {
       throw new ApiRequestError(0, 'Network error');
     }
 
-    if (!response.ok) {
+    if (!response.ok && !acceptedStatuses.includes(response.status)) {
       throw new ApiRequestError(response.status, statusToSafeCode(response.status));
     }
 

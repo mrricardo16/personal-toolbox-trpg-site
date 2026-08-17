@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   clearPlayerSession,
   playerSessionStorageKey,
@@ -16,7 +16,7 @@ describe('player session storage', () => {
       playerSessionToken: 'session-token',
     };
 
-    savePlayerSession(session);
+    expect(savePlayerSession(session)).toBe(true);
 
     expect(sessionStorage.getItem(playerSessionStorageKey)).toContain('session-token');
     expect(restorePlayerSession()).toEqual(session);
@@ -27,8 +27,17 @@ describe('player session storage', () => {
     sessionStorage.setItem(playerSessionStorageKey, '{invalid');
     expect(restorePlayerSession()).toBeNull();
 
-    savePlayerSession({ roomId: 'room-1', playerId: 'player-1', playerSessionToken: 'token' });
+    expect(savePlayerSession({ roomId: 'room-1', playerId: 'player-1', playerSessionToken: 'token' })).toBe(true);
     clearPlayerSession();
     expect(restorePlayerSession()).toBeNull();
+  });
+
+  it('keeps the in-memory flow alive when sessionStorage is blocked', () => {
+    const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('Blocked', 'SecurityError');
+    });
+
+    expect(savePlayerSession({ roomId: 'room-1', playerId: 'player-1', playerSessionToken: 'token' })).toBe(false);
+    setItem.mockRestore();
   });
 });

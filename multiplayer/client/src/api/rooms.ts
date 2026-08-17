@@ -1,11 +1,14 @@
 import type {
+  AiConnectionTestResult,
   CreateRoomRequest,
   JoinRoomRequest,
   RoomClosedResponse,
   RoomCreatedResponse,
   RoomJoinedResponse,
+  RoomAiConfiguration,
   RoomSnapshot,
   SetReadyRequest,
+  UpdateRoomAiConfigurationRequest,
 } from '../contracts/rooms';
 import { ApiClient } from './client';
 
@@ -50,5 +53,30 @@ export class RoomsApi {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` },
     });
+  }
+
+  updateAiConfiguration(roomId: string, token: string, request: UpdateRoomAiConfigurationRequest): Promise<RoomAiConfiguration> {
+    return this.client.request(`/api/rooms/${roomId}/ai-config`, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(request),
+    });
+  }
+
+  removeCredential(roomId: string, token: string): Promise<RoomAiConfiguration> {
+    return this.client.request(`/api/rooms/${roomId}/credential`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  }
+
+  testAiConnection(roomId: string, token: string): Promise<AiConnectionTestResult> {
+    return this.client.request(`/api/rooms/${roomId}/ai-config/test`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    }, [409]);
   }
 }

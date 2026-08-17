@@ -1,16 +1,23 @@
 <script setup lang="ts">
 import type { PlayerSnapshot, RoomSnapshot } from '../contracts/rooms';
+import type { RoomConnectionStatus } from '../realtime/roomConnection';
+import { RoomsApi } from '../api/rooms';
+import HostAiConfigPanel from './HostAiConfigPanel.vue';
 
 defineProps<{
   room: RoomSnapshot;
   currentPlayerId: string;
   busy: boolean;
   errorMessage: string;
+  connectionStatus: RoomConnectionStatus;
+  api: RoomsApi;
+  token: string;
 }>();
 
 const emit = defineEmits<{
   ready: [];
   leave: [];
+  snapshot: [snapshot: RoomSnapshot];
 }>();
 
 function playerLabel(player: PlayerSnapshot): string {
@@ -22,7 +29,7 @@ function playerLabel(player: PlayerSnapshot): string {
   <main class="lobby-shell">
     <header class="lobby-header">
       <div><p class="eyebrow">ACTIVE LOBBY</p><h1>{{ room.inviteCode }}</h1><p class="room-id">{{ room.roomId }}</p></div>
-      <div class="header-meta"><span class="status-pill"><span class="signal-dot" /> {{ room.status }}</span><span>REV {{ room.revision }}</span></div>
+      <div class="header-meta"><span class="status-pill"><span class="signal-dot" :class="{ reconnecting: connectionStatus !== 'connected' }" /> {{ connectionStatus }}</span><span>REV {{ room.revision }}</span></div>
     </header>
 
     <section class="lobby-grid">
@@ -46,5 +53,13 @@ function playerLabel(player: PlayerSnapshot): string {
         <p v-if="errorMessage" class="error-banner" role="alert">{{ errorMessage }}</p>
       </aside>
     </section>
+    <HostAiConfigPanel
+      v-if="room.hostPlayerId === currentPlayerId"
+      :api="api"
+      :room-id="room.roomId"
+      :token="token"
+      :configuration="room.aiConfiguration"
+      @snapshot="emit('snapshot', $event)"
+    />
   </main>
 </template>

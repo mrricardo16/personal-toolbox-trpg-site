@@ -139,7 +139,7 @@ Multiplayer Phase 1              ✅ Host Provided Credential Foundation complet
 
 # 7. Current Phase Status
 
-Current verified phase (2026-08-17): Multiplayer Phase 1 Host Provided Credential Foundation completed.
+Current verified phase (2026-08-17): Multiplayer Phase 1 Lobby MVP completed.
 
 Completed in this phase:
 
@@ -174,19 +174,33 @@ Completed in this phase:
 - No automatic redirects, bounded 64 KiB response body, 10-second timeout, and finite sanitized failure codes
 - Connection tests use `IHttpClientFactory`, do not mutate canonical room state, and enforce one active test per room
 
+### Multiplayer Phase 1 Lobby MVP
+
+- Vue 3 + Vite + TypeScript client bootstrap under `multiplayer/client`
+- Home/Create/Join/Lobby/Ready/Leave/host-close flow using the actual server contracts
+- Authenticated room snapshot recovery after page reload through a narrow member-only GET
+- `sessionStorage` session identity recovery; no API key is written to browser storage
+- SignalR `RoomSnapshot` replacement model with `AttachSession` reattach after reconnect
+- Reconnecting/connected/disconnected status UX and `RoomClosed` cleanup back to Home
+- Host-only AI provider/model/endpoint configuration and safe connection-test feedback
+- API key is held in memory only and cleared after the configuration/test submission
+
+Phase 1 Lobby MVP deliberately does not include gameplay, shared GameState, Scenario, Character,
+AI gameplay protocol, database, Redis, matchmaking, or Azure SignalR.
+
 当前没有 Vue、Multiplayer gameplay 或 AI Protocol migration 正在进行。
 
 当前 Bootstrap 已完成：稳定 Single Player 已导入 standalone repository，CI 路径已适配，Context Docs 已固化。
 
-本轮已完成 Multiplayer Phase 1 Credential Foundation Commit 1 与 Commit 2，且两次 feature commit 均已通过测试并推送到 dedicated repository `main`。
+本轮已完成 Multiplayer Phase 1 Lobby MVP 的两次 feature commit，且均已通过测试并推送到 dedicated repository `main`。
 
 ---
 
-# 8. Next — Minimal Vue Lobby
+# 8. Next — Phase 2 Shared GameState
 
-Credential foundation 已完成。下一阶段建议：Minimal Vue 3 + Vite + TypeScript Multiplayer Lobby client。
+Phase 1 Lobby MVP 已完成。下一阶段应单独设计并实现 Phase 2 Shared GameState boundary。
 
-当前明确未实现且留待后续任务：AI gameplay、Multiplayer AI Protocol、Scenario/GameState/Character/Check/SAN/HP/Combat migration、持久化 credential、reconnect expiry/grace、完整 rate limiting、DB、Redis 与 Azure SignalR。
+当前明确未实现且留待后续任务：AI gameplay、Multiplayer AI Protocol、Scenario/GameState/Character/Check/SAN/HP/Combat migration、持久化 credential、reconnect expiry/grace、完整 rate limiting、DB、Redis、matchmaking 与 Azure SignalR。
 
 ---
 

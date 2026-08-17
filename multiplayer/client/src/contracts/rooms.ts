@@ -21,7 +21,7 @@ export interface RoomSnapshot {
   status: string;
   revision: number;
   players: PlayerSnapshot[];
-  aiConfiguration?: RoomAiConfiguration | null;
+  aiConfiguration: RoomAiConfiguration | null;
 }
 
 export interface CreateRoomRequest {
@@ -54,4 +54,19 @@ export interface RoomJoinedResponse {
 
 export interface RoomClosedResponse {
   roomWasClosed: boolean;
+}
+
+export interface UpdateRoomAiConfigurationRequest {
+  provider: string;
+  endpoint: string;
+  model: string;
+  apiKey?: string;
+}
+
+export interface AiConnectionTestResult {
+  success: boolean;
+  provider?: string | null;
+  model?: string | null;
+  latencyMs?: number | null;
+  code?: string | null;
 }

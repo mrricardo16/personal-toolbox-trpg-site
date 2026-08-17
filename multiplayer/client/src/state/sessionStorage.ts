@@ -6,8 +6,14 @@ export interface PlayerSession {
   playerSessionToken: string;
 }
 
-export function savePlayerSession(session: PlayerSession): void {
-  sessionStorage.setItem(playerSessionStorageKey, JSON.stringify(session));
+export function savePlayerSession(session: PlayerSession): boolean {
+  try {
+    sessionStorage.setItem(playerSessionStorageKey, JSON.stringify(session));
+    return true;
+  } catch {
+    // The in-memory App session remains usable when browser storage is blocked.
+    return false;
+  }
 }
 
 export function restorePlayerSession(): PlayerSession | null {
@@ -38,5 +44,9 @@ export function restorePlayerSession(): PlayerSession | null {
 }
 
 export function clearPlayerSession(): void {
-  sessionStorage.removeItem(playerSessionStorageKey);
+  try {
+    sessionStorage.removeItem(playerSessionStorageKey);
+  } catch {
+    // Clearing is best effort; no secret is written to another storage layer.
+  }
 }
