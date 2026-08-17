@@ -3,6 +3,7 @@ import {
   type HubConnection,
 } from '@microsoft/signalr';
 import type { RoomSnapshot } from '../contracts/rooms';
+import type { CheckResolvedEvent, GameSnapshot } from '../contracts/rooms';
 
 export type RoomConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'reconnecting';
 
@@ -22,6 +23,8 @@ export interface HubConnectionFactory {
 
 export interface RoomConnectionCallbacks {
   onSnapshot(snapshot: RoomSnapshot): void;
+  onGameSnapshot(snapshot: GameSnapshot): void;
+  onCheckResolved(event: CheckResolvedEvent): void;
   onRoomClosed(): void;
   onStatus(status: RoomConnectionStatus): void;
 }
@@ -70,6 +73,8 @@ export class RoomConnection {
 
   private registerHandlers(connection: HubConnectionLike): void {
     connection.on('RoomSnapshot', (snapshot: RoomSnapshot) => this.callbacks.onSnapshot(snapshot));
+    connection.on('GameSnapshot', (snapshot: GameSnapshot) => this.callbacks.onGameSnapshot(snapshot));
+    connection.on('CheckResolved', (event: CheckResolvedEvent) => this.callbacks.onCheckResolved(event));
     connection.on('MemberJoined', (event: { snapshot?: RoomSnapshot }) => this.acceptEventSnapshot(event));
     connection.on('MemberLeft', (event: { snapshot?: RoomSnapshot }) => this.acceptEventSnapshot(event));
     connection.on('ReadyChanged', (event: { snapshot?: RoomSnapshot }) => this.acceptEventSnapshot(event));

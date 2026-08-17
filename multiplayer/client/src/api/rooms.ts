@@ -1,12 +1,16 @@
 import type {
   AiConnectionTestResult,
   CreateRoomRequest,
+  GameCheckResult,
+  GameSnapshot,
+  InitializeGameRequest,
   JoinRoomRequest,
   RoomClosedResponse,
   RoomCreatedResponse,
   RoomJoinedResponse,
   RoomAiConfiguration,
   RoomSnapshot,
+  ResolveCheckRequest,
   SetReadyRequest,
   UpdateRoomAiConfigurationRequest,
 } from '../contracts/rooms';
@@ -78,5 +82,33 @@ export class RoomsApi {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` },
     }, [409]);
+  }
+
+  getGame(roomId: string, token: string): Promise<GameSnapshot> {
+    return this.client.request(`/api/rooms/${roomId}/game`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  }
+
+  initializeGame(roomId: string, token: string, request: InitializeGameRequest): Promise<GameSnapshot> {
+    return this.client.request(`/api/rooms/${roomId}/game/initialize`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(request),
+    });
+  }
+
+  resolveCheck(roomId: string, token: string, request: ResolveCheckRequest): Promise<GameCheckResult> {
+    return this.client.request(`/api/rooms/${roomId}/game/check`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(request),
+    });
   }
 }

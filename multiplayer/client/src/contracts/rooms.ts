@@ -70,3 +70,64 @@ export interface AiConnectionTestResult {
   latencyMs?: number | null;
   code?: string | null;
 }
+
+export interface CharacterSnapshot {
+  characterId: string;
+  ownerPlayerId: string;
+  name: string;
+  checkValues: Record<string, number>;
+}
+
+export interface GameCheckRecord {
+  checkId: string;
+  playerId: string;
+  characterId: string;
+  checkKey: string;
+  target: number;
+  roll: number;
+  successLevel: string;
+  passed: boolean;
+  gameRevision: number;
+  createdAt: string;
+}
+
+export interface GameSnapshot {
+  roomId: string;
+  revision: number;
+  status: string;
+  createdAt: string;
+  characters: CharacterSnapshot[];
+  lastCheck?: GameCheckRecord | null;
+}
+
+export interface CheckResolvedEvent {
+  roomId: string;
+  checkId: string;
+  playerId: string;
+  characterId: string;
+  checkKey: string;
+  gameRevision: number;
+}
+
+export interface InitializeGameRequest {
+  characters: Array<{
+    playerId: string;
+    name: string;
+    checkValues: Record<string, number>;
+  }>;
+}
+
+export interface ResolveCheckRequest {
+  characterId: string;
+  checkKey: string;
+}
+
+export interface GameCheckResult {
+  snapshot: GameSnapshot;
+  check: {
+    target: number;
+    roll: number;
+    successLevel: string;
+    passed: boolean;
+  };
+}

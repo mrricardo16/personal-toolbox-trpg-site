@@ -8,7 +8,7 @@
 
 ## Current Phase
 
-Current verified phase (2026-08-17): Multiplayer Phase 2A Shared Game State + Check/Dice vertical slice completed.
+Current verified phase (2026-08-17): Multiplayer Phase 2B Realtime GameState Synchronization + Minimal Check Gameplay Client completed.
 
 Completed:
 
@@ -46,8 +46,13 @@ Completed:
 - Room-close cleanup with disconnect preservation and active-game roster mutation guard
 - JS reference export plus committed 19-case deterministic Check/Dice conformance fixture
 - Pure C# CoC Check engine, server-side secure percentile dice, canonical target lookup, LastCheck mutation, and minimal authenticated Check API
+- Independent game realtime notifier and SignalR `GameSnapshot` / `CheckResolved` delivery
+- Canonical-after-commit GameSnapshot broadcast with viewer-safe per-player check-value projection
+- Attach/reconnect GameSnapshot recovery and Game revision stale-snapshot rejection in Vue
+- Minimal host initialization and owner-only Check controls using the actual Phase 2A contracts
+- Real SignalR integration tests and two-tab localhost acceptance for both player directions and RoomClosed cleanup
 
-Phase 2A Shared Game State + Check/Dice vertical slice is complete. Reconnect expiry/grace timers remain a future decision.
+Phase 2B Realtime GameState + Minimal Check gameplay vertical slice is complete. Reconnect expiry/grace timers remain a future decision.
 
 ```text
 Single Player v1.6.10        ✅ stable
@@ -55,7 +60,7 @@ Architecture Audit          ✅ complete
 Context Consolidation       ✅ this package
 Dedicated Repo Bootstrap    ✅ complete
 Multiplayer Phase 1         ✅ Lobby MVP complete
-Multiplayer Phase 2A        ✅ Shared Game State + Check/Dice slice complete
+Multiplayer Phase 2B        ✅ Realtime GameState + Minimal Check client complete
 ```
 
 ---
@@ -171,9 +176,9 @@ Phase 1 Memory Only。
 
 ## Current Task
 
-Phase 2A 已完成 MultiplayerGameState foundation、独立 Game revision、Player → Character ownership mapping、Player-safe projection boundary、JS → C# conformance fixture mechanism 与 deterministic Check/Dice vertical slice。
+Phase 2B 已完成 MultiplayerGameState realtime synchronization、Attach/reconnect recovery、viewer-safe GameSnapshot、CheckResolved semantic delivery，以及最小 Vue Check gameplay client。Phase 2A 的 deterministic Check/Dice contract 继续作为服务端权威规则来源。
 
-本轮之后必须停止；后续如继续开发，应另行规划 Phase 3。AI gameplay、Multiplayer AI Protocol、gameplay Vue UI、realtime GameState sync、Scenario/GameState migration、SAN、HP、healing、combat、持久化 credential、DB、Redis、matchmaking 与 Azure SignalR 均明确留待后续任务。
+本轮之后必须停止；后续如继续开发，应先审计并选择下一个 deterministic gameplay rule slice，再另行规划 Phase 3。SAN、HP、healing、combat、firearms、Scenario/GameState migration、AI gameplay、Multiplayer AI Protocol、持久化 credential、DB、Redis、matchmaking 与 Azure SignalR 均明确留待后续任务。
 
 ---
 

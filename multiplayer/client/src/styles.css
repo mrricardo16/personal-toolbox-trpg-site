@@ -84,6 +84,16 @@ input::placeholder { color: #9ca5a4; }
 .credential-state strong { color: var(--blue); }
 .ai-actions { display: grid; grid-template-columns: 1.3fr 1fr 1fr; gap: 10px; margin-top: 26px; }
 .ai-actions .primary-button, .ai-actions .secondary-button, .ai-actions .quiet-button { width: 100%; margin-top: 0; }
+.game-card { margin-top: 24px; padding: clamp(22px, 4vw, 34px); }
+.character-list { display: grid; gap: 12px; margin: 20px 0 0; padding: 0; list-style: none; }
+.character-list li { border: 1px solid var(--line); border-radius: 9px; padding: 15px; }
+.character-list li.current { border-color: #b9d3cd; background: #edf5f1; }
+.character-heading { display: flex; justify-content: space-between; gap: 12px; }
+.character-heading span { color: var(--muted); font: 10px "SFMono-Regular", Consolas, monospace; }
+.check-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 9px; margin-top: 13px; }
+.check-button { min-height: 40px; margin-top: 0; padding: 0 12px; font-size: 12px; }
+.character-note { margin: 12px 0 0; font-size: 13px; }
+.last-check { margin: 18px 0 0; border-left: 4px solid var(--green); padding: 10px 13px; color: var(--blue-dark); background: #e7f2ea; font: 12px "SFMono-Regular", Consolas, monospace; }
 
 @media (max-width: 720px) {
   .topline { font-size: 9px; }

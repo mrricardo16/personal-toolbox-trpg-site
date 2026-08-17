@@ -2,8 +2,8 @@
 import { onBeforeUnmount, onMounted, ref } from 'vue';
 import HomeView from './components/HomeView.vue';
 import LobbyView from './components/LobbyView.vue';
-import type { RoomSnapshot } from './contracts/rooms';
-import { isTerminalSessionError, safeApiMessage } from './api/client';
+import type { CheckResolvedEvent, GameSnapshot, RoomSnapshot } from './contracts/rooms';
+import { ApiRequestError, isTerminalSessionError, safeApiMessage } from './api/client';
 import { RoomsApi } from './api/rooms';
 import {
   clearPlayerSession,
@@ -12,10 +12,12 @@ import {
   type PlayerSession,
 } from './state/sessionStorage';
 import { createRoomConnection, type RoomConnection, type RoomConnectionStatus } from './realtime/roomConnection';
+import { shouldAcceptGameSnapshot } from './state/gameSnapshot';
 import './styles.css';
 
 const roomsApi = new RoomsApi();
 const room = ref<RoomSnapshot | null>(null);
+const gameSnapshot = ref<GameSnapshot | null>(null);
 const session = ref<PlayerSession | null>(null);
 const busy = ref(false);
 const errorMessage = ref('');
@@ -37,6 +39,7 @@ async function runRequest(action: () => Promise<void>): Promise<void> {
 
 async function createRoom(request: { nickname: string; maxPlayers: number }): Promise<void> {
   await runRequest(async () => {
+    gameSnapshot.value = null;
     const response = await roomsApi.create(request);
     const nextSession = {
       roomId: response.roomId,
@@ -54,6 +57,7 @@ async function createRoom(request: { nickname: string; maxPlayers: number }): Pr
 
 async function joinRoom(request: { inviteCode: string; nickname: string }): Promise<void> {
   await runRequest(async () => {
+    gameSnapshot.value = null;
     const response = await roomsApi.join(request);
     const nextSession = {
       roomId: response.room.roomId,
@@ -76,10 +80,12 @@ async function restoreRoom(): Promise<void> {
   }
 
   session.value = stored;
+  gameSnapshot.value = null;
   busy.value = true;
   errorMessage.value = '';
   try {
     room.value = await roomsApi.getSnapshot(stored.roomId, stored.playerSessionToken);
+    await restoreGameSnapshot(stored);
     recoveryMessage.value = 'Session restored from this tab.';
     await startRealtime(stored);
   } catch (error) {
@@ -96,6 +102,22 @@ async function restoreRoom(): Promise<void> {
   }
 }
 
+async function restoreGameSnapshot(stored: PlayerSession): Promise<void> {
+  try {
+    acceptGameSnapshot(await roomsApi.getGame(stored.roomId, stored.playerSessionToken));
+  } catch (error) {
+    if (!(error instanceof ApiRequestError && error.status === 404)) {
+      throw error;
+    }
+  }
+}
+
+function acceptGameSnapshot(snapshot: GameSnapshot): void {
+  if (session.value && shouldAcceptGameSnapshot(gameSnapshot.value, snapshot, session.value.roomId)) {
+    gameSnapshot.value = snapshot;
+  }
+}
+
 async function startRealtime(nextSession: PlayerSession): Promise<void> {
   if (roomConnection) {
     await roomConnection.stop();
@@ -103,6 +125,10 @@ async function startRealtime(nextSession: PlayerSession): Promise<void> {
 
   roomConnection = createRoomConnection({
     onSnapshot: (snapshot) => { room.value = snapshot; },
+    onGameSnapshot: acceptGameSnapshot,
+    onCheckResolved: (event: CheckResolvedEvent) => {
+      recoveryMessage.value = `Check resolved at game revision ${event.gameRevision}.`;
+    },
     onRoomClosed: () => { void handleRoomClosed(); },
     onStatus: (status) => { connectionStatus.value = status; },
   });
@@ -120,6 +146,7 @@ async function handleRoomClosed(): Promise<void> {
   clearPlayerSession();
   session.value = null;
   room.value = null;
+  gameSnapshot.value = null;
   recoveryMessage.value = 'Room closed by host.';
   errorMessage.value = '';
 }
@@ -141,6 +168,7 @@ async function leaveRoom(): Promise<void> {
     clearPlayerSession();
     session.value = null;
     room.value = null;
+    gameSnapshot.value = null;
   });
 }
 
@@ -150,8 +178,8 @@ onBeforeUnmount(() => { void roomConnection?.stop(); });
 
 <template>
   <div class="app-frame">
-    <div class="topline"><span>TRPG AI HOST ASSISTANT</span><span>PHASE 1 / LOBBY</span></div>
+    <div class="topline"><span>TRPG AI HOST ASSISTANT</span><span>PHASE 2B / GAME</span></div>
     <HomeView v-if="!room" :busy="busy" :error-message="errorMessage || recoveryMessage" @create="createRoom" @join="joinRoom" />
-    <LobbyView v-else :room="room" :current-player-id="session!.playerId" :busy="busy" :error-message="errorMessage" :connection-status="connectionStatus" :api="roomsApi" :token="session!.playerSessionToken" @ready="toggleReady" @leave="leaveRoom" @snapshot="room = $event" />
+    <LobbyView v-else :room="room" :game-snapshot="gameSnapshot" :current-player-id="session!.playerId" :busy="busy" :error-message="errorMessage" :connection-status="connectionStatus" :api="roomsApi" :token="session!.playerSessionToken" @ready="toggleReady" @leave="leaveRoom" @snapshot="room = $event" @game-snapshot="acceptGameSnapshot" />
   </div>
 </template>

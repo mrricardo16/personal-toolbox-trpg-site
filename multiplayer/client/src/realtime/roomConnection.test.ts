@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { RoomSnapshot } from '../contracts/rooms';
+import type { CheckResolvedEvent, GameSnapshot, RoomSnapshot } from '../contracts/rooms';
 import { RoomConnection, type HubConnectionFactory, type HubConnectionLike } from './roomConnection';
 
 const snapshot = (revision: number): RoomSnapshot => ({
@@ -35,6 +35,8 @@ describe('RoomConnection', () => {
     const statuses: string[] = [];
     const connection = new RoomConnection({
       onSnapshot: (value) => snapshots.push(value.revision),
+      onGameSnapshot: vi.fn(),
+      onCheckResolved: vi.fn(),
       onRoomClosed: vi.fn(),
       onStatus: (value) => statuses.push(value),
     }, factory);
@@ -53,7 +55,7 @@ describe('RoomConnection', () => {
     const fake = new FakeHubConnection();
     const onSnapshot = vi.fn();
     const onRoomClosed = vi.fn();
-    const connection = new RoomConnection({ onSnapshot, onRoomClosed, onStatus: vi.fn() }, { create: () => fake });
+    const connection = new RoomConnection({ onSnapshot, onGameSnapshot: vi.fn(), onCheckResolved: vi.fn(), onRoomClosed, onStatus: vi.fn() }, { create: () => fake });
 
     void connection.start('session-token');
     fake.emit('ReadyChanged', { snapshot: snapshot(7) });
@@ -61,5 +63,28 @@ describe('RoomConnection', () => {
 
     expect(onSnapshot).toHaveBeenCalledWith(snapshot(7));
     expect(onRoomClosed).toHaveBeenCalledOnce();
+  });
+
+  it('delivers game snapshots and check events from the hub', () => {
+    const fake = new FakeHubConnection();
+    const onGameSnapshot = vi.fn();
+    const onCheckResolved = vi.fn();
+    const connection = new RoomConnection({
+      onSnapshot: vi.fn(),
+      onGameSnapshot,
+      onCheckResolved,
+      onRoomClosed: vi.fn(),
+      onStatus: vi.fn(),
+    }, { create: () => fake });
+    const gameSnapshot = { roomId: 'room-1', revision: 1 } as GameSnapshot;
+    const checkEvent = { roomId: 'room-1', gameRevision: 2 } as CheckResolvedEvent;
+
+    void connection.start('session-token');
+    fake.emit('GameSnapshot', gameSnapshot);
+    fake.emit('CheckResolved', checkEvent);
+
+    expect(onGameSnapshot).toHaveBeenCalledWith(gameSnapshot);
+    expect(onCheckResolved).toHaveBeenCalledWith(checkEvent);
+    void connection;
   });
 });

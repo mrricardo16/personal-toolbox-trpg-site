@@ -57,4 +57,22 @@ describe('RoomsApi', () => {
     expect(isTerminalSessionError(new ApiRequestError(503, 'Server unavailable'))).toBe(false);
     expect(isTerminalSessionError(new TypeError('network'))).toBe(false);
   });
+
+  it('sends only characterId and checkKey for a game check', async () => {
+    const fetcher = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(
+      JSON.stringify({ snapshot: {}, check: {} }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    ));
+    const api = new RoomsApi(new ApiClient(fetcher));
+
+    await api.resolveCheck('room-1', 'session-token', {
+      characterId: 'character-1',
+      checkKey: 'spotHidden',
+    });
+
+    const body = JSON.parse(String(fetcher.mock.calls[0][1]?.body));
+    expect(body).toEqual({ characterId: 'character-1', checkKey: 'spotHidden' });
+    expect(body).not.toHaveProperty('roll');
+    expect(body).not.toHaveProperty('target');
+  });
 });

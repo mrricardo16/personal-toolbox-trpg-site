@@ -139,7 +139,7 @@ Multiplayer Phase 1              ✅ Host Provided Credential Foundation complet
 
 # 7. Current Phase Status
 
-Current verified phase (2026-08-17): Multiplayer Phase 2A Shared Game State + Check/Dice vertical slice completed.
+Current verified phase (2026-08-17): Multiplayer Phase 2B Realtime GameState Synchronization + Minimal Check Gameplay Client completed.
 
 Completed in this phase:
 
@@ -204,19 +204,34 @@ AI gameplay protocol, database, Redis, matchmaking, or Azure SignalR.
 Phase 2A deliberately does not include gameplay Vue UI, realtime GameState sync, Scenario progression,
 SAN, HP, healing, combat, firearms, AI KP gameplay, persistence, database, Redis, or Phase 3 work.
 
-当前没有 Vue、Multiplayer gameplay 或 AI Protocol migration 正在进行。
+### Multiplayer Phase 2B
+
+- Independent `IGameRealtimeNotifier` / SignalR game delivery boundary
+- Canonical GameSnapshot broadcast after committed initialize/check mutations
+- Viewer-safe per-player projections with other players' check values hidden
+- Optional GameSnapshot recovery on `AttachSession` after page refresh/reconnect
+- `CheckResolved` semantic event without roll/target/result payload duplication
+- Game revision stale-snapshot rejection in the Vue client
+- Minimal host game initialization and per-owner Check UI using the actual Phase 2A APIs
+- Server LastCheck snapshot rendering, safe HTTP error handling, and RoomClosed game cleanup
+- Real WebApplicationFactory + SignalR client integration coverage and two-tab localhost acceptance
+
+Phase 2B deliberately does not include new deterministic rules, SAN, HP, healing, combat, firearms,
+Scenario progression, AI KP gameplay, persistence, database, Redis, matchmaking, or Phase 3 work.
+
+Phase 2B's two feature commits were validated and pushed to the dedicated repository `main`.
 
 当前 Bootstrap 已完成：稳定 Single Player 已导入 standalone repository，CI 路径已适配，Context Docs 已固化。
 
-本轮已完成 Multiplayer Phase 2A 的两次 feature commit，且均已通过测试并推送到 dedicated repository `main`。
+本轮已完成 Multiplayer Phase 2B 的两次 feature commit，且均已通过测试并推送到 dedicated repository `main`。
 
 ---
 
-# 8. Next — Phase 3 AI KP Multiplayer (Deferred)
+# 8. Next — Phase 2C Deterministic Rule Audit (Phase 3 Deferred)
 
-Phase 2A Shared Game State + Check/Dice vertical slice 已完成。后续如继续开发，应另行设计 Phase 3 AI KP Multiplayer；本轮不启动 Phase 3。
+Phase 2B Realtime GameState + Minimal Check gameplay vertical slice 已完成。后续如继续开发，应先审计并选择下一个 deterministic gameplay rule slice；本轮不启动 Phase 3。
 
-当前明确未实现且留待后续任务：gameplay Vue UI、realtime GameState sync、Scenario progression、SAN、HP、healing、combat、firearms、AI KP gameplay、持久化、DB、Redis、matchmaking 与 Azure SignalR。
+当前明确未实现且留待后续任务：Scenario progression、SAN、HP、healing、combat、firearms、AI KP gameplay、持久化、DB、Redis、matchmaking 与 Azure SignalR。
 
 ---
 

@@ -1,11 +1,14 @@
 <script setup lang="ts">
-import type { PlayerSnapshot, RoomSnapshot } from '../contracts/rooms';
+import { ref } from 'vue';
+import type { GameSnapshot, PlayerSnapshot, RoomSnapshot } from '../contracts/rooms';
 import type { RoomConnectionStatus } from '../realtime/roomConnection';
 import { RoomsApi } from '../api/rooms';
 import HostAiConfigPanel from './HostAiConfigPanel.vue';
+import { safeApiMessage } from '../api/client';
 
 defineProps<{
   room: RoomSnapshot;
+  gameSnapshot: GameSnapshot | null;
   currentPlayerId: string;
   busy: boolean;
   errorMessage: string;
@@ -18,10 +21,54 @@ const emit = defineEmits<{
   ready: [];
   leave: [];
   snapshot: [snapshot: RoomSnapshot];
+  gameSnapshot: [snapshot: GameSnapshot];
 }>();
+
+const gameBusy = ref(false);
+const gameError = ref('');
 
 function playerLabel(player: PlayerSnapshot): string {
   return player.isHost ? `${player.nickname} · HOST` : player.nickname;
+}
+
+function isOwnCharacter(character: GameSnapshot['characters'][number], currentPlayerId: string): boolean {
+  return character.ownerPlayerId === currentPlayerId;
+}
+
+async function initializeGame(props: { room: RoomSnapshot; api: RoomsApi; token: string }): Promise<void> {
+  gameBusy.value = true;
+  gameError.value = '';
+  try {
+    const snapshot = await props.api.initializeGame(props.room.roomId, props.token, {
+      characters: props.room.players.map((player) => ({
+        playerId: player.playerId,
+        name: `${player.nickname} Character`,
+        checkValues: { spotHidden: 60 },
+      })),
+    });
+    emit('gameSnapshot', snapshot);
+  } catch (error) {
+    gameError.value = safeApiMessage(error);
+  } finally {
+    gameBusy.value = false;
+  }
+}
+
+async function resolveCheck(
+  props: { room: RoomSnapshot; api: RoomsApi; token: string },
+  characterId: string,
+  checkKey: string,
+): Promise<void> {
+  gameBusy.value = true;
+  gameError.value = '';
+  try {
+    const result = await props.api.resolveCheck(props.room.roomId, props.token, { characterId, checkKey });
+    emit('gameSnapshot', result.snapshot);
+  } catch (error) {
+    gameError.value = safeApiMessage(error);
+  } finally {
+    gameBusy.value = false;
+  }
 }
 </script>
 
@@ -61,5 +108,29 @@ function playerLabel(player: PlayerSnapshot): string {
       :configuration="room.aiConfiguration"
       @snapshot="emit('snapshot', $event)"
     />
+
+    <section class="card game-card">
+      <div class="section-heading"><div><p class="card-kicker">CHECK GAMEPLAY</p><h2>Shared game state</h2></div><span v-if="gameSnapshot" class="revision-stamp">GAME REV {{ gameSnapshot.revision }}</span></div>
+      <template v-if="gameSnapshot">
+        <ul class="character-list">
+          <li v-for="character in gameSnapshot.characters" :key="character.characterId" :class="{ current: isOwnCharacter(character, currentPlayerId) }">
+            <div class="character-heading"><strong>{{ character.name }}</strong><span>{{ isOwnCharacter(character, currentPlayerId) ? 'YOUR CHARACTER' : 'OTHER CHARACTER' }}</span></div>
+            <div v-if="isOwnCharacter(character, currentPlayerId)" class="check-list">
+              <button v-for="(_target, checkKey) in character.checkValues" :key="checkKey" class="secondary-button check-button" :data-testid="`check-${checkKey}`" :disabled="gameBusy" type="button" @click="resolveCheck({ room, api, token }, character.characterId, checkKey)">
+                Roll {{ checkKey }} · {{ _target }} <span>→</span>
+              </button>
+            </div>
+            <p v-else class="muted-copy character-note">Other players' checks are resolved from their own views.</p>
+          </li>
+        </ul>
+        <p v-if="gameSnapshot.lastCheck" class="last-check" data-testid="last-check">Last check: {{ gameSnapshot.lastCheck.checkKey }} · {{ gameSnapshot.lastCheck.successLevel }} · {{ gameSnapshot.lastCheck.passed ? 'PASS' : 'FAIL' }} · roll {{ gameSnapshot.lastCheck.roll }}</p>
+      </template>
+      <template v-else>
+        <p class="muted-copy">The host can initialize the minimal shared roster when the table is ready.</p>
+        <button v-if="room.hostPlayerId === currentPlayerId" class="primary-button" :disabled="busy || gameBusy" type="button" @click="initializeGame({ room, api, token })">Initialize check game <span>→</span></button>
+        <p v-else class="muted-copy">Waiting for the host to initialize the check game.</p>
+      </template>
+      <p v-if="gameError" class="error-banner" role="alert">{{ gameError }}</p>
+    </section>
   </main>
 </template>
