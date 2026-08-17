@@ -8,7 +8,7 @@
 
 ## Current Phase
 
-Current verified phase (2026-08-17): Multiplayer Phase 1 Lobby MVP completed.
+Current verified phase (2026-08-17): Multiplayer Phase 2A Shared Game State + Check/Dice vertical slice completed.
 
 Completed:
 
@@ -41,8 +41,13 @@ Completed:
 - Authenticated member-only room snapshot recovery after page reload
 - SignalR snapshot replacement, reconnect reattach, connection status UX, and RoomClosed cleanup
 - Host-only AI configuration and safe connection-test UI; API key remains memory-only and clears after submit
+- Independent in-memory MultiplayerGameState store/coordinator separate from RoomSession
+- Independent Game revision, Player → Character ownership, host initialization, and player-safe projection
+- Room-close cleanup with disconnect preservation and active-game roster mutation guard
+- JS reference export plus committed 19-case deterministic Check/Dice conformance fixture
+- Pure C# CoC Check engine, server-side secure percentile dice, canonical target lookup, LastCheck mutation, and minimal authenticated Check API
 
-Phase 1 Lobby MVP is complete. Phase 2A is now in progress with the Shared GameState foundation. Reconnect expiry/grace timers remain a future decision.
+Phase 2A Shared Game State + Check/Dice vertical slice is complete. Reconnect expiry/grace timers remain a future decision.
 
 ```text
 Single Player v1.6.10        ✅ stable
@@ -50,6 +55,7 @@ Architecture Audit          ✅ complete
 Context Consolidation       ✅ this package
 Dedicated Repo Bootstrap    ✅ complete
 Multiplayer Phase 1         ✅ Lobby MVP complete
+Multiplayer Phase 2A        ✅ Shared Game State + Check/Dice slice complete
 ```
 
 ---
@@ -165,10 +171,9 @@ Phase 1 Memory Only。
 
 ## Current Task
 
-Phase 2A 当前已完成 MultiplayerGameState foundation、独立 Game revision、Player → Character ownership mapping 与 Player-safe projection boundary。
+Phase 2A 已完成 MultiplayerGameState foundation、独立 Game revision、Player → Character ownership mapping、Player-safe projection boundary、JS → C# conformance fixture mechanism 与 deterministic Check/Dice vertical slice。
 
-下一步是 JS → C# conformance fixtures、deterministic Check/Dice vertical slice 与 minimal multiplayer Check API。
-AI gameplay、Multiplayer AI Protocol、gameplay Vue UI、realtime GameState sync、Scenario/GameState migration、SAN、HP、healing、combat、持久化 credential、DB、Redis、matchmaking 与 Azure SignalR 均明确留待后续任务。
+本轮之后必须停止；后续如继续开发，应另行规划 Phase 3。AI gameplay、Multiplayer AI Protocol、gameplay Vue UI、realtime GameState sync、Scenario/GameState migration、SAN、HP、healing、combat、持久化 credential、DB、Redis、matchmaking 与 Azure SignalR 均明确留待后续任务。
 
 ---
 

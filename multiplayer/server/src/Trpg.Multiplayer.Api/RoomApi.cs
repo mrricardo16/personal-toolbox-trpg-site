@@ -86,7 +86,8 @@ public static class RoomApi
         IInviteCodeRegistry inviteCodes,
         IPlayerSessionStore sessions,
         IRoomRealtimeNotifier notifier,
-        RoomMutationDeliveryGate mutationGate)
+        RoomMutationDeliveryGate mutationGate,
+        IGameStateStore gameStates)
     {
         if (request is not { Nickname: { } nickname, InviteCode: { } suppliedInviteCode } || !IsValid(nickname) || string.IsNullOrWhiteSpace(suppliedInviteCode))
         {
@@ -101,6 +102,11 @@ public static class RoomApi
 
         return await mutationGate.RunAsync(roomId, async () =>
         {
+            if (gameStates.Exists(roomId))
+            {
+                return Results.Conflict();
+            }
+
             var playerId = Guid.NewGuid();
             var result = await coordinator.JoinAsync(new JoinRoomCommand(roomId, playerId, nickname));
             if (!result.IsSuccess)
@@ -129,7 +135,9 @@ public static class RoomApi
         IPlayerSessionStore sessions,
         IRoomRealtimeNotifier notifier,
         RoomMutationDeliveryGate mutationGate,
-        IGameCoordinator games)
+        IGameCoordinator games,
+        IGameStateStore gameStates,
+        IRoomStore rooms)
     {
         if (!TryGetSession(request, sessions, out var token, out var session))
         {
@@ -143,6 +151,14 @@ public static class RoomApi
 
         return await mutationGate.RunAsync(roomId, async () =>
         {
+            if (gameStates.Exists(roomId)
+                && rooms.TryGet(roomId, out var activeRoom)
+                && activeRoom is not null
+                && activeRoom.HostPlayerId != session.PlayerId)
+            {
+                return Results.Conflict();
+            }
+
             var result = await coordinator.LeaveAsync(new LeaveRoomCommand(roomId, session.PlayerId));
             if (!result.IsSuccess)
             {

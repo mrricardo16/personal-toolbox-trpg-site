@@ -9,11 +9,24 @@ public sealed class GameCoordinator : IGameCoordinator
     private readonly ConcurrentDictionary<Guid, SemaphoreSlim> gameLocks = new();
     private readonly IRoomStore roomStore;
     private readonly IGameStateStore stateStore;
+    private readonly IDiceRoller diceRoller;
+    private readonly ICheckResolutionEngine checkEngine;
 
     public GameCoordinator(IRoomStore roomStore, IGameStateStore stateStore)
+        : this(roomStore, stateStore, new SecureDiceRoller(), new CocCheckResolutionEngine())
+    {
+    }
+
+    public GameCoordinator(
+        IRoomStore roomStore,
+        IGameStateStore stateStore,
+        IDiceRoller diceRoller,
+        ICheckResolutionEngine checkEngine)
     {
         this.roomStore = roomStore;
         this.stateStore = stateStore;
+        this.diceRoller = diceRoller;
+        this.checkEngine = checkEngine;
     }
 
     public async Task<GameResult<MultiplayerGameState>> InitializeAsync(InitializeGameCommand command)
@@ -67,6 +80,11 @@ public sealed class GameCoordinator : IGameCoordinator
         });
     }
 
+    public async Task<GameResult<GameCheckResult>> ResolveCheckAsync(ResolveCheckCommand command)
+    {
+        return await WithRoomLockAsync(command.RoomId, () => ResolveCheckCore(command));
+    }
+
     public async Task<bool> RemoveAsync(Guid roomId)
     {
         return await WithRoomLockAsync(roomId, () => stateStore.TryRemove(roomId, out _));
@@ -115,7 +133,10 @@ public sealed class GameCoordinator : IGameCoordinator
                 || requested.Name.Length > 100
                 || requested.CheckValues is null
                 || requested.CheckValues.Count == 0
-                || requested.CheckValues.Any(pair => string.IsNullOrWhiteSpace(pair.Key) || pair.Value is < 1 or > 100))
+                || requested.CheckValues.Any(pair => string.IsNullOrWhiteSpace(pair.Key) || pair.Value is < 1 or > 100)
+                || requested.CheckValues.Keys
+                    .GroupBy(key => key, StringComparer.OrdinalIgnoreCase)
+                    .Any(group => group.Count() > 1))
             {
                 return GameResult<MultiplayerGameState>.Failure(GameErrorCode.InvalidRoster);
             }
@@ -137,6 +158,79 @@ public sealed class GameCoordinator : IGameCoordinator
         return stateStore.TryAdd(state)
             ? GameResult<MultiplayerGameState>.Success(state)
             : GameResult<MultiplayerGameState>.Failure(GameErrorCode.AlreadyInitialized);
+    }
+
+    private GameResult<GameCheckResult> ResolveCheckCore(ResolveCheckCommand command)
+    {
+        var access = TryGetMember(command.RoomId, command.PlayerId, out _);
+        if (access is not null)
+        {
+            return GameResult<GameCheckResult>.Failure(access.Value);
+        }
+
+        if (!stateStore.TryGet(command.RoomId, out var state) || state is null)
+        {
+            return GameResult<GameCheckResult>.Failure(GameErrorCode.GameNotFound);
+        }
+
+        var character = state.Characters.SingleOrDefault(candidate => candidate.CharacterId == command.CharacterId);
+        if (character is null)
+        {
+            return GameResult<GameCheckResult>.Failure(GameErrorCode.CharacterNotFound);
+        }
+
+        if (character.OwnerPlayerId != command.PlayerId)
+        {
+            return GameResult<GameCheckResult>.Failure(GameErrorCode.CharacterNotOwned);
+        }
+
+        if (string.IsNullOrWhiteSpace(command.CheckKey)
+            || !character.CheckValues.TryGetValue(command.CheckKey, out var target))
+        {
+            return GameResult<GameCheckResult>.Failure(GameErrorCode.InvalidCheckKey);
+        }
+
+        if (!CheckDifficulty.IsSupported(command.Difficulty)
+            || command.BonusDice is < 0 or > 2
+            || command.PenaltyDice is < 0 or > 2)
+        {
+            return GameResult<GameCheckResult>.Failure(GameErrorCode.InvalidCheckRequest);
+        }
+
+        var dice = diceRoller.RollPercentile(command.BonusDice, command.PenaltyDice);
+        var resolution = checkEngine.Resolve(new CheckResolutionInput(
+            target,
+            command.Difficulty,
+            command.BonusDice,
+            command.PenaltyDice,
+            dice.SelectedRoll));
+        var nextRevision = state.Revision + 1;
+        var record = new GameCheckRecord(
+            Guid.NewGuid(),
+            command.PlayerId,
+            command.CharacterId,
+            command.CheckKey,
+            resolution.Target,
+            resolution.Roll,
+            resolution.SuccessLevel,
+            resolution.Passed,
+            nextRevision,
+            DateTimeOffset.UtcNow);
+        var replacement = new MultiplayerGameState(
+            state.RoomId,
+            nextRevision,
+            state.Status,
+            state.CreatedAt,
+            state.Characters,
+            record);
+        if (!stateStore.TryReplace(state, replacement))
+        {
+            return GameResult<GameCheckResult>.Failure(GameErrorCode.StateConflict);
+        }
+
+        return GameResult<GameCheckResult>.Success(new GameCheckResult(
+            GameProjection.Build(replacement, command.PlayerId),
+            resolution));
     }
 
     private GameErrorCode? TryGetMember(Guid roomId, Guid playerId, out RoomSession? room)

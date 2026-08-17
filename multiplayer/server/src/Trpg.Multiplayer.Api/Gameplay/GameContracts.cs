@@ -10,6 +10,31 @@ public sealed record InitializeCharacterCommand(
     string Name,
     IReadOnlyDictionary<string, int> CheckValues);
 
+public sealed record ResolveCheckCommand(
+    Guid RoomId,
+    Guid PlayerId,
+    Guid CharacterId,
+    string CheckKey,
+    string Difficulty,
+    int BonusDice,
+    int PenaltyDice);
+
+public sealed record GameCheckRecord(
+    Guid CheckId,
+    Guid PlayerId,
+    Guid CharacterId,
+    string CheckKey,
+    int Target,
+    int Roll,
+    string SuccessLevel,
+    bool Passed,
+    long GameRevision,
+    DateTimeOffset CreatedAt);
+
+public sealed record GameCheckResult(
+    GameSnapshot Snapshot,
+    CheckResolutionResult Check);
+
 public sealed record GameError(GameErrorCode Code);
 
 public enum GameErrorCode
@@ -25,7 +50,9 @@ public enum GameErrorCode
     GameNotFound,
     CharacterNotFound,
     CharacterNotOwned,
-    InvalidCheckKey
+    InvalidCheckKey,
+    InvalidCheckRequest,
+    StateConflict
 }
 
 public sealed class GameResult<T>

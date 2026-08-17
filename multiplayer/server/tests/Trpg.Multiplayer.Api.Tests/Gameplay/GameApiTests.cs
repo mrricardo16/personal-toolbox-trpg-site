@@ -92,6 +92,110 @@ public sealed class GameApiTests(WebApplicationFactory<Program> factory)
         Assert.False(gameStates.Exists(created.RoomId));
     }
 
+    [Fact]
+    public async Task Check_UsesCanonicalCharacterTargetAndCommitsIndependentGameRevision()
+    {
+        var created = await ReadCreatedAsync(await factory.CreateClient().PostAsJsonAsync("/api/rooms", new { nickname = "Host", maxPlayers = 2 }));
+        var initialized = await InitializeAsync(created, new[]
+        {
+            new { playerId = created.PlayerId, name = "Host", checkValues = new Dictionary<string, int> { ["spotHidden"] = 60 } }
+        });
+        var game = await initialized.Content.ReadFromJsonAsync<GameSnapshot>();
+        var characterId = Assert.Single(game!.Characters).CharacterId;
+
+        var response = await SendAuthorizedAsync(
+            HttpMethod.Post,
+            $"/api/rooms/{created.RoomId}/game/check",
+            created.PlayerSessionToken,
+            new { characterId, checkKey = "spotHidden", difficulty = "regular", target = 99, roll = 1 });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var resolved = await response.Content.ReadFromJsonAsync<GameCheckResult>();
+        Assert.NotNull(resolved);
+        Assert.Equal(2, resolved.Snapshot.Revision);
+        Assert.Equal(60, resolved.Check.Target);
+        Assert.InRange(resolved.Check.Roll, 1, 100);
+
+        var stateStore = factory.Services.GetRequiredService<IGameStateStore>();
+        Assert.True(stateStore.TryGet(created.RoomId, out var state));
+        Assert.Equal(2, state!.Revision);
+        Assert.Equal(resolved.Check.Roll, state.LastCheck!.Roll);
+        Assert.Equal(60, state.Characters.Single().CheckValues["spotHidden"]);
+
+        var unknown = await SendAuthorizedAsync(
+            HttpMethod.Post,
+            $"/api/rooms/{created.RoomId}/game/check",
+            created.PlayerSessionToken,
+            new { characterId, checkKey = "unknownSkill" });
+        Assert.Equal(HttpStatusCode.BadRequest, unknown.StatusCode);
+        var afterFailure = await SendAuthorizedAsync(HttpMethod.Get, $"/api/rooms/{created.RoomId}/game", created.PlayerSessionToken, null);
+        Assert.Equal(2, (await afterFailure.Content.ReadFromJsonAsync<GameSnapshot>())!.Revision);
+    }
+
+    [Fact]
+    public async Task Check_RejectsCrossCharacterOwnershipAndGameRosterMutation()
+    {
+        var created = await ReadCreatedAsync(await factory.CreateClient().PostAsJsonAsync("/api/rooms", new { nickname = "Host", maxPlayers = 3 }));
+        var memberResponse = await factory.CreateClient().PostAsJsonAsync("/api/rooms/join", new { inviteCode = created.InviteCode, nickname = "Member" });
+        var member = Assert.IsType<JoinedResponse>(await memberResponse.Content.ReadFromJsonAsync<JoinedResponse>());
+        var initialized = await InitializeAsync(created, new[]
+        {
+            new { playerId = created.PlayerId, name = "Host", checkValues = new Dictionary<string, int> { ["spotHidden"] = 60 } },
+            new { playerId = member.PlayerId, name = "Member", checkValues = new Dictionary<string, int> { ["spotHidden"] = 40 } }
+        });
+        var game = await initialized.Content.ReadFromJsonAsync<GameSnapshot>();
+        var hostCharacterId = game!.Characters.Single(character => character.OwnerPlayerId == created.PlayerId).CharacterId;
+
+        var denied = await SendAuthorizedAsync(
+            HttpMethod.Post,
+            $"/api/rooms/{created.RoomId}/game/check",
+            member.PlayerSessionToken,
+            new { characterId = hostCharacterId, checkKey = "spotHidden" });
+        Assert.Equal(HttpStatusCode.Forbidden, denied.StatusCode);
+
+        var joinAfterStart = await factory.CreateClient().PostAsJsonAsync("/api/rooms/join", new { inviteCode = created.InviteCode, nickname = "Late" });
+        Assert.Equal(HttpStatusCode.Conflict, joinAfterStart.StatusCode);
+        var leaveAfterStart = await SendAuthorizedAsync(HttpMethod.Post, $"/api/rooms/{created.RoomId}/leave", member.PlayerSessionToken, null);
+        Assert.Equal(HttpStatusCode.Conflict, leaveAfterStart.StatusCode);
+    }
+
+    [Fact]
+    public async Task ConcurrentChecks_AreSerializedAndPreserveMonotonicGameRevisions()
+    {
+        var created = await ReadCreatedAsync(await factory.CreateClient().PostAsJsonAsync("/api/rooms", new { nickname = "Host", maxPlayers = 2 }));
+        var memberResponse = await factory.CreateClient().PostAsJsonAsync("/api/rooms/join", new { inviteCode = created.InviteCode, nickname = "Member" });
+        var member = Assert.IsType<JoinedResponse>(await memberResponse.Content.ReadFromJsonAsync<JoinedResponse>());
+        var initialized = await InitializeAsync(created, new[]
+        {
+            new { playerId = created.PlayerId, name = "Host", checkValues = new Dictionary<string, int> { ["spotHidden"] = 60 } },
+            new { playerId = member.PlayerId, name = "Member", checkValues = new Dictionary<string, int> { ["spotHidden"] = 40 } }
+        });
+        var game = await initialized.Content.ReadFromJsonAsync<GameSnapshot>();
+        var hostCharacterId = game!.Characters.Single(character => character.OwnerPlayerId == created.PlayerId).CharacterId;
+        var memberCharacterId = game.Characters.Single(character => character.OwnerPlayerId == member.PlayerId).CharacterId;
+
+        var checks = await Task.WhenAll(
+            SendAuthorizedAsync(HttpMethod.Post, $"/api/rooms/{created.RoomId}/game/check", created.PlayerSessionToken, new { characterId = hostCharacterId, checkKey = "spotHidden" }),
+            SendAuthorizedAsync(HttpMethod.Post, $"/api/rooms/{created.RoomId}/game/check", member.PlayerSessionToken, new { characterId = memberCharacterId, checkKey = "spotHidden" }));
+
+        Assert.All(checks, response => Assert.Equal(HttpStatusCode.OK, response.StatusCode));
+        var projection = await SendAuthorizedAsync(HttpMethod.Get, $"/api/rooms/{created.RoomId}/game", created.PlayerSessionToken, null);
+        Assert.Equal(3, (await projection.Content.ReadFromJsonAsync<GameSnapshot>())!.Revision);
+        var stateStore = factory.Services.GetRequiredService<IGameStateStore>();
+        Assert.True(stateStore.TryGet(created.RoomId, out var state));
+        Assert.Equal(3, state!.Revision);
+        Assert.NotNull(state.LastCheck);
+    }
+
+    private async Task<HttpResponseMessage> InitializeAsync(CreatedResponse created, object[] characters)
+    {
+        return await SendAuthorizedAsync(
+            HttpMethod.Post,
+            $"/api/rooms/{created.RoomId}/game/initialize",
+            created.PlayerSessionToken,
+            new { characters });
+    }
+
     private async Task<HttpResponseMessage> SendAuthorizedAsync(HttpMethod method, string path, string token, object? body)
     {
         using var request = new HttpRequestMessage(method, path);

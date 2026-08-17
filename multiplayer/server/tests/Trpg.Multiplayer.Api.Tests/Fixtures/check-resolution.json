@@ -1,0 +1,508 @@
+{
+  "version": 1,
+  "referenceSource": "src/check-engine.js",
+  "cases": [
+    {
+      "name": "critical",
+      "input": {
+        "target": 60,
+        "difficulty": "regular",
+        "bonusDice": 0,
+        "penaltyDice": 0,
+        "randomSequence": [
+          1,
+          0
+        ]
+      },
+      "expected": {
+        "rawRolls": [
+          1
+        ],
+        "roll": 1,
+        "target": 60,
+        "difficulty": "regular",
+        "difficultyTarget": 60,
+        "successLevel": "critical",
+        "passed": true,
+        "critical": true,
+        "fumble": false
+      }
+    },
+    {
+      "name": "very-low-roll",
+      "input": {
+        "target": 60,
+        "difficulty": "regular",
+        "bonusDice": 0,
+        "penaltyDice": 0,
+        "randomSequence": [
+          7,
+          0
+        ]
+      },
+      "expected": {
+        "rawRolls": [
+          7
+        ],
+        "roll": 7,
+        "target": 60,
+        "difficulty": "regular",
+        "difficultyTarget": 60,
+        "successLevel": "extreme",
+        "passed": true,
+        "critical": false,
+        "fumble": false
+      }
+    },
+    {
+      "name": "exact-target",
+      "input": {
+        "target": 60,
+        "difficulty": "regular",
+        "bonusDice": 0,
+        "penaltyDice": 0,
+        "randomSequence": [
+          0,
+          6
+        ]
+      },
+      "expected": {
+        "rawRolls": [
+          60
+        ],
+        "roll": 60,
+        "target": 60,
+        "difficulty": "regular",
+        "difficultyTarget": 60,
+        "successLevel": "regular",
+        "passed": true,
+        "critical": false,
+        "fumble": false
+      }
+    },
+    {
+      "name": "just-above-target",
+      "input": {
+        "target": 60,
+        "difficulty": "regular",
+        "bonusDice": 0,
+        "penaltyDice": 0,
+        "randomSequence": [
+          1,
+          6
+        ]
+      },
+      "expected": {
+        "rawRolls": [
+          61
+        ],
+        "roll": 61,
+        "target": 60,
+        "difficulty": "regular",
+        "difficultyTarget": 60,
+        "successLevel": "failure",
+        "passed": false,
+        "critical": false,
+        "fumble": false
+      }
+    },
+    {
+      "name": "hard-boundary",
+      "input": {
+        "target": 70,
+        "difficulty": "hard",
+        "bonusDice": 0,
+        "penaltyDice": 0,
+        "randomSequence": [
+          5,
+          3
+        ]
+      },
+      "expected": {
+        "rawRolls": [
+          35
+        ],
+        "roll": 35,
+        "target": 70,
+        "difficulty": "hard",
+        "difficultyTarget": 35,
+        "successLevel": "hard",
+        "passed": true,
+        "critical": false,
+        "fumble": false
+      }
+    },
+    {
+      "name": "hard-just-outside",
+      "input": {
+        "target": 70,
+        "difficulty": "hard",
+        "bonusDice": 0,
+        "penaltyDice": 0,
+        "randomSequence": [
+          6,
+          3
+        ]
+      },
+      "expected": {
+        "rawRolls": [
+          36
+        ],
+        "roll": 36,
+        "target": 70,
+        "difficulty": "hard",
+        "difficultyTarget": 35,
+        "successLevel": "regular",
+        "passed": false,
+        "critical": false,
+        "fumble": false
+      }
+    },
+    {
+      "name": "extreme-boundary",
+      "input": {
+        "target": 70,
+        "difficulty": "extreme",
+        "bonusDice": 0,
+        "penaltyDice": 0,
+        "randomSequence": [
+          4,
+          1
+        ]
+      },
+      "expected": {
+        "rawRolls": [
+          14
+        ],
+        "roll": 14,
+        "target": 70,
+        "difficulty": "extreme",
+        "difficultyTarget": 14,
+        "successLevel": "extreme",
+        "passed": true,
+        "critical": false,
+        "fumble": false
+      }
+    },
+    {
+      "name": "extreme-just-outside",
+      "input": {
+        "target": 70,
+        "difficulty": "extreme",
+        "bonusDice": 0,
+        "penaltyDice": 0,
+        "randomSequence": [
+          5,
+          1
+        ]
+      },
+      "expected": {
+        "rawRolls": [
+          15
+        ],
+        "roll": 15,
+        "target": 70,
+        "difficulty": "extreme",
+        "difficultyTarget": 14,
+        "successLevel": "hard",
+        "passed": false,
+        "critical": false,
+        "fumble": false
+      }
+    },
+    {
+      "name": "low-target-fumble",
+      "input": {
+        "target": 40,
+        "difficulty": "regular",
+        "bonusDice": 0,
+        "penaltyDice": 0,
+        "randomSequence": [
+          6,
+          9
+        ]
+      },
+      "expected": {
+        "rawRolls": [
+          96
+        ],
+        "roll": 96,
+        "target": 40,
+        "difficulty": "regular",
+        "difficultyTarget": 40,
+        "successLevel": "fumble",
+        "passed": false,
+        "critical": false,
+        "fumble": true
+      }
+    },
+    {
+      "name": "target-49-fumble-boundary",
+      "input": {
+        "target": 49,
+        "difficulty": "regular",
+        "bonusDice": 0,
+        "penaltyDice": 0,
+        "randomSequence": [
+          6,
+          9
+        ]
+      },
+      "expected": {
+        "rawRolls": [
+          96
+        ],
+        "roll": 96,
+        "target": 49,
+        "difficulty": "regular",
+        "difficultyTarget": 49,
+        "successLevel": "fumble",
+        "passed": false,
+        "critical": false,
+        "fumble": true
+      }
+    },
+    {
+      "name": "target-50-fumble-boundary",
+      "input": {
+        "target": 50,
+        "difficulty": "regular",
+        "bonusDice": 0,
+        "penaltyDice": 0,
+        "randomSequence": [
+          6,
+          9
+        ]
+      },
+      "expected": {
+        "rawRolls": [
+          96
+        ],
+        "roll": 96,
+        "target": 50,
+        "difficulty": "regular",
+        "difficultyTarget": 50,
+        "successLevel": "failure",
+        "passed": false,
+        "critical": false,
+        "fumble": false
+      }
+    },
+    {
+      "name": "high-target-fumble",
+      "input": {
+        "target": 70,
+        "difficulty": "regular",
+        "bonusDice": 0,
+        "penaltyDice": 0,
+        "randomSequence": [
+          0,
+          0
+        ]
+      },
+      "expected": {
+        "rawRolls": [
+          100
+        ],
+        "roll": 100,
+        "target": 70,
+        "difficulty": "regular",
+        "difficultyTarget": 70,
+        "successLevel": "fumble",
+        "passed": false,
+        "critical": false,
+        "fumble": true
+      }
+    },
+    {
+      "name": "target-one",
+      "input": {
+        "target": 1,
+        "difficulty": "regular",
+        "bonusDice": 0,
+        "penaltyDice": 0,
+        "randomSequence": [
+          2,
+          0
+        ]
+      },
+      "expected": {
+        "rawRolls": [
+          2
+        ],
+        "roll": 2,
+        "target": 1,
+        "difficulty": "regular",
+        "difficultyTarget": 1,
+        "successLevel": "failure",
+        "passed": false,
+        "critical": false,
+        "fumble": false
+      }
+    },
+    {
+      "name": "target-one-critical",
+      "input": {
+        "target": 1,
+        "difficulty": "regular",
+        "bonusDice": 0,
+        "penaltyDice": 0,
+        "randomSequence": [
+          1,
+          0
+        ]
+      },
+      "expected": {
+        "rawRolls": [
+          1
+        ],
+        "roll": 1,
+        "target": 1,
+        "difficulty": "regular",
+        "difficultyTarget": 1,
+        "successLevel": "critical",
+        "passed": true,
+        "critical": true,
+        "fumble": false
+      }
+    },
+    {
+      "name": "target-one-hundred",
+      "input": {
+        "target": 100,
+        "difficulty": "regular",
+        "bonusDice": 0,
+        "penaltyDice": 0,
+        "randomSequence": [
+          5,
+          9
+        ]
+      },
+      "expected": {
+        "rawRolls": [
+          95
+        ],
+        "roll": 95,
+        "target": 100,
+        "difficulty": "regular",
+        "difficultyTarget": 100,
+        "successLevel": "regular",
+        "passed": true,
+        "critical": false,
+        "fumble": false
+      }
+    },
+    {
+      "name": "bonus-dice-selects-lowest",
+      "input": {
+        "target": 60,
+        "difficulty": "regular",
+        "bonusDice": 1,
+        "penaltyDice": 0,
+        "randomSequence": [
+          5,
+          7,
+          4
+        ]
+      },
+      "expected": {
+        "rawRolls": [
+          75,
+          45
+        ],
+        "roll": 45,
+        "target": 60,
+        "difficulty": "regular",
+        "difficultyTarget": 60,
+        "successLevel": "regular",
+        "passed": true,
+        "critical": false,
+        "fumble": false
+      }
+    },
+    {
+      "name": "penalty-dice-selects-highest",
+      "input": {
+        "target": 60,
+        "difficulty": "regular",
+        "bonusDice": 0,
+        "penaltyDice": 1,
+        "randomSequence": [
+          5,
+          4,
+          7
+        ]
+      },
+      "expected": {
+        "rawRolls": [
+          45,
+          75
+        ],
+        "roll": 75,
+        "target": 60,
+        "difficulty": "regular",
+        "difficultyTarget": 60,
+        "successLevel": "failure",
+        "passed": false,
+        "critical": false,
+        "fumble": false
+      }
+    },
+    {
+      "name": "net-bonus-dice",
+      "input": {
+        "target": 60,
+        "difficulty": "regular",
+        "bonusDice": 2,
+        "penaltyDice": 1,
+        "randomSequence": [
+          5,
+          7,
+          4
+        ]
+      },
+      "expected": {
+        "rawRolls": [
+          75,
+          45
+        ],
+        "roll": 45,
+        "target": 60,
+        "difficulty": "regular",
+        "difficultyTarget": 60,
+        "successLevel": "regular",
+        "passed": true,
+        "critical": false,
+        "fumble": false
+      }
+    },
+    {
+      "name": "net-penalty-dice",
+      "input": {
+        "target": 60,
+        "difficulty": "regular",
+        "bonusDice": 1,
+        "penaltyDice": 2,
+        "randomSequence": [
+          5,
+          4,
+          7
+        ]
+      },
+      "expected": {
+        "rawRolls": [
+          45,
+          75
+        ],
+        "roll": 75,
+        "target": 60,
+        "difficulty": "regular",
+        "difficultyTarget": 60,
+        "successLevel": "failure",
+        "passed": false,
+        "critical": false,
+        "fumble": false
+      }
+    }
+  ]
+}

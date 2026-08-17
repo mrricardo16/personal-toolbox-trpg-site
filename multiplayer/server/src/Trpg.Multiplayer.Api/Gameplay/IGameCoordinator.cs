@@ -8,5 +8,7 @@ public interface IGameCoordinator
 
     Task<GameResult<CharacterState>> GetCharacterForOwnerAsync(Guid roomId, Guid characterId, Guid playerId);
 
+    Task<GameResult<GameCheckResult>> ResolveCheckAsync(ResolveCheckCommand command);
+
     Task<bool> RemoveAsync(Guid roomId);
 }

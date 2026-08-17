@@ -20,4 +20,8 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Trpg.Multiplayer.Api\Trpg.Multiplayer.Api.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <None Include="Fixtures\check-resolution.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

@@ -39,13 +39,15 @@ public sealed class MultiplayerGameState
         long revision,
         MultiplayerGameStatus status,
         DateTimeOffset createdAt,
-        IEnumerable<CharacterState> characters)
+        IEnumerable<CharacterState> characters,
+        GameCheckRecord? lastCheck = null)
     {
         RoomId = roomId;
         Revision = revision;
         Status = status;
         CreatedAt = createdAt;
         Characters = new ReadOnlyCollection<CharacterState>((characters ?? []).ToArray());
+        LastCheck = lastCheck;
     }
 
     public Guid RoomId { get; }
@@ -57,4 +59,6 @@ public sealed class MultiplayerGameState
     public DateTimeOffset CreatedAt { get; }
 
     public IReadOnlyList<CharacterState> Characters { get; }
+
+    public GameCheckRecord? LastCheck { get; }
 }

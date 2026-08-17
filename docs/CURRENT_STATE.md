@@ -139,7 +139,7 @@ Multiplayer Phase 1              ✅ Host Provided Credential Foundation complet
 
 # 7. Current Phase Status
 
-Current verified phase (2026-08-17): Multiplayer Phase 1 Lobby MVP completed.
+Current verified phase (2026-08-17): Multiplayer Phase 2A Shared Game State + Check/Dice vertical slice completed.
 
 Completed in this phase:
 
@@ -188,19 +188,35 @@ Completed in this phase:
 Phase 1 Lobby MVP deliberately does not include gameplay, shared GameState, Scenario, Character,
 AI gameplay protocol, database, Redis, matchmaking, or Azure SignalR.
 
+### Multiplayer Phase 2A
+
+- Independent in-memory `MultiplayerGameState` store and `GameCoordinator` separate from `RoomSession`
+- Independent Game revision starting at 1 and incrementing only on successful Check mutation
+- Server-generated CharacterId with Player → Character ownership validation
+- Host-only game initialization with member roster validation and deterministic conflict policy
+- Player-safe `GameSnapshot` projection boundary with viewer context and no session credentials or AI credential
+- Room-close GameState cleanup; disconnect preserves GameState; active-game join/member-leave mutation is rejected
+- JS reference export script and committed 19-case deterministic Check/Dice conformance fixture
+- Pure C# CoC Check resolution engine with server-side secure percentile dice generation
+- Minimal authenticated `/api/rooms/{roomId}/game/check` API using canonical Character check values
+- Minimal LastCheck record, independent game revision mutation, ownership/error/concurrency coverage
+
+Phase 2A deliberately does not include gameplay Vue UI, realtime GameState sync, Scenario progression,
+SAN, HP, healing, combat, firearms, AI KP gameplay, persistence, database, Redis, or Phase 3 work.
+
 当前没有 Vue、Multiplayer gameplay 或 AI Protocol migration 正在进行。
 
 当前 Bootstrap 已完成：稳定 Single Player 已导入 standalone repository，CI 路径已适配，Context Docs 已固化。
 
-本轮已完成 Multiplayer Phase 1 Lobby MVP 的两次 feature commit，且均已通过测试并推送到 dedicated repository `main`。
+本轮已完成 Multiplayer Phase 2A 的两次 feature commit，且均已通过测试并推送到 dedicated repository `main`。
 
 ---
 
-# 8. Current — Phase 2A Shared GameState Foundation
+# 8. Next — Phase 3 AI KP Multiplayer (Deferred)
 
-Phase 2A 已开始。本阶段当前完成 MultiplayerGameState foundation、independent Game revision、Player → Character ownership mapping 与 Player-safe projection boundary。
+Phase 2A Shared Game State + Check/Dice vertical slice 已完成。后续如继续开发，应另行设计 Phase 3 AI KP Multiplayer；本轮不启动 Phase 3。
 
-当前明确未实现且留待本阶段后续任务：JS → C# conformance fixtures、deterministic Check/Dice vertical slice、minimal multiplayer Check API、gameplay Vue UI、realtime GameState sync、Scenario、SAN、HP、healing、combat、AI gameplay、持久化、DB、Redis、matchmaking 与 Azure SignalR。
+当前明确未实现且留待后续任务：gameplay Vue UI、realtime GameState sync、Scenario progression、SAN、HP、healing、combat、firearms、AI KP gameplay、持久化、DB、Redis、matchmaking 与 Azure SignalR。
 
 ---
 

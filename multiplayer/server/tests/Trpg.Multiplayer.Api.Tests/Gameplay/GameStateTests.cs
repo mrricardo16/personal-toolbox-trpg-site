@@ -98,6 +98,16 @@ public sealed class GameStateTests
             memberId,
             [new InitializeCharacterCommand(memberId, "Member", Values())]));
         Assert.Equal(GameErrorCode.NotHost, notHost.Error?.Code);
+
+        var duplicateKeys = await coordinator.InitializeAsync(new InitializeGameCommand(
+            room.RoomId,
+            hostId,
+            [new InitializeCharacterCommand(hostId, "Duplicate Keys", new Dictionary<string, int>
+            {
+                ["spotHidden"] = 60,
+                ["SpotHidden"] = 40
+            })]));
+        Assert.Equal(GameErrorCode.InvalidRoster, duplicateKeys.Error?.Code);
     }
 
     [Fact]
