@@ -19,4 +19,11 @@ public sealed record ReadyChangedEvent(
     long Revision,
     RoomSnapshot Snapshot);
 
+public sealed record MemberConnectionChangedEvent(
+    Guid RoomId,
+    Guid PlayerId,
+    bool IsConnected,
+    long Revision,
+    RoomSnapshot Snapshot);
+
 public sealed record RoomClosedEvent(Guid RoomId);

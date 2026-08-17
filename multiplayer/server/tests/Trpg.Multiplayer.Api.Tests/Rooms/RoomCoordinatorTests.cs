@@ -24,7 +24,7 @@ public sealed class RoomCoordinatorTests
         Assert.Equal(hostId, host.PlayerId);
         Assert.True(host.IsHost);
         Assert.False(host.IsReady);
-        Assert.True(host.IsConnected);
+        Assert.False(host.IsConnected);
     }
 
     [Theory]
@@ -56,6 +56,7 @@ public sealed class RoomCoordinatorTests
         Assert.True(result.IsSuccess);
         Assert.Equal(2, result.Value!.Revision);
         Assert.Equal(2, result.Value.Players.Count);
+        Assert.False(result.Value.Players.Single(player => !player.IsHost).IsConnected);
     }
 
     [Fact]
@@ -119,6 +120,118 @@ public sealed class RoomCoordinatorTests
         closedStore.TryAdd(closedRoom);
         var closedCoordinator = new RoomCoordinator(closedStore);
         AssertError(await closedCoordinator.SetReadyAsync(new SetRoomReadyCommand(closedRoom.RoomId, closedRoom.HostPlayerId, true)), RoomErrorCode.RoomClosed);
+    }
+
+    [Fact]
+    public async Task SetConnectedAsync_ChangesStateAndRevisionInBothDirections()
+    {
+        var coordinator = NewCoordinator();
+        var room = await CreateRoomAsync(coordinator, 2);
+
+        var connected = await coordinator.SetConnectedAsync(
+            new SetConnectedRoomCommand(room.RoomId, room.HostPlayerId, true));
+        var disconnected = await coordinator.SetConnectedAsync(
+            new SetConnectedRoomCommand(room.RoomId, room.HostPlayerId, false));
+
+        Assert.True(connected.IsSuccess);
+        Assert.True(connected.Changed);
+        Assert.Equal(2, connected.Value!.Revision);
+        Assert.True(Assert.Single(connected.Value.Players).IsConnected);
+        Assert.True(disconnected.IsSuccess);
+        Assert.True(disconnected.Changed);
+        Assert.Equal(3, disconnected.Value!.Revision);
+        Assert.False(Assert.Single(disconnected.Value.Players).IsConnected);
+    }
+
+    [Fact]
+    public async Task SetConnectedAsync_SameValueIsIdempotent()
+    {
+        var coordinator = NewCoordinator();
+        var room = await CreateRoomAsync(coordinator, 2);
+
+        var alreadyDisconnected = await coordinator.SetConnectedAsync(
+            new SetConnectedRoomCommand(room.RoomId, room.HostPlayerId, false));
+        var connected = await coordinator.SetConnectedAsync(
+            new SetConnectedRoomCommand(room.RoomId, room.HostPlayerId, true));
+        var alreadyConnected = await coordinator.SetConnectedAsync(
+            new SetConnectedRoomCommand(room.RoomId, room.HostPlayerId, true));
+
+        Assert.True(alreadyDisconnected.IsSuccess);
+        Assert.False(alreadyDisconnected.Changed);
+        Assert.Equal(1, alreadyDisconnected.Value!.Revision);
+        Assert.True(connected.IsSuccess);
+        Assert.True(connected.Changed);
+        Assert.Equal(2, connected.Value!.Revision);
+        Assert.True(alreadyConnected.IsSuccess);
+        Assert.False(alreadyConnected.Changed);
+        Assert.Equal(2, alreadyConnected.Value!.Revision);
+    }
+
+    [Fact]
+    public async Task SetConnectedAsync_RejectsMissingClosedAndNonMemberRooms()
+    {
+        var coordinator = NewCoordinator();
+        var room = await CreateRoomAsync(coordinator, 2);
+        var closedStore = new InMemoryRoomStore();
+        var closedRoom = NewClosedRoom();
+        closedStore.TryAdd(closedRoom);
+        var closedCoordinator = new RoomCoordinator(closedStore);
+
+        AssertError(
+            await coordinator.SetConnectedAsync(new SetConnectedRoomCommand(Guid.NewGuid(), Guid.NewGuid(), true)),
+            RoomErrorCode.RoomNotFound);
+        AssertError(
+            await closedCoordinator.SetConnectedAsync(
+                new SetConnectedRoomCommand(closedRoom.RoomId, closedRoom.HostPlayerId, false)),
+            RoomErrorCode.RoomClosed);
+        AssertError(
+            await coordinator.SetConnectedAsync(new SetConnectedRoomCommand(room.RoomId, Guid.NewGuid(), true)),
+            RoomErrorCode.NotMember);
+    }
+
+    [Fact]
+    public async Task ConcurrentSetConnectedAndLeave_NeverResurrectsRemovedMember()
+    {
+        var coordinator = NewCoordinator();
+        var room = await CreateRoomAsync(coordinator, 2);
+        var playerId = Guid.NewGuid();
+        var joined = await coordinator.JoinAsync(new JoinRoomCommand(room.RoomId, playerId, "Player"));
+        Assert.True(joined.IsSuccess);
+        using var startBarrier = new Barrier(participantCount: 3);
+
+        var setConnectedTask = Task.Run(async () =>
+        {
+            startBarrier.SignalAndWait();
+            return await coordinator.SetConnectedAsync(new SetConnectedRoomCommand(room.RoomId, playerId, true));
+        });
+        var leaveTask = Task.Run(async () =>
+        {
+            startBarrier.SignalAndWait();
+            return await coordinator.LeaveAsync(new LeaveRoomCommand(room.RoomId, playerId));
+        });
+
+        startBarrier.SignalAndWait();
+        await Task.WhenAll(setConnectedTask, leaveTask);
+
+        var setConnected = await setConnectedTask;
+        var leave = await leaveTask;
+        Assert.True(leave.IsSuccess);
+        Assert.False(leave.Value!.RoomWasClosed);
+        Assert.DoesNotContain(leave.Value.Room!.Players, player => player.PlayerId == playerId);
+        if (setConnected.IsSuccess)
+        {
+            Assert.Equal(3, setConnected.Value!.Revision);
+            Assert.Equal(4, leave.Value.Room.Revision);
+        }
+        else
+        {
+            Assert.Equal(RoomErrorCode.NotMember, setConnected.Error!.Code);
+            Assert.Equal(3, leave.Value.Room.Revision);
+        }
+
+        var loaded = await coordinator.GetAsync(room.RoomId);
+        Assert.True(loaded.IsSuccess);
+        Assert.DoesNotContain(loaded.Value!.Players, player => player.PlayerId == playerId);
     }
 
     [Fact]

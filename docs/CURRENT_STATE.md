@@ -4,7 +4,7 @@
 
 这是动态状态文档。任何 Codex 开始工作前 MUST 重新从 current Repository 验证动态事实。
 
-Current verification date：**2026-08-14**
+Current verification date：**2026-08-17**
 
 ---
 
@@ -139,7 +139,7 @@ Multiplayer Phase 1              ✅ room lifecycle and HTTP bootstrap complete
 
 # 7. Current Phase Status
 
-Current verified phase (2026-08-14): Multiplayer Phase 1 Room Lifecycle Foundation completed.
+Current verified phase (2026-08-17): Multiplayer Phase 1 Room Lifecycle and SignalR Realtime Foundation completed.
 
 Completed in this phase:
 
@@ -153,6 +153,15 @@ Completed in this phase:
 - Server-generated `InviteCode` registry with collision retry and close invalidation
 - Minimal HTTP Create / Join / Leave / Ready bootstrap API
 - Public room/player snapshot DTOs without session credentials
+- SignalR `RoomHub` at `/hubs/room` with explicit `AttachSession(playerSessionToken)`
+- Identity-only in-memory Player Connection Registry with first/last connection accounting
+- Shared RoomSnapshot projection and token-free realtime event DTOs
+- HTTP Join/Ready/Leave committed-state realtime delivery with room isolation
+- `MemberConnectionChanged` delivery for first attach and last disconnect
+- `IsConnected` first-attach/last-disconnect lifecycle with same-session reattach
+- Disconnect preserves Room membership/readiness; multiple active connections are safe
+- Explicit Leave and host close invalidate session tokens and clean group/registry state
+- Shared per-room mutation delivery gate covering HTTP and Hub lifecycle ordering
 
 Next after this bounded foundation: SignalR realtime foundation and reconnect design.
 
@@ -160,13 +169,13 @@ Next after this bounded foundation: SignalR realtime foundation and reconnect de
 
 当前 Bootstrap 已完成：稳定 Single Player 已导入 standalone repository，CI 路径已适配，Context Docs 已固化。
 
-本轮已完成 Multiplayer Foundation Commit 1 与 Commit 2。
+本轮已完成 Multiplayer Foundation Commit 1 与 Commit 2，且两次 feature commit 均已通过测试并推送到 dedicated repository `main`。
 
 ---
 
-# 8. Next — SignalR Realtime Foundation
+# 8. Next — Host Credential Foundation
 
-下一阶段建议：SignalR realtime foundation，以及 reconnect/disconnect design。
+下一阶段建议：Host Credential foundation。Reconnect expiry/grace timers、Credential/API key、Host API、Vue client、gameplay、GameState、Scenario migration、DB、Redis 与 Azure SignalR 当前均未实现，不属于本阶段交付。
 
 ---
 
@@ -178,6 +187,8 @@ Next after this bounded foundation: SignalR realtime foundation and reconnect de
 - late module wrapping / monkey-patch dependency；
 - canonical vs secret projection；
 - concurrent Room mutations；
+- single-process in-memory connection registry；
+- per-room mutation gate retention and delivery failure semantics；
 - configurable outbound AI endpoint SSRF；
 - JS→Server semantic drift。
 

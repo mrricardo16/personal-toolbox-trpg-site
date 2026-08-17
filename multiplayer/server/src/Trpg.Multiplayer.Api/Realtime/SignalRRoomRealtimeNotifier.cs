@@ -48,6 +48,21 @@ public sealed class SignalRRoomRealtimeNotifier(
         await remainingClients.RoomSnapshot(snapshot);
     }
 
+    public async Task PublishMemberConnectionChangedAsync(
+        RoomSnapshot snapshot,
+        Guid playerId,
+        bool isConnected)
+    {
+        var roomClients = hubContext.Clients.Group(RoomGroupNames.For(snapshot.RoomId));
+        await roomClients.MemberConnectionChanged(new MemberConnectionChangedEvent(
+            snapshot.RoomId,
+            playerId,
+            isConnected,
+            snapshot.Revision,
+            snapshot));
+        await roomClients.RoomSnapshot(snapshot);
+    }
+
     public async Task PublishRoomClosedAsync(Guid roomId)
     {
         var groupName = RoomGroupNames.For(roomId);

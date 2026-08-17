@@ -4,6 +4,8 @@ public interface IPlayerConnectionRegistry
 {
     bool Register(string connectionId, Guid roomId, Guid playerId);
 
+    bool TryGetConnection(string connectionId, out ConnectionIdentity? identity);
+
     ConnectionUnregistration? Unregister(string connectionId);
 
     IReadOnlyCollection<string> GetConnections(Guid roomId, Guid playerId);

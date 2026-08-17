@@ -26,7 +26,7 @@ public sealed class RoomCoordinator(IRoomStore roomStore)
             RoomStatus.Lobby,
             InitialRevision,
             DateTimeOffset.UtcNow,
-            [new RoomPlayer(command.HostPlayerId, command.HostNickname, true, false, true)]);
+            [new RoomPlayer(command.HostPlayerId, command.HostNickname, true, false, false)]);
 
         return Task.FromResult(roomStore.TryAdd(room)
             ? RoomResult<RoomSession>.Success(room)
@@ -60,6 +60,11 @@ public sealed class RoomCoordinator(IRoomStore roomStore)
         return WithRoomLockAsync(command.RoomId, () => SetReadyCore(command));
     }
 
+    public Task<RoomResult<RoomSession>> SetConnectedAsync(SetConnectedRoomCommand command)
+    {
+        return WithRoomLockAsync(command.RoomId, () => SetConnectedCore(command));
+    }
+
     private RoomResult<RoomSession> JoinCore(JoinRoomCommand command)
     {
         if (!roomStore.TryGet(command.RoomId, out var room))
@@ -82,7 +87,7 @@ public sealed class RoomCoordinator(IRoomStore roomStore)
             return RoomResult<RoomSession>.Failure(RoomErrorCode.RoomFull);
         }
 
-        var updatedRoom = CopyRoom(room, room.Players.Append(new RoomPlayer(command.PlayerId, command.Nickname, false, false, true)));
+        var updatedRoom = CopyRoom(room, room.Players.Append(new RoomPlayer(command.PlayerId, command.Nickname, false, false, false)));
         return roomStore.TryReplace(room, updatedRoom)
             ? RoomResult<RoomSession>.Success(updatedRoom)
             : RoomResult<RoomSession>.Failure(RoomErrorCode.RoomNotFound);
@@ -143,6 +148,38 @@ public sealed class RoomCoordinator(IRoomStore roomStore)
 
         var updatedPlayers = room.Players.Select(candidate => candidate.PlayerId == command.PlayerId
             ? candidate with { IsReady = command.IsReady }
+            : candidate);
+        var updatedRoom = CopyRoom(room, updatedPlayers);
+        return roomStore.TryReplace(room, updatedRoom)
+            ? RoomResult<RoomSession>.Success(updatedRoom)
+            : RoomResult<RoomSession>.Failure(RoomErrorCode.RoomNotFound);
+    }
+
+    private RoomResult<RoomSession> SetConnectedCore(SetConnectedRoomCommand command)
+    {
+        if (!roomStore.TryGet(command.RoomId, out var room))
+        {
+            return RoomResult<RoomSession>.Failure(RoomErrorCode.RoomNotFound);
+        }
+
+        if (room!.Status == RoomStatus.Closed)
+        {
+            return RoomResult<RoomSession>.Failure(RoomErrorCode.RoomClosed);
+        }
+
+        var player = room.Players.SingleOrDefault(candidate => candidate.PlayerId == command.PlayerId);
+        if (player is null)
+        {
+            return RoomResult<RoomSession>.Failure(RoomErrorCode.NotMember);
+        }
+
+        if (player.IsConnected == command.IsConnected)
+        {
+            return RoomResult<RoomSession>.Success(room, changed: false);
+        }
+
+        var updatedPlayers = room.Players.Select(candidate => candidate.PlayerId == command.PlayerId
+            ? candidate with { IsConnected = command.IsConnected }
             : candidate);
         var updatedRoom = CopyRoom(room, updatedPlayers);
         return roomStore.TryReplace(room, updatedRoom)

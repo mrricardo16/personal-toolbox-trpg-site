@@ -24,6 +24,7 @@ public sealed class RoomApiTests(WebApplicationFactory<Program> factory)
         Assert.False(string.IsNullOrWhiteSpace(created.PlayerSessionToken));
         Assert.Equal(created.RoomId, created.Room.RoomId);
         Assert.Equal(created.InviteCode, created.Room.InviteCode);
+        Assert.False(Assert.Single(created.Room.Players).IsConnected);
         var snapshotJson = JsonSerializer.Serialize(created.Room);
         Assert.DoesNotContain("PlayerSessionToken", snapshotJson, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain(created.PlayerSessionToken, snapshotJson);
@@ -41,6 +42,7 @@ public sealed class RoomApiTests(WebApplicationFactory<Program> factory)
         Assert.NotEqual(created.PlayerId, joined.PlayerId);
         Assert.NotEqual(created.PlayerSessionToken, joined.PlayerSessionToken);
         Assert.Equal(2, joined.Room.Players.Count);
+        Assert.All(joined.Room.Players, player => Assert.False(player.IsConnected));
     }
 
     [Fact]

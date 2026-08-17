@@ -8,7 +8,7 @@
 
 ## Current Phase
 
-Current verified phase (2026-08-14): Multiplayer Phase 1 Room Lifecycle Foundation completed.
+Current verified phase (2026-08-17): Multiplayer Phase 1 Room Lifecycle and SignalR Realtime Foundation completed.
 
 Completed:
 
@@ -21,8 +21,16 @@ Completed:
 - Server-generated `InviteCode` registry with collision retry and close invalidation
 - Minimal HTTP Create / Join / Leave / Ready bootstrap API
 - Public room/player snapshot DTOs without session credentials
+- SignalR `RoomHub` mapped at `/hubs/room` with explicit `AttachSession(playerSessionToken)`
+- Identity-only in-memory Player Connection Registry with first/last active connection accounting
+- Token-free RoomSnapshot/event projection and room-group delivery
+- HTTP Join/Ready/Leave realtime delivery after canonical Coordinator commits
+- First attach/last disconnect `IsConnected` lifecycle and `MemberConnectionChanged`
+- Membership/readiness preservation across disconnect and same-session reattach
+- Explicit Leave/host close token invalidation and group/registry cleanup
+- Shared per-room mutation gate for HTTP and Hub lifecycle ordering
 
-Next: SignalR realtime foundation and reconnect design.
+Next: Host Credential foundation. Reconnect expiry/grace timers remain a future decision.
 
 ```text
 Single Player v1.6.10        ✅ stable
@@ -58,7 +66,7 @@ Dedicated target：
 mrricardo16/personal-toolbox-trpg-site
 ```
 
-Dedicated Repository Bootstrap is complete. This repository is the primary development repository. `mrricardo16/personal-toolbox` remains a read-only legacy/stable source.
+Dedicated Repository Bootstrap is complete. This repository is the primary development repository. `mrricardo16/personal-toolbox` remains a read-only legacy/stable source. The two SignalR Phase 1 feature commits are now the current dedicated `main` history after remote verification.
 
 ## Real API Secret Configuration
 
@@ -145,7 +153,7 @@ Phase 1 Memory Only。
 
 ## Next Task
 
-Phase 1 Room Lifecycle Foundation 已完成。下一阶段建议：SignalR realtime foundation，以及 reconnect/disconnect design。
+Phase 1 Room Lifecycle and SignalR Realtime Foundation 已完成。下一阶段建议：Host Credential foundation。Reconnect expiry/grace、Credential/API key、Host API、Vue、gameplay、GameState、Scenario migration、DB、Redis 与 Azure SignalR 均明确留待后续任务。
 
 ---
 

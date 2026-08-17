@@ -10,5 +10,7 @@ public interface IRoomClient
 
     Task ReadyChanged(ReadyChangedEvent message);
 
+    Task MemberConnectionChanged(MemberConnectionChangedEvent message);
+
     Task RoomClosed(RoomClosedEvent message);
 }

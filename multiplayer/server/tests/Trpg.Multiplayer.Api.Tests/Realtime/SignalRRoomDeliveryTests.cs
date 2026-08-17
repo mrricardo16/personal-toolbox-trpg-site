@@ -12,6 +12,7 @@ using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging.Abstractions;
 using Trpg.Multiplayer.Api.Realtime;
 using Trpg.Multiplayer.Api.Rooms;
 using Xunit;
@@ -26,16 +27,33 @@ public sealed class SignalRRoomDeliveryTests(WebApplicationFactory<Program> fact
     private readonly List<HubConnection> connections = [];
 
     [Fact]
-    public async Task AttachSession_WithValidToken_ReturnsRoomSnapshotWithoutToken()
+    public async Task AttachSession_WithValidToken_SetsConnectedAndReturnsRoomSnapshotWithoutToken()
     {
         var created = await CreateRoomAsync("Host");
         var connection = CreateHubConnection();
+        var connectionChanged = NewCompletion<MemberConnectionChangedEvent>();
+        var publishedSnapshot = NewCompletion<RoomSnapshot>();
+        connection.On<MemberConnectionChangedEvent>(
+            "MemberConnectionChanged",
+            message => connectionChanged.TrySetResult(message));
+        connection.On<RoomSnapshot>(
+            "RoomSnapshot",
+            snapshot => publishedSnapshot.TrySetResult(snapshot));
 
         await connection.StartAsync();
         var snapshot = await connection.InvokeAsync<RoomSnapshot>("AttachSession", created.PlayerSessionToken);
+        var changedEvent = await connectionChanged.Task.WaitAsync(EventTimeout);
+        var deliveredSnapshot = await publishedSnapshot.Task.WaitAsync(EventTimeout);
 
         Assert.Equal(created.RoomId, snapshot.RoomId);
-        Assert.Contains(snapshot.Players, player => player.PlayerId == created.PlayerId);
+        Assert.Equal(2, snapshot.Revision);
+        Assert.True(snapshot.Players.Single(player => player.PlayerId == created.PlayerId).IsConnected);
+        Assert.Equal(created.RoomId, changedEvent.RoomId);
+        Assert.Equal(created.PlayerId, changedEvent.PlayerId);
+        Assert.True(changedEvent.IsConnected);
+        Assert.Equal(snapshot.Revision, changedEvent.Revision);
+        AssertSnapshotsEqual(snapshot, changedEvent.Snapshot);
+        AssertSnapshotsEqual(snapshot, deliveredSnapshot);
         var serializedSnapshot = JsonSerializer.Serialize(snapshot);
         Assert.DoesNotContain("PlayerSessionToken", serializedSnapshot, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain(created.PlayerSessionToken, serializedSnapshot, StringComparison.Ordinal);
@@ -77,6 +95,61 @@ public sealed class SignalRRoomDeliveryTests(WebApplicationFactory<Program> fact
         var exception = await Assert.ThrowsAsync<HubException>(() => hub.AttachSession(secondToken));
 
         Assert.Equal("Session attach rejected.", exception.Message);
+        Assert.Equal(
+            ["test-connection"],
+            registry.GetConnections(firstRoomId, firstPlayerId));
+    }
+
+    [Fact]
+    public async Task AttachSession_WithStaleOtherRoomSession_DoesNotCleanupExistingAttachment()
+    {
+        var rooms = new InMemoryRoomStore();
+        var sessions = new InMemoryPlayerSessionStore();
+        var inviteCodes = new StubInviteCodeRegistry(Guid.Empty, string.Empty);
+        var registry = new InMemoryPlayerConnectionRegistry();
+        var attachedRoomId = Guid.NewGuid();
+        var staleRoomId = Guid.NewGuid();
+        var attachedPlayerId = Guid.NewGuid();
+        var stalePlayerId = Guid.NewGuid();
+        rooms.TryAdd(CreateRoom(attachedRoomId, attachedPlayerId, "Attached Host"));
+        var attachedToken = sessions.Create(attachedPlayerId, attachedRoomId, true);
+        var staleToken = sessions.Create(stalePlayerId, staleRoomId, true);
+        var hub = CreateRoomHub(sessions, rooms, inviteCodes, registry);
+        await hub.AttachSession(attachedToken);
+
+        var exception = await Assert.ThrowsAsync<HubException>(() => hub.AttachSession(staleToken));
+
+        Assert.Equal("Session attach rejected.", exception.Message);
+        Assert.Equal(
+            ["test-connection"],
+            registry.GetConnections(attachedRoomId, attachedPlayerId));
+    }
+
+    [Fact]
+    public async Task OnDisconnected_WhenGroupRemovalFails_StillClearsCanonicalConnectionState()
+    {
+        var rooms = new InMemoryRoomStore();
+        var sessions = new InMemoryPlayerSessionStore();
+        var inviteCodes = new StubInviteCodeRegistry(Guid.Empty, string.Empty);
+        var registry = new InMemoryPlayerConnectionRegistry();
+        var roomId = Guid.NewGuid();
+        var playerId = Guid.NewGuid();
+        rooms.TryAdd(CreateRoom(roomId, playerId, "Host"));
+        var token = sessions.Create(playerId, roomId, true);
+        var hub = CreateRoomHub(
+            sessions,
+            rooms,
+            inviteCodes,
+            registry,
+            new ThrowingRemoveGroupManager());
+        var attached = await hub.AttachSession(token);
+        Assert.True(Assert.Single(attached.Players).IsConnected);
+
+        await hub.OnDisconnectedAsync(exception: null);
+
+        Assert.Empty(registry.GetRoomConnections(roomId));
+        Assert.True(rooms.TryGet(roomId, out var canonical));
+        Assert.False(Assert.Single(canonical!.Players).IsConnected);
     }
 
     [Fact]
@@ -147,6 +220,12 @@ public sealed class SignalRRoomDeliveryTests(WebApplicationFactory<Program> fact
             new MemberJoinedEvent(roomId, player, snapshot.Revision, snapshot),
             new MemberLeftEvent(roomId, player.PlayerId, snapshot.Revision, snapshot),
             new ReadyChangedEvent(roomId, player.PlayerId, player.IsReady, snapshot.Revision, snapshot),
+            new MemberConnectionChangedEvent(
+                roomId,
+                player.PlayerId,
+                player.IsConnected,
+                snapshot.Revision,
+                snapshot),
             new RoomClosedEvent(roomId)
         ];
 
@@ -198,8 +277,8 @@ public sealed class SignalRRoomDeliveryTests(WebApplicationFactory<Program> fact
 
         Assert.Equal(firstRoom.RoomId, joinedEvent.RoomId);
         Assert.Equal(joinedFirstRoom.PlayerId, joinedEvent.Player.PlayerId);
-        Assert.Equal(2, joinedEvent.Revision);
-        Assert.Equal(2, joinedEvent.Snapshot.Revision);
+        Assert.Equal(3, joinedEvent.Revision);
+        Assert.Equal(3, joinedEvent.Snapshot.Revision);
         Assert.Contains(joinedEvent.Snapshot.Players, player => player.PlayerId == joinedFirstRoom.PlayerId);
         AssertSnapshotsEqual(joinedEvent.Snapshot, snapshot);
 
@@ -250,6 +329,182 @@ public sealed class SignalRRoomDeliveryTests(WebApplicationFactory<Program> fact
     }
 
     [Fact]
+    public async Task NonFirstAttach_WaitsForHttpMutationAndReturnsLatestCanonicalSnapshot()
+    {
+        var room = await CreateRoomAsync("Host");
+        var firstConnection = CreateHubConnection();
+        await firstConnection.StartAsync();
+        var firstSnapshot = await firstConnection.InvokeAsync<RoomSnapshot>(
+            "AttachSession",
+            room.PlayerSessionToken);
+        Assert.Equal(2, firstSnapshot.Revision);
+
+        var mutationGate = factory.Services.GetRequiredService<RoomMutationDeliveryGate>();
+        var coordinator = factory.Services.GetRequiredService<RoomCoordinator>();
+        var mutationEntered = NewCompletion();
+        var releaseMutation = NewCompletion();
+        var mutationTask = mutationGate.RunAsync(room.RoomId, async () =>
+        {
+            mutationEntered.TrySetResult();
+            await releaseMutation.Task;
+            return await coordinator.SetReadyAsync(
+                new SetRoomReadyCommand(room.RoomId, room.PlayerId, true));
+        });
+        await mutationEntered.Task.WaitAsync(EventTimeout);
+
+        var secondConnection = CreateHubConnection();
+        await secondConnection.StartAsync();
+        var attachTask = secondConnection.InvokeAsync<RoomSnapshot>(
+            "AttachSession",
+            room.PlayerSessionToken);
+
+        bool attachCompletedBeforeMutationRelease;
+        try
+        {
+            attachCompletedBeforeMutationRelease = await CompletesWithinAsync(
+                attachTask,
+                IsolationTimeout);
+        }
+        finally
+        {
+            releaseMutation.TrySetResult();
+        }
+
+        var mutation = await mutationTask.WaitAsync(EventTimeout);
+        var attached = await attachTask.WaitAsync(EventTimeout);
+
+        Assert.False(attachCompletedBeforeMutationRelease);
+        Assert.True(mutation.IsSuccess);
+        Assert.Equal(mutation.Value!.Revision, attached.Revision);
+        var host = Assert.Single(attached.Players);
+        Assert.True(host.IsConnected);
+        Assert.True(host.IsReady);
+    }
+
+    [Fact]
+    public async Task LastDisconnect_HoldsLifecycleGateThroughNotifierBeforeFirstReattach()
+    {
+        var notifier = new BlockingConnectionNotifier();
+        using var isolatedFactory = factory.WithWebHostBuilder(builder =>
+        {
+            builder.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<IRoomRealtimeNotifier>();
+                services.AddSingleton(notifier);
+                services.AddSingleton<IRoomRealtimeNotifier>(notifier);
+            });
+        });
+        using var client = isolatedFactory.CreateClient();
+        var room = await CreateRoomAsync("Host", client);
+        var firstConnection = CreateHubConnection(isolatedFactory);
+        await firstConnection.StartAsync();
+        await firstConnection.InvokeAsync<RoomSnapshot>("AttachSession", room.PlayerSessionToken);
+
+        var disconnectTask = firstConnection.StopAsync();
+        await notifier.DisconnectedEntered.Task.WaitAsync(EventTimeout);
+
+        var secondConnection = CreateHubConnection(isolatedFactory);
+        await secondConnection.StartAsync();
+        var attachTask = secondConnection.InvokeAsync<RoomSnapshot>(
+            "AttachSession",
+            room.PlayerSessionToken);
+
+        bool attachCompletedBeforeDisconnectDelivery;
+        try
+        {
+            attachCompletedBeforeDisconnectDelivery = await CompletesWithinAsync(
+                attachTask,
+                IsolationTimeout);
+        }
+        finally
+        {
+            notifier.ReleaseDisconnect();
+        }
+
+        await disconnectTask.WaitAsync(EventTimeout);
+        var attached = await attachTask.WaitAsync(EventTimeout);
+
+        Assert.False(attachCompletedBeforeDisconnectDelivery);
+        Assert.Equal([2L, 3L, 4L], notifier.PublishedRevisions);
+        Assert.True(attached.Players.Single(player => player.PlayerId == room.PlayerId).IsConnected);
+        var registry = isolatedFactory.Services.GetRequiredService<IPlayerConnectionRegistry>();
+        Assert.Equal(
+            [secondConnection.ConnectionId!],
+            registry.GetConnections(room.RoomId, room.PlayerId));
+    }
+
+    [Fact]
+    public async Task AttachRacingHostClose_WaitsForCleanupAndLeavesNoRegistryOrGroupMembership()
+    {
+        using var isolatedFactory = factory.WithWebHostBuilder(builder =>
+        {
+            builder.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<IRoomRealtimeNotifier>();
+                services.AddSingleton<SignalRRoomRealtimeNotifier>();
+                services.AddSingleton<BlockingRoomClosedNotifier>();
+                services.AddSingleton<IRoomRealtimeNotifier>(serviceProvider =>
+                    serviceProvider.GetRequiredService<BlockingRoomClosedNotifier>());
+            });
+        });
+        using var client = isolatedFactory.CreateClient();
+        var room = await CreateRoomAsync("Host", client);
+        var player = await JoinRoomAsync(room.InviteCode, "Player", client);
+        var hostConnection = CreateHubConnection(isolatedFactory);
+        var staleGroupEvent = NewCompletion<ReadyChangedEvent>();
+        hostConnection.On<ReadyChangedEvent>(
+            "ReadyChanged",
+            message => staleGroupEvent.TrySetResult(message));
+        await hostConnection.StartAsync();
+        await hostConnection.InvokeAsync<RoomSnapshot>("AttachSession", room.PlayerSessionToken);
+        var notifier = isolatedFactory.Services.GetRequiredService<BlockingRoomClosedNotifier>();
+
+        var leaveTask = PostAuthorizedAsync(
+            $"/api/rooms/{room.RoomId}/leave",
+            room.PlayerSessionToken,
+            body: null,
+            client);
+        await notifier.RoomClosedEntered.Task.WaitAsync(EventTimeout);
+
+        var racingConnection = CreateHubConnection(isolatedFactory);
+        await racingConnection.StartAsync();
+        var attachTask = racingConnection.InvokeAsync<RoomSnapshot>(
+            "AttachSession",
+            player.PlayerSessionToken);
+
+        bool attachCompletedBeforeCloseCleanup;
+        try
+        {
+            attachCompletedBeforeCloseCleanup = await SettlesWithinAsync(
+                attachTask,
+                IsolationTimeout);
+        }
+        finally
+        {
+            notifier.ReleaseRoomClosed();
+        }
+
+        using var leaveResponse = await leaveTask.WaitAsync(EventTimeout);
+        Assert.Equal(HttpStatusCode.OK, leaveResponse.StatusCode);
+        await Assert.ThrowsAsync<HubException>(() => attachTask);
+
+        Assert.False(attachCompletedBeforeCloseCleanup);
+        var registry = isolatedFactory.Services.GetRequiredService<IPlayerConnectionRegistry>();
+        Assert.Empty(registry.GetRoomConnections(room.RoomId));
+
+        var closedSnapshot = new RoomSnapshot(
+            room.RoomId,
+            room.InviteCode,
+            room.PlayerId,
+            4,
+            "Closed",
+            4,
+            []);
+        await notifier.PublishReadyChangedAsync(closedSnapshot, room.PlayerId, true);
+        await AssertNoEventWithinAsync(staleGroupEvent.Task);
+    }
+
+    [Fact]
     public async Task Ready_BroadcastsOnlyChangedResultsWithAuthoritativeSnapshots()
     {
         var room = await CreateRoomAsync("Host");
@@ -296,10 +551,10 @@ public sealed class SignalRRoomDeliveryTests(WebApplicationFactory<Program> fact
 
         Assert.Equal(player.PlayerId, changedEvent.PlayerId);
         Assert.True(changedEvent.IsReady);
-        Assert.Equal(3, changedEvent.Revision);
+        Assert.Equal(4, changedEvent.Revision);
         AssertSnapshotsEqual(changedEvent.Snapshot, changedSnapshot);
         Assert.False(resetEvent.IsReady);
-        Assert.Equal(4, resetEvent.Revision);
+        Assert.Equal(5, resetEvent.Revision);
         AssertSnapshotsEqual(resetEvent.Snapshot, resetSnapshot);
         Assert.Equal(2, Volatile.Read(ref eventCount));
     }
@@ -317,7 +572,13 @@ public sealed class SignalRRoomDeliveryTests(WebApplicationFactory<Program> fact
         var leavingConnectionEvent = NewCompletion<ReadyChangedEvent>();
 
         hostConnection.On<MemberLeftEvent>("MemberLeft", message => memberLeft.TrySetResult(message));
-        hostConnection.On<RoomSnapshot>("RoomSnapshot", snapshot => leaveSnapshot.TrySetResult(snapshot));
+        hostConnection.On<RoomSnapshot>("RoomSnapshot", snapshot =>
+        {
+            if (snapshot.Players.All(candidate => candidate.PlayerId != player.PlayerId))
+            {
+                leaveSnapshot.TrySetResult(snapshot);
+            }
+        });
         hostConnection.On<ReadyChangedEvent>("ReadyChanged", message => hostReadyBarrier.TrySetResult(message));
         playerConnection.On<ReadyChangedEvent>("ReadyChanged", message => leavingConnectionEvent.TrySetResult(message));
 
@@ -330,7 +591,7 @@ public sealed class SignalRRoomDeliveryTests(WebApplicationFactory<Program> fact
         var snapshot = await leaveSnapshot.Task.WaitAsync(EventTimeout);
 
         Assert.Equal(player.PlayerId, leftEvent.PlayerId);
-        Assert.Equal(3, leftEvent.Revision);
+        Assert.Equal(5, leftEvent.Revision);
         Assert.DoesNotContain(leftEvent.Snapshot.Players, candidate => candidate.PlayerId == player.PlayerId);
         AssertSnapshotsEqual(leftEvent.Snapshot, snapshot);
 
@@ -438,9 +699,9 @@ public sealed class SignalRRoomDeliveryTests(WebApplicationFactory<Program> fact
         }
     }
 
-    private HubConnection CreateHubConnection()
+    private HubConnection CreateHubConnection(WebApplicationFactory<Program>? appFactory = null)
     {
-        var server = factory.Server;
+        var server = (appFactory ?? factory).Server;
         var connection = new HubConnectionBuilder()
             .WithUrl(new Uri(server.BaseAddress, "/hubs/room"), options =>
             {
@@ -504,6 +765,9 @@ public sealed class SignalRRoomDeliveryTests(WebApplicationFactory<Program> fact
     private static TaskCompletionSource<T> NewCompletion<T>() =>
         new(TaskCreationOptions.RunContinuationsAsynchronously);
 
+    private static TaskCompletionSource NewCompletion() =>
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+
     private static async Task AssertNoEventWithinAsync<T>(Task<T> eventTask)
     {
         await Assert.ThrowsAsync<TimeoutException>(() => eventTask.WaitAsync(IsolationTimeout));
@@ -522,6 +786,23 @@ public sealed class SignalRRoomDeliveryTests(WebApplicationFactory<Program> fact
         }
     }
 
+    private static async Task<bool> SettlesWithinAsync(Task task, TimeSpan timeout)
+    {
+        try
+        {
+            await task.WaitAsync(timeout);
+            return true;
+        }
+        catch (TimeoutException)
+        {
+            return false;
+        }
+        catch (Exception)
+        {
+            return true;
+        }
+    }
+
     private static void AssertSnapshotsEqual(RoomSnapshot expected, RoomSnapshot actual)
     {
         Assert.Equal(JsonSerializer.Serialize(expected), JsonSerializer.Serialize(actual));
@@ -534,7 +815,15 @@ public sealed class SignalRRoomDeliveryTests(WebApplicationFactory<Program> fact
         IPlayerConnectionRegistry registry,
         IGroupManager? groups = null)
     {
-        return new RoomHub(sessions, rooms, inviteCodes, registry)
+        return new RoomHub(
+            sessions,
+            rooms,
+            inviteCodes,
+            registry,
+            new RoomCoordinator(rooms),
+            new NoOpRoomRealtimeNotifier(),
+            new RoomMutationDeliveryGate(),
+            NullLogger<RoomHub>.Instance)
         {
             Context = new TestHubCallerContext("test-connection"),
             Groups = groups ?? new NoOpGroupManager()
@@ -588,6 +877,15 @@ public sealed class SignalRRoomDeliveryTests(WebApplicationFactory<Program> fact
 
         public Task RemoveFromGroupAsync(string connectionId, string groupName, CancellationToken cancellationToken = default) =>
             Task.CompletedTask;
+    }
+
+    private sealed class ThrowingRemoveGroupManager : IGroupManager
+    {
+        public Task AddToGroupAsync(string connectionId, string groupName, CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
+
+        public Task RemoveFromGroupAsync(string connectionId, string groupName, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("Group remove failed.");
     }
 
     private sealed class RecordingGroupManager : IGroupManager
@@ -646,6 +944,8 @@ public sealed class SignalRRoomDeliveryTests(WebApplicationFactory<Program> fact
 
         public Task ReadyChanged(ReadyChangedEvent message) => Task.CompletedTask;
 
+        public Task MemberConnectionChanged(MemberConnectionChangedEvent message) => Task.CompletedTask;
+
         public Task RoomClosed(RoomClosedEvent message) =>
             throw new InvalidOperationException("RoomClosed delivery failed.");
     }
@@ -681,12 +981,81 @@ public sealed class SignalRRoomDeliveryTests(WebApplicationFactory<Program> fact
 
         public Task PublishMemberLeftAsync(RoomSnapshot snapshot, Guid playerId) => Task.CompletedTask;
 
+        public Task PublishMemberConnectionChangedAsync(RoomSnapshot snapshot, Guid playerId, bool isConnected) =>
+            Task.CompletedTask;
+
         public Task PublishRoomClosedAsync(Guid roomId) => Task.CompletedTask;
 
         public void ReleaseFirstReady() => releaseFirstReady.TrySetResult();
 
         private static TaskCompletionSource NewCompletion() =>
             new(TaskCreationOptions.RunContinuationsAsynchronously);
+    }
+
+    private sealed class BlockingConnectionNotifier : IRoomRealtimeNotifier
+    {
+        private readonly ConcurrentQueue<long> publishedRevisions = new();
+        private readonly TaskCompletionSource releaseDisconnect = NewCompletion();
+
+        public TaskCompletionSource DisconnectedEntered { get; } = NewCompletion();
+
+        public IReadOnlyCollection<long> PublishedRevisions => publishedRevisions.ToArray();
+
+        public Task PublishMemberJoinedAsync(RoomSnapshot snapshot, PlayerSnapshot player) => Task.CompletedTask;
+
+        public Task PublishReadyChangedAsync(RoomSnapshot snapshot, Guid playerId, bool isReady) => Task.CompletedTask;
+
+        public Task PublishMemberLeftAsync(RoomSnapshot snapshot, Guid playerId) => Task.CompletedTask;
+
+        public async Task PublishMemberConnectionChangedAsync(
+            RoomSnapshot snapshot,
+            Guid playerId,
+            bool isConnected)
+        {
+            if (!isConnected)
+            {
+                DisconnectedEntered.TrySetResult();
+                await releaseDisconnect.Task;
+            }
+
+            publishedRevisions.Enqueue(snapshot.Revision);
+        }
+
+        public Task PublishRoomClosedAsync(Guid roomId) => Task.CompletedTask;
+
+        public void ReleaseDisconnect() => releaseDisconnect.TrySetResult();
+    }
+
+    private sealed class BlockingRoomClosedNotifier(SignalRRoomRealtimeNotifier inner)
+        : IRoomRealtimeNotifier
+    {
+        private readonly TaskCompletionSource releaseRoomClosed = NewCompletion();
+
+        public TaskCompletionSource RoomClosedEntered { get; } = NewCompletion();
+
+        public Task PublishMemberJoinedAsync(RoomSnapshot snapshot, PlayerSnapshot player) =>
+            inner.PublishMemberJoinedAsync(snapshot, player);
+
+        public Task PublishReadyChangedAsync(RoomSnapshot snapshot, Guid playerId, bool isReady) =>
+            inner.PublishReadyChangedAsync(snapshot, playerId, isReady);
+
+        public Task PublishMemberLeftAsync(RoomSnapshot snapshot, Guid playerId) =>
+            inner.PublishMemberLeftAsync(snapshot, playerId);
+
+        public Task PublishMemberConnectionChangedAsync(
+            RoomSnapshot snapshot,
+            Guid playerId,
+            bool isConnected) =>
+            inner.PublishMemberConnectionChangedAsync(snapshot, playerId, isConnected);
+
+        public async Task PublishRoomClosedAsync(Guid roomId)
+        {
+            RoomClosedEntered.TrySetResult();
+            await releaseRoomClosed.Task;
+            await inner.PublishRoomClosedAsync(roomId);
+        }
+
+        public void ReleaseRoomClosed() => releaseRoomClosed.TrySetResult();
     }
 
     private sealed class ThrowingMemberLeftNotifier : IRoomRealtimeNotifier
@@ -697,6 +1066,23 @@ public sealed class SignalRRoomDeliveryTests(WebApplicationFactory<Program> fact
 
         public Task PublishMemberLeftAsync(RoomSnapshot snapshot, Guid playerId) =>
             throw new InvalidOperationException("MemberLeft delivery failed.");
+
+        public Task PublishMemberConnectionChangedAsync(RoomSnapshot snapshot, Guid playerId, bool isConnected) =>
+            Task.CompletedTask;
+
+        public Task PublishRoomClosedAsync(Guid roomId) => Task.CompletedTask;
+    }
+
+    private sealed class NoOpRoomRealtimeNotifier : IRoomRealtimeNotifier
+    {
+        public Task PublishMemberJoinedAsync(RoomSnapshot snapshot, PlayerSnapshot player) => Task.CompletedTask;
+
+        public Task PublishReadyChangedAsync(RoomSnapshot snapshot, Guid playerId, bool isReady) => Task.CompletedTask;
+
+        public Task PublishMemberLeftAsync(RoomSnapshot snapshot, Guid playerId) => Task.CompletedTask;
+
+        public Task PublishMemberConnectionChangedAsync(RoomSnapshot snapshot, Guid playerId, bool isConnected) =>
+            Task.CompletedTask;
 
         public Task PublishRoomClosedAsync(Guid roomId) => Task.CompletedTask;
     }

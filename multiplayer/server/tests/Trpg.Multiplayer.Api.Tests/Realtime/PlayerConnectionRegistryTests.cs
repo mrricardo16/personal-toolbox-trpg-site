@@ -71,6 +71,26 @@ public sealed class PlayerConnectionRegistryTests
     }
 
     [Fact]
+    public void TryGetConnection_ReturnsIdentityWithoutChangingLastConnectionState()
+    {
+        var registry = new InMemoryPlayerConnectionRegistry();
+        var roomId = Guid.NewGuid();
+        var playerId = Guid.NewGuid();
+        registry.Register("connection-1", roomId, playerId);
+
+        var found = registry.TryGetConnection("connection-1", out var identity);
+        var missing = registry.TryGetConnection("unknown-connection", out var missingIdentity);
+        var removal = registry.Unregister("connection-1");
+
+        Assert.True(found);
+        Assert.Equal(new ConnectionIdentity("connection-1", roomId, playerId), identity);
+        Assert.False(missing);
+        Assert.Null(missingIdentity);
+        Assert.NotNull(removal);
+        Assert.True(removal.IsLastConnection);
+    }
+
+    [Fact]
     public void GetRoomConnections_ReturnsOnlyConnectionsInRequestedRoom()
     {
         var registry = new InMemoryPlayerConnectionRegistry();

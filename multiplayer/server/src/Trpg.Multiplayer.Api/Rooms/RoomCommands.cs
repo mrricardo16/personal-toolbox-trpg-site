@@ -8,4 +8,6 @@ public sealed record LeaveRoomCommand(Guid RoomId, Guid PlayerId);
 
 public sealed record SetRoomReadyCommand(Guid RoomId, Guid PlayerId, bool IsReady);
 
+public sealed record SetConnectedRoomCommand(Guid RoomId, Guid PlayerId, bool IsConnected);
+
 public sealed record RoomLeaveResult(RoomSession? Room, bool RoomWasClosed);

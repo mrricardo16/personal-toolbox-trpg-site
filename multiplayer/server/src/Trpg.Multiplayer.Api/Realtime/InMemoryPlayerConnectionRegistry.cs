@@ -64,6 +64,14 @@ public sealed class InMemoryPlayerConnectionRegistry : IPlayerConnectionRegistry
         }
     }
 
+    public bool TryGetConnection(string connectionId, out ConnectionIdentity? identity)
+    {
+        lock (syncRoot)
+        {
+            return identitiesByConnection.TryGetValue(connectionId, out identity);
+        }
+    }
+
     public IReadOnlyCollection<string> GetConnections(Guid roomId, Guid playerId)
     {
         lock (syncRoot)
