@@ -196,11 +196,11 @@ AI gameplay protocol, database, Redis, matchmaking, or Azure SignalR.
 
 ---
 
-# 8. Next — Phase 2 Shared GameState
+# 8. Current — Phase 2A Shared GameState Foundation
 
-Phase 1 Lobby MVP 已完成。下一阶段应单独设计并实现 Phase 2 Shared GameState boundary。
+Phase 2A 已开始。本阶段当前完成 MultiplayerGameState foundation、independent Game revision、Player → Character ownership mapping 与 Player-safe projection boundary。
 
-当前明确未实现且留待后续任务：AI gameplay、Multiplayer AI Protocol、Scenario/GameState/Character/Check/SAN/HP/Combat migration、持久化 credential、reconnect expiry/grace、完整 rate limiting、DB、Redis、matchmaking 与 Azure SignalR。
+当前明确未实现且留待本阶段后续任务：JS → C# conformance fixtures、deterministic Check/Dice vertical slice、minimal multiplayer Check API、gameplay Vue UI、realtime GameState sync、Scenario、SAN、HP、healing、combat、AI gameplay、持久化、DB、Redis、matchmaking 与 Azure SignalR。
 
 ---
 

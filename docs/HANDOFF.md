@@ -42,7 +42,7 @@ Completed:
 - SignalR snapshot replacement, reconnect reattach, connection status UX, and RoomClosed cleanup
 - Host-only AI configuration and safe connection-test UI; API key remains memory-only and clears after submit
 
-Phase 1 Lobby MVP is complete. Reconnect expiry/grace timers remain a future decision.
+Phase 1 Lobby MVP is complete. Phase 2A is now in progress with the Shared GameState foundation. Reconnect expiry/grace timers remain a future decision.
 
 ```text
 Single Player v1.6.10        ✅ stable
@@ -163,11 +163,12 @@ Phase 1 Memory Only。
 
 ---
 
-## Next Task
+## Current Task
 
-Phase 1 Lobby MVP 已完成。下一阶段是单独的 Phase 2 Shared GameState design/implementation task。
+Phase 2A 当前已完成 MultiplayerGameState foundation、独立 Game revision、Player → Character ownership mapping 与 Player-safe projection boundary。
 
-AI gameplay、Multiplayer AI Protocol、Scenario/GameState migration、持久化 credential、reconnect expiry/grace、完整 rate limiting、DB、Redis、matchmaking 与 Azure SignalR 均明确留待后续任务。
+下一步是 JS → C# conformance fixtures、deterministic Check/Dice vertical slice 与 minimal multiplayer Check API。
+AI gameplay、Multiplayer AI Protocol、gameplay Vue UI、realtime GameState sync、Scenario/GameState migration、SAN、HP、healing、combat、持久化 credential、DB、Redis、matchmaking 与 Azure SignalR 均明确留待后续任务。
 
 ---
 

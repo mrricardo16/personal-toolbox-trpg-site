@@ -1,3 +1,4 @@
+using Trpg.Multiplayer.Api.Gameplay;
 using Trpg.Multiplayer.Api.Rooms;
 using Trpg.Multiplayer.Api.Realtime;
 using Trpg.Multiplayer.Api;
@@ -13,12 +14,14 @@ builder.Services.AddHttpClient(AiConnectionTester.HttpClientName, client =>
     AllowAutoRedirect = false
 });
 builder.Services.AddSingleton<IRoomStore, InMemoryRoomStore>();
+builder.Services.AddSingleton<IGameStateStore, InMemoryGameStateStore>();
 builder.Services.AddSingleton<IRoomCredentialStore, InMemoryRoomCredentialStore>();
 builder.Services.AddSingleton<IHostAddressResolver, DnsHostAddressResolver>();
 builder.Services.AddSingleton<IAiEndpointPolicy, AiEndpointPolicy>();
 builder.Services.AddSingleton<IAiConnectionTester, AiConnectionTester>();
 builder.Services.AddSingleton<IRoomConnectionTestGate, InMemoryRoomConnectionTestGate>();
 builder.Services.AddSingleton<RoomCoordinator>();
+builder.Services.AddSingleton<IGameCoordinator, GameCoordinator>();
 builder.Services.AddSingleton<RoomMutationDeliveryGate>();
 builder.Services.AddSingleton<IPlayerSessionStore, InMemoryPlayerSessionStore>();
 builder.Services.AddSingleton<IInviteCodeGenerator, RandomInviteCodeGenerator>();
@@ -30,6 +33,7 @@ var app = builder.Build();
 
 app.MapGet("/health", () => Results.Json(new { status = "ok" }));
 app.MapRoomEndpoints();
+app.MapGameEndpoints();
 app.MapHub<RoomHub>("/hubs/room");
 
 app.Run();

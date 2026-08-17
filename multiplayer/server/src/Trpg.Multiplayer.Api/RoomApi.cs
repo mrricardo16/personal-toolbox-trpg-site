@@ -1,5 +1,6 @@
 using System.Net;
 using Trpg.Multiplayer.Api.Ai;
+using Trpg.Multiplayer.Api.Gameplay;
 using Trpg.Multiplayer.Api.Realtime;
 using Trpg.Multiplayer.Api.Rooms;
 
@@ -127,7 +128,8 @@ public static class RoomApi
         IInviteCodeRegistry inviteCodes,
         IPlayerSessionStore sessions,
         IRoomRealtimeNotifier notifier,
-        RoomMutationDeliveryGate mutationGate)
+        RoomMutationDeliveryGate mutationGate,
+        IGameCoordinator games)
     {
         if (!TryGetSession(request, sessions, out var token, out var session))
         {
@@ -151,6 +153,7 @@ public static class RoomApi
             {
                 try
                 {
+                    await games.RemoveAsync(roomId);
                     await notifier.PublishRoomClosedAsync(roomId);
                 }
                 finally
