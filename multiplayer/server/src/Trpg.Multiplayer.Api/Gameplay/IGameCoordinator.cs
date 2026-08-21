@@ -10,5 +10,7 @@ public interface IGameCoordinator
 
     Task<GameResult<GameCheckResult>> ResolveCheckAsync(ResolveCheckCommand command);
 
+    Task<GameResult<HpDamageResult>> ApplyDamageAsync(ApplyDamageCommand command);
+
     Task<bool> RemoveAsync(Guid roomId);
 }

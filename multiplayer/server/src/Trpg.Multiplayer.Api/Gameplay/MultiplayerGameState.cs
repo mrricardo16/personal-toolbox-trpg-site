@@ -34,6 +34,13 @@ public sealed class CharacterState
     public IReadOnlyDictionary<string, int> CheckValues { get; }
 
     public CharacterHealthState Health { get; }
+
+    public CharacterState WithHealth(CharacterHealthState health) => new(
+        CharacterId,
+        OwnerPlayerId,
+        Name,
+        CheckValues,
+        health);
 }
 
 public sealed class MultiplayerGameState

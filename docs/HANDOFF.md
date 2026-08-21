@@ -182,6 +182,8 @@ Phase 2B 已完成 MultiplayerGameState realtime synchronization、Attach/reconn
 
 本轮只新增 `docs/PHASE2_RULE_SLICE_AUDIT.md` 及同步更新 current state/handoff；没有修改 production code、Single Player rule code、Multiplayer behavior 或 formal HTML。
 
+Phase 2D 已完成：HP/Damage C# conformance、canonical HP state、internal server damage mutation、owner-safe HP projection、realtime/reconnect snapshot recovery 和 read-only Vue HP display 均已完成。没有 public damage endpoint，Host 不获得任意 HP 修改权限。下一 deterministic slice 仅建议评估 Stabilization / Healing 或 Combat Opposed，不在本轮实现。
+
 ---
 
 ## Files To Read

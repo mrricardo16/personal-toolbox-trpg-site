@@ -68,8 +68,8 @@ describe('lobby views', () => {
       snapshot: {
         roomId: 'room-1', revision: 2, status: 'Active', createdAt: '2026-08-17T00:00:00Z',
         characters: [
-          { characterId: 'character-1', ownerPlayerId: 'player-1', name: 'Host Character', checkValues: { spotHidden: 60 } },
-          { characterId: 'character-2', ownerPlayerId: 'player-2', name: 'Member Character', checkValues: {} },
+          { characterId: 'character-1', ownerPlayerId: 'player-1', name: 'Host Character', checkValues: { spotHidden: 60 }, health: { currentHp: 12, maxHp: 12, majorWound: false, unconscious: false, dying: false, dead: false } },
+          { characterId: 'character-2', ownerPlayerId: 'player-2', name: 'Member Character', checkValues: {}, health: null },
         ],
         lastCheck: { checkId: 'check-1', playerId: 'player-1', characterId: 'character-1', checkKey: 'spotHidden', target: 60, roll: 41, successLevel: 'regular', passed: true, gameRevision: 2, createdAt: '2026-08-17T00:00:00Z' },
       },
@@ -81,8 +81,8 @@ describe('lobby views', () => {
         currentPlayerId: 'player-1', gameSnapshot: {
           roomId: 'room-1', revision: 1, status: 'Active', createdAt: '2026-08-17T00:00:00Z',
           characters: [
-            { characterId: 'character-1', ownerPlayerId: 'player-1', name: 'Host Character', checkValues: { spotHidden: 60 } },
-            { characterId: 'character-2', ownerPlayerId: 'player-2', name: 'Member Character', checkValues: {} },
+            { characterId: 'character-1', ownerPlayerId: 'player-1', name: 'Host Character', checkValues: { spotHidden: 60 }, health: { currentHp: 7, maxHp: 12, majorWound: true, unconscious: false, dying: false, dead: false } },
+            { characterId: 'character-2', ownerPlayerId: 'player-2', name: 'Member Character', checkValues: {}, health: null },
           ], lastCheck: null,
         },
         busy: false, errorMessage: '', connectionStatus: 'connected', api, token: 'session-token',
@@ -107,5 +107,21 @@ describe('lobby views', () => {
     const result = await resolveCheck.mock.results[0].value as { snapshot: GameSnapshot };
     await wrapper.setProps({ gameSnapshot: result.snapshot });
     expect(wrapper.get('[data-testid="last-check"]').text()).toContain('regular');
+  });
+
+  it('renders only server-projected health and never creates a damage control', () => {
+    const wrapper = mount(LobbyView, {
+      props: {
+        currentPlayerId: 'player-1', busy: false, errorMessage: '', connectionStatus: 'connected', api: {} as RoomsApi, token: 'session-token',
+        room: { roomId: 'room-1', inviteCode: 'NIGHT-42', hostPlayerId: 'player-1', maxPlayers: 2, status: 'Open', revision: 1, players: [], aiConfiguration: null },
+        gameSnapshot: {
+          roomId: 'room-1', revision: 2, status: 'Active', createdAt: '2026-08-17T00:00:00Z', lastCheck: null,
+          characters: [{ characterId: 'character-1', ownerPlayerId: 'player-1', name: 'Host Character', checkValues: { spotHidden: 60 }, health: { currentHp: 7, maxHp: 12, majorWound: true, unconscious: false, dying: false, dead: false } }],
+        },
+      },
+    });
+
+    expect(wrapper.get('[data-testid="character-health"]').text()).toContain('HP 7 / 12 · MAJOR WOUND');
+    expect(wrapper.findAll('button').map(button => button.text()).join(' ')).not.toMatch(/damage|heal|kill/i);
   });
 });

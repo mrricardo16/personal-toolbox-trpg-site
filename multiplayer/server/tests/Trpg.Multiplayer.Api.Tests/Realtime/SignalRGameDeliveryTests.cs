@@ -124,6 +124,52 @@ public sealed class SignalRGameDeliveryTests(WebApplicationFactory<Program> fact
     }
 
     [Fact]
+    public async Task InternalDamage_CommitsBeforePublishingViewerSafeSnapshotsAndReconnectRecoversHp()
+    {
+        var room = await CreateRoomAsync("Host", 2);
+        var member = await JoinRoomAsync(room.InviteCode, "Member");
+        var hostConnection = await AttachAsync(room.PlayerSessionToken);
+        var memberConnection = await AttachAsync(member.PlayerSessionToken);
+        using var initialize = await PostAuthorizedAsync(
+            $"/api/rooms/{room.RoomId}/game/initialize",
+            room.PlayerSessionToken,
+            new
+            {
+                characters = new[]
+                {
+                    new { playerId = room.PlayerId, name = "Host", checkValues = new Dictionary<string, int> { ["spotHidden"] = 60 }, health = new { currentHp = 12, maxHp = 12, con = 60 } },
+                    new { playerId = member.PlayerId, name = "Member", checkValues = new Dictionary<string, int> { ["spotHidden"] = 40 }, health = new { currentHp = 12, maxHp = 12, con = 60 } }
+                }
+            });
+        Assert.Equal(HttpStatusCode.Created, initialize.StatusCode);
+        var initialized = Assert.IsType<GameSnapshot>(await initialize.Content.ReadFromJsonAsync<GameSnapshot>());
+        var hostUpdate = NewCompletion<GameSnapshot>();
+        var memberUpdate = NewCompletion<GameSnapshot>();
+        hostConnection.On<GameSnapshot>("GameSnapshot", snapshot => { if (snapshot.Revision == 2) hostUpdate.TrySetResult(snapshot); });
+        memberConnection.On<GameSnapshot>("GameSnapshot", snapshot => { if (snapshot.Revision == 2) memberUpdate.TrySetResult(snapshot); });
+        var hostCharacter = initialized.Characters.Single(character => character.OwnerPlayerId == room.PlayerId);
+
+        var result = await factory.Services.GetRequiredService<IGameCoordinator>().ApplyDamageAsync(
+            new ApplyDamageCommand(room.RoomId, hostCharacter.CharacterId, "trusted-test", 5));
+        Assert.True(result.IsSuccess);
+        Assert.Equal(2, result.Value!.Snapshot.Revision);
+        var hostSnapshot = await hostUpdate.Task.WaitAsync(EventTimeout);
+        var memberSnapshot = await memberUpdate.Task.WaitAsync(EventTimeout);
+        Assert.Equal(7, hostSnapshot.Characters.Single(character => character.OwnerPlayerId == room.PlayerId).Health!.CurrentHp);
+        Assert.Null(memberSnapshot.Characters.Single(character => character.OwnerPlayerId == room.PlayerId).Health);
+
+        await hostConnection.StopAsync();
+        var reattachedSnapshot = NewCompletion<GameSnapshot>();
+        var reattached = CreateHubConnection();
+        reattached.On<GameSnapshot>("GameSnapshot", snapshot => reattachedSnapshot.TrySetResult(snapshot));
+        await reattached.StartAsync();
+        await reattached.InvokeAsync<RoomSnapshot>("AttachSession", room.PlayerSessionToken);
+        var recovered = await reattachedSnapshot.Task.WaitAsync(EventTimeout);
+        Assert.Equal(2, recovered.Revision);
+        Assert.Equal(7, recovered.Characters.Single(character => character.OwnerPlayerId == room.PlayerId).Health!.CurrentHp);
+    }
+
+    [Fact]
     public async Task GameDelivery_IsolatedAcrossRooms_AndReattachKeepsCanonicalGameState()
     {
         var first = await CreateRoomAsync("First Host", 2);

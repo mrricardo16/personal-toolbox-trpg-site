@@ -38,6 +38,15 @@ public sealed record GameCheckResult(
     GameSnapshot Snapshot,
     CheckResolutionResult Check);
 
+public sealed record ApplyDamageCommand(
+    Guid RoomId,
+    Guid CharacterId,
+    string EventKey,
+    int Damage,
+    int? ConRoll = null);
+
+public sealed record HpDamageResult(GameSnapshot Snapshot, HpDamageEvent? Event, bool Deduped);
+
 public sealed record GameError(GameErrorCode Code);
 
 public enum GameErrorCode
@@ -56,6 +65,7 @@ public enum GameErrorCode
     InvalidCheckKey,
     InvalidCheckRequest,
     InvalidHealthSetup,
+    InvalidDamage,
     StateConflict
 }
 

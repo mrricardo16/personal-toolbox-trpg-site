@@ -362,3 +362,7 @@ Parity verification
 # 14. Explicit Non-Goals
 
 当前 MUST NOT 默认引入：PostgreSQL、Redis、Azure SignalR、Kubernetes、Accounts、OAuth、Matchmaking、Billing、Cloud Save、full gameplay migration、full AI KP Multiplayer、full Vue rewrite of Single Player。
+
+## HP / Damage Migration Boundary
+
+`CocHpDamageEngine` is a pure deterministic C# rule component fed by canonical positive damage and a server-side CON roll. `GameCoordinator.ApplyDamageAsync` is server-internal only, serializes per room, commits canonical state and revision before calling realtime delivery. `GameProjection` exposes health only to the character owner; browser clients render projection fields and contain no HP rule or mutation command.

@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Trpg.Multiplayer.Api.Realtime;
 using Trpg.Multiplayer.Api.Rooms;
 
 namespace Trpg.Multiplayer.Api.Gameplay;
@@ -11,9 +12,11 @@ public sealed class GameCoordinator : IGameCoordinator
     private readonly IGameStateStore stateStore;
     private readonly IDiceRoller diceRoller;
     private readonly ICheckResolutionEngine checkEngine;
+    private readonly IHpDamageEngine hpDamageEngine;
+    private readonly IGameRealtimeNotifier? realtimeNotifier;
 
     public GameCoordinator(IRoomStore roomStore, IGameStateStore stateStore)
-        : this(roomStore, stateStore, new SecureDiceRoller(), new CocCheckResolutionEngine())
+        : this(roomStore, stateStore, new SecureDiceRoller(), new CocCheckResolutionEngine(), new CocHpDamageEngine())
     {
     }
 
@@ -21,12 +24,16 @@ public sealed class GameCoordinator : IGameCoordinator
         IRoomStore roomStore,
         IGameStateStore stateStore,
         IDiceRoller diceRoller,
-        ICheckResolutionEngine checkEngine)
+        ICheckResolutionEngine checkEngine,
+        IHpDamageEngine hpDamageEngine,
+        IGameRealtimeNotifier? realtimeNotifier = null)
     {
         this.roomStore = roomStore;
         this.stateStore = stateStore;
         this.diceRoller = diceRoller;
         this.checkEngine = checkEngine;
+        this.hpDamageEngine = hpDamageEngine;
+        this.realtimeNotifier = realtimeNotifier;
     }
 
     public async Task<GameResult<MultiplayerGameState>> InitializeAsync(InitializeGameCommand command)
@@ -83,6 +90,20 @@ public sealed class GameCoordinator : IGameCoordinator
     public async Task<GameResult<GameCheckResult>> ResolveCheckAsync(ResolveCheckCommand command)
     {
         return await WithRoomLockAsync(command.RoomId, () => ResolveCheckCore(command));
+    }
+
+    public async Task<GameResult<HpDamageResult>> ApplyDamageAsync(ApplyDamageCommand command)
+    {
+        return await WithRoomLockAsync(command.RoomId, async () =>
+        {
+            var result = ApplyDamageCore(command);
+            if (result.IsSuccess && result.Changed && realtimeNotifier is not null)
+            {
+                await realtimeNotifier.PublishGameSnapshotAsync(command.RoomId);
+            }
+
+            return result;
+        });
     }
 
     public async Task<bool> RemoveAsync(Guid roomId)
@@ -252,6 +273,60 @@ public sealed class GameCoordinator : IGameCoordinator
             resolution));
     }
 
+    private GameResult<HpDamageResult> ApplyDamageCore(ApplyDamageCommand command)
+    {
+        if (command.Damage <= 0 || string.IsNullOrWhiteSpace(command.EventKey))
+        {
+            return GameResult<HpDamageResult>.Failure(GameErrorCode.InvalidDamage);
+        }
+
+        if (!stateStore.TryGet(command.RoomId, out var state) || state is null)
+        {
+            return GameResult<HpDamageResult>.Failure(GameErrorCode.GameNotFound);
+        }
+
+        var character = state.Characters.SingleOrDefault(candidate => candidate.CharacterId == command.CharacterId);
+        if (character is null)
+        {
+            return GameResult<HpDamageResult>.Failure(GameErrorCode.CharacterNotFound);
+        }
+
+        var input = new HpDamageInput(
+            command.EventKey.Trim(),
+            command.Damage,
+            command.ConRoll ?? Random.Shared.Next(1, 101));
+        HpDamageResolutionResult resolution;
+        try
+        {
+            resolution = hpDamageEngine.Apply(character.Health, input);
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            return GameResult<HpDamageResult>.Failure(GameErrorCode.InvalidDamage);
+        }
+
+        if (!resolution.Changed)
+        {
+            var snapshot = GameProjection.Build(state, character.OwnerPlayerId);
+            return GameResult<HpDamageResult>.Success(new HpDamageResult(snapshot, resolution.Event, resolution.Deduped), changed: false);
+        }
+
+        var replacement = new MultiplayerGameState(
+            state.RoomId,
+            state.Revision + 1,
+            state.Status,
+            state.CreatedAt,
+            state.Characters.Select(candidate => candidate.CharacterId == character.CharacterId ? candidate.WithHealth(resolution.State) : candidate),
+            state.LastCheck);
+        if (!stateStore.TryReplace(state, replacement))
+        {
+            return GameResult<HpDamageResult>.Failure(GameErrorCode.StateConflict);
+        }
+
+        return GameResult<HpDamageResult>.Success(
+            new HpDamageResult(GameProjection.Build(replacement, character.OwnerPlayerId), resolution.Event, false));
+    }
+
     private GameErrorCode? TryGetMember(Guid roomId, Guid playerId, out RoomSession? room)
     {
         room = null;
@@ -277,6 +352,20 @@ public sealed class GameCoordinator : IGameCoordinator
         try
         {
             return operation();
+        }
+        finally
+        {
+            roomLock.Release();
+        }
+    }
+
+    private async Task<T> WithRoomLockAsync<T>(Guid roomId, Func<Task<T>> operation)
+    {
+        var roomLock = gameLocks.GetOrAdd(roomId, _ => new SemaphoreSlim(1, 1));
+        await roomLock.WaitAsync();
+        try
+        {
+            return await operation();
         }
         finally
         {

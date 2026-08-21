@@ -76,6 +76,16 @@ export interface CharacterSnapshot {
   ownerPlayerId: string;
   name: string;
   checkValues: Record<string, number>;
+  health: CharacterHealthSnapshot | null;
+}
+
+export interface CharacterHealthSnapshot {
+  currentHp: number;
+  maxHp: number;
+  majorWound: boolean;
+  unconscious: boolean;
+  dying: boolean;
+  dead: boolean;
 }
 
 export interface GameCheckRecord {
@@ -114,6 +124,11 @@ export interface InitializeGameRequest {
     playerId: string;
     name: string;
     checkValues: Record<string, number>;
+    health: {
+      currentHp: number;
+      maxHp: number;
+      con: number;
+    };
   }>;
 }
 

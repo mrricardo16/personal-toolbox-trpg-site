@@ -17,6 +17,7 @@ builder.Services.AddSingleton<IRoomStore, InMemoryRoomStore>();
 builder.Services.AddSingleton<IGameStateStore, InMemoryGameStateStore>();
 builder.Services.AddSingleton<IDiceRoller, SecureDiceRoller>();
 builder.Services.AddSingleton<ICheckResolutionEngine, CocCheckResolutionEngine>();
+builder.Services.AddSingleton<IHpDamageEngine, CocHpDamageEngine>();
 builder.Services.AddSingleton<IRoomCredentialStore, InMemoryRoomCredentialStore>();
 builder.Services.AddSingleton<IHostAddressResolver, DnsHostAddressResolver>();
 builder.Services.AddSingleton<IAiEndpointPolicy, AiEndpointPolicy>();

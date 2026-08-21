@@ -4,7 +4,10 @@ public sealed record CharacterSnapshot(
     Guid CharacterId,
     Guid OwnerPlayerId,
     string Name,
-    IReadOnlyDictionary<string, int> CheckValues);
+    IReadOnlyDictionary<string, int> CheckValues,
+    CharacterHealthSnapshot? Health);
+
+public sealed record CharacterHealthSnapshot(int CurrentHp, int MaxHp, bool MajorWound, bool Unconscious, bool Dying, bool Dead);
 
 public sealed record GameSnapshot(
     Guid RoomId,
@@ -30,7 +33,16 @@ public static class GameProjection
                     character.Name,
                     character.OwnerPlayerId == viewerPlayerId
                         ? new Dictionary<string, int>(character.CheckValues, StringComparer.OrdinalIgnoreCase)
-                        : new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)))
+                        : new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase),
+                    character.OwnerPlayerId == viewerPlayerId
+                        ? new CharacterHealthSnapshot(
+                            character.Health.CurrentHp,
+                            character.Health.MaxHp,
+                            character.Health.MajorWound,
+                            character.Health.Unconscious,
+                            character.Health.Dying,
+                            character.Health.Dead)
+                        : null))
                 .ToArray(),
             state.LastCheck);
     }

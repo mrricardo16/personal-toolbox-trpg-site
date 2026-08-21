@@ -315,3 +315,13 @@ Phase 2B Realtime GameState + Minimal Check gameplay vertical slice 已完成。
 - 当前工作方式明确准备把工程执行逐步交给 Codex，同时用 Project/Docs 固化设计上下文。
 
 若未来找到原对话，应补入 `CONTEXT_MAP.md`，不要反向编造原因。
+
+---
+
+# Phase 2D — HP / Damage State
+
+已完成 JS `src/hp-damage-state.js` → C# conformance fixture、pure `CocHpDamageEngine`、canonical character health state 与 server-internal `GameCoordinator.ApplyDamageAsync`。HP mutation 在 per-room serialization 内 commit 后才生成 viewer-specific SignalR snapshots；没有新增玩家或 Host 的 arbitrary damage HTTP API。
+
+当前 projection policy：角色 owner 可见 `currentHp/maxHp` 与 active condition booleans；非 owner 不接收 HP details、damage history、event key 或 CON roll。reconnect 继续通过现有 GameSnapshot 恢复最新 owner-visible HP。
+
+仍 deferred：Stabilization、Healing、SAN、Combat Opposed/Damage、Firearms、Scenario、AI gameplay、DB、Redis。

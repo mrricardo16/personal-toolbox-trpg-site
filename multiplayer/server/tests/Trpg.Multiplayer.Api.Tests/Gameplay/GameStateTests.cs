@@ -182,6 +182,10 @@ public sealed class GameStateTests
         Assert.DoesNotContain("Credential", json, StringComparison.OrdinalIgnoreCase);
 
         var hostCharacter = snapshot.Characters.Single(character => character.OwnerPlayerId == hostId);
+        var memberCharacter = snapshot.Characters.Single(character => character.OwnerPlayerId == memberId);
+        Assert.Null(hostCharacter.Health);
+        Assert.NotNull(memberCharacter.Health);
+        Assert.Equal(12, memberCharacter.Health.CurrentHp);
         var denied = await coordinator.GetCharacterForOwnerAsync(room.RoomId, hostCharacter.CharacterId, memberId);
         Assert.Equal(GameErrorCode.CharacterNotOwned, denied.Error?.Code);
         var allowed = await coordinator.GetCharacterForOwnerAsync(room.RoomId, hostCharacter.CharacterId, hostId);
@@ -204,6 +208,58 @@ public sealed class GameStateTests
         Assert.True(await coordinator.RemoveAsync(room.RoomId));
         Assert.False(await coordinator.RemoveAsync(room.RoomId));
         Assert.False(stateStore.Exists(room.RoomId));
+    }
+
+    [Fact]
+    public async Task InternalDamage_UpdatesOnlyCanonicalHealthAndRevision()
+    {
+        var roomStore = new InMemoryRoomStore();
+        var hostId = Guid.NewGuid();
+        var room = CreateRoom(roomStore, hostId, "Host");
+        var coordinator = new GameCoordinator(roomStore, new InMemoryGameStateStore());
+        var initialized = await coordinator.InitializeAsync(new InitializeGameCommand(
+            room.RoomId,
+            hostId,
+            [new InitializeCharacterCommand(hostId, "Host", Values(), Health())]));
+        var characterId = initialized.Value!.Characters.Single().CharacterId;
+
+        var damage = await coordinator.ApplyDamageAsync(new ApplyDamageCommand(room.RoomId, characterId, "internal-1", 5));
+        Assert.True(damage.IsSuccess);
+        Assert.True(damage.Changed);
+        Assert.Equal(2, damage.Value!.Snapshot.Revision);
+        Assert.Equal(7, Assert.Single(damage.Value.Snapshot.Characters).Health!.CurrentHp);
+
+        var invalid = await coordinator.ApplyDamageAsync(new ApplyDamageCommand(room.RoomId, characterId, "invalid", 0));
+        Assert.Equal(GameErrorCode.InvalidDamage, invalid.Error?.Code);
+        var afterInvalid = await coordinator.GetProjectionAsync(room.RoomId, hostId);
+        Assert.Equal(2, afterInvalid.Value!.Revision);
+    }
+
+    [Fact]
+    public async Task InternalDamage_IsSerializedAndDoesNotCrossRoomBoundaries()
+    {
+        var roomStore = new InMemoryRoomStore();
+        var firstHost = Guid.NewGuid();
+        var secondHost = Guid.NewGuid();
+        var firstRoom = CreateRoom(roomStore, firstHost, "First");
+        var secondRoom = CreateRoom(roomStore, secondHost, "Second");
+        var coordinator = new GameCoordinator(roomStore, new InMemoryGameStateStore());
+        var first = await coordinator.InitializeAsync(new InitializeGameCommand(firstRoom.RoomId, firstHost, [new InitializeCharacterCommand(firstHost, "First", Values(), Health())]));
+        var second = await coordinator.InitializeAsync(new InitializeGameCommand(secondRoom.RoomId, secondHost, [new InitializeCharacterCommand(secondHost, "Second", Values(), Health())]));
+        var firstCharacter = first.Value!.Characters.Single().CharacterId;
+        var secondCharacter = second.Value!.Characters.Single().CharacterId;
+
+        var mutations = await Task.WhenAll(
+            coordinator.ApplyDamageAsync(new ApplyDamageCommand(firstRoom.RoomId, firstCharacter, "first-a", 1)),
+            coordinator.ApplyDamageAsync(new ApplyDamageCommand(firstRoom.RoomId, firstCharacter, "first-b", 1)));
+        Assert.All(mutations, result => Assert.True(result.IsSuccess));
+        var firstProjection = await coordinator.GetProjectionAsync(firstRoom.RoomId, firstHost);
+        var secondProjection = await coordinator.GetProjectionAsync(secondRoom.RoomId, secondHost);
+        Assert.Equal(3, firstProjection.Value!.Revision);
+        Assert.Equal(10, Assert.Single(firstProjection.Value.Characters).Health!.CurrentHp);
+        Assert.Equal(1, secondProjection.Value!.Revision);
+        Assert.Equal(12, Assert.Single(secondProjection.Value.Characters).Health!.CurrentHp);
+        Assert.NotEqual(firstCharacter, secondCharacter);
     }
 
     private static RoomSession CreateRoom(InMemoryRoomStore store, Guid hostId, string nickname)
