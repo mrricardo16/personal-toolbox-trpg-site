@@ -53,8 +53,8 @@ public sealed class GameStateTests
             room.RoomId,
             hostId,
             [
-                new InitializeCharacterCommand(hostId, "Investigator", new Dictionary<string, int> { ["spotHidden"] = 60 }),
-                new InitializeCharacterCommand(memberId, "Archivist", new Dictionary<string, int> { ["spotHidden"] = 40 })
+                new InitializeCharacterCommand(hostId, "Investigator", new Dictionary<string, int> { ["spotHidden"] = 60 }, Health()),
+                new InitializeCharacterCommand(memberId, "Archivist", new Dictionary<string, int> { ["spotHidden"] = 40 }, Health())
             ]));
 
         Assert.True(result.IsSuccess);
@@ -81,22 +81,22 @@ public sealed class GameStateTests
         var unknown = await coordinator.InitializeAsync(new InitializeGameCommand(
             room.RoomId,
             hostId,
-            [new InitializeCharacterCommand(unknownId, "Unknown", Values())]));
+            [new InitializeCharacterCommand(unknownId, "Unknown", Values(), Health())]));
         Assert.Equal(GameErrorCode.UnknownPlayer, unknown.Error?.Code);
 
         var duplicate = await coordinator.InitializeAsync(new InitializeGameCommand(
             room.RoomId,
             hostId,
             [
-                new InitializeCharacterCommand(memberId, "One", Values()),
-                new InitializeCharacterCommand(memberId, "Two", Values())
+                new InitializeCharacterCommand(memberId, "One", Values(), Health()),
+                new InitializeCharacterCommand(memberId, "Two", Values(), Health())
             ]));
         Assert.Equal(GameErrorCode.DuplicateCharacterOwnership, duplicate.Error?.Code);
 
         var notHost = await coordinator.InitializeAsync(new InitializeGameCommand(
             room.RoomId,
             memberId,
-            [new InitializeCharacterCommand(memberId, "Member", Values())]));
+            [new InitializeCharacterCommand(memberId, "Member", Values(), Health())]));
         Assert.Equal(GameErrorCode.NotHost, notHost.Error?.Code);
 
         var duplicateKeys = await coordinator.InitializeAsync(new InitializeGameCommand(
@@ -106,8 +106,29 @@ public sealed class GameStateTests
             {
                 ["spotHidden"] = 60,
                 ["SpotHidden"] = 40
-            })]));
+            }, Health())]));
         Assert.Equal(GameErrorCode.InvalidRoster, duplicateKeys.Error?.Code);
+    }
+
+    [Fact]
+    public async Task Initialize_RequiresValidCanonicalHealthSetup()
+    {
+        var roomStore = new InMemoryRoomStore();
+        var hostId = Guid.NewGuid();
+        var room = CreateRoom(roomStore, hostId, "Host");
+        var coordinator = new GameCoordinator(roomStore, new InMemoryGameStateStore());
+
+        var missing = await coordinator.InitializeAsync(new InitializeGameCommand(
+            room.RoomId,
+            hostId,
+            [new InitializeCharacterCommand(hostId, "Missing", Values(), null)]));
+        Assert.Equal(GameErrorCode.InvalidHealthSetup, missing.Error?.Code);
+
+        var outOfBounds = await coordinator.InitializeAsync(new InitializeGameCommand(
+            room.RoomId,
+            hostId,
+            [new InitializeCharacterCommand(hostId, "Out of bounds", Values(), new CharacterHealthSetup(13, 12, 60))]));
+        Assert.Equal(GameErrorCode.InvalidHealthSetup, outOfBounds.Error?.Code);
     }
 
     [Fact]
@@ -121,14 +142,14 @@ public sealed class GameStateTests
         var coordinator = new GameCoordinator(roomStore, new InMemoryGameStateStore());
 
         var results = await Task.WhenAll(
-            coordinator.InitializeAsync(new InitializeGameCommand(firstRoom.RoomId, firstHost, [new InitializeCharacterCommand(firstHost, "One", Values())])),
-            coordinator.InitializeAsync(new InitializeGameCommand(secondRoom.RoomId, secondHost, [new InitializeCharacterCommand(secondHost, "Two", Values())])));
+            coordinator.InitializeAsync(new InitializeGameCommand(firstRoom.RoomId, firstHost, [new InitializeCharacterCommand(firstHost, "One", Values(), Health())])),
+            coordinator.InitializeAsync(new InitializeGameCommand(secondRoom.RoomId, secondHost, [new InitializeCharacterCommand(secondHost, "Two", Values(), Health())])));
 
         Assert.All(results, result => Assert.True(result.IsSuccess));
         var duplicate = await coordinator.InitializeAsync(new InitializeGameCommand(
             firstRoom.RoomId,
             firstHost,
-            [new InitializeCharacterCommand(firstHost, "Overwrite", Values())]));
+            [new InitializeCharacterCommand(firstHost, "Overwrite", Values(), Health())]));
         Assert.Equal(GameErrorCode.AlreadyInitialized, duplicate.Error?.Code);
     }
 
@@ -145,8 +166,8 @@ public sealed class GameStateTests
             room.RoomId,
             hostId,
             [
-                new InitializeCharacterCommand(hostId, "Host Character", Values()),
-                new InitializeCharacterCommand(memberId, "Member Character", Values())
+                new InitializeCharacterCommand(hostId, "Host Character", Values(), Health()),
+                new InitializeCharacterCommand(memberId, "Member Character", Values(), Health())
             ]))).IsSuccess);
 
         var projection = await coordinator.GetProjectionAsync(room.RoomId, memberId);
@@ -175,7 +196,7 @@ public sealed class GameStateTests
         var room = CreateRoom(roomStore, hostId, "Host");
         var stateStore = new InMemoryGameStateStore();
         var coordinator = new GameCoordinator(roomStore, stateStore);
-        Assert.True((await coordinator.InitializeAsync(new InitializeGameCommand(room.RoomId, hostId, [new InitializeCharacterCommand(hostId, "Host", Values())]))).IsSuccess);
+        Assert.True((await coordinator.InitializeAsync(new InitializeGameCommand(room.RoomId, hostId, [new InitializeCharacterCommand(hostId, "Host", Values(), Health())]))).IsSuccess);
 
         var roomCoordinator = new RoomCoordinator(roomStore);
         Assert.True((await roomCoordinator.SetConnectedAsync(new SetConnectedRoomCommand(room.RoomId, hostId, false))).IsSuccess);
@@ -196,7 +217,9 @@ public sealed class GameStateTests
         1,
         MultiplayerGameStatus.Active,
         DateTimeOffset.UtcNow,
-        [new CharacterState(Guid.NewGuid(), ownerId, name, Values())]);
+        [new CharacterState(Guid.NewGuid(), ownerId, name, Values(), new CharacterHealthState(12, 12, 60, false, false, false, false, [], null))]);
 
     private static Dictionary<string, int> Values() => new() { ["spotHidden"] = 60 };
+
+    private static CharacterHealthSetup Health() => new(12, 12, 60);
 }

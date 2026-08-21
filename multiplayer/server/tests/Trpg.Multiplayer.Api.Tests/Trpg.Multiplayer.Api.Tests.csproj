@@ -23,5 +23,6 @@
 
   <ItemGroup>
     <None Include="Fixtures\check-resolution.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Fixtures\hp-damage.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

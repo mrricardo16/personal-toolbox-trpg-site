@@ -1,0 +1,519 @@
+{
+  "version": 1,
+  "referenceSource": "src/hp-damage-state.js",
+  "cases": [
+    {
+      "name": "minor-damage",
+      "initial": {
+        "currentHp": 12,
+        "maxHp": 12,
+        "con": 60,
+        "majorWound": false,
+        "unconscious": false,
+        "dying": false,
+        "dead": false,
+        "history": [],
+        "lastEvent": null
+      },
+      "commands": [
+        {
+          "eventKey": "minor",
+          "damage": 5
+        }
+      ],
+      "expected": {
+        "currentHp": 7,
+        "maxHp": 12,
+        "con": 60,
+        "majorWound": false,
+        "unconscious": false,
+        "dying": false,
+        "dead": false,
+        "history": [
+          {
+            "eventKey": "minor",
+            "damage": 5,
+            "majorWound": false,
+            "instantDeath": false,
+            "conCheck": null
+          }
+        ],
+        "lastEvent": {
+          "eventKey": "minor",
+          "damage": 5,
+          "majorWound": false,
+          "instantDeath": false,
+          "conCheck": null
+        }
+      }
+    },
+    {
+      "name": "major-wound-con-success",
+      "initial": {
+        "currentHp": 12,
+        "maxHp": 12,
+        "con": 60,
+        "majorWound": false,
+        "unconscious": false,
+        "dying": false,
+        "dead": false,
+        "history": [],
+        "lastEvent": null
+      },
+      "commands": [
+        {
+          "eventKey": "half",
+          "damage": 6,
+          "conRoll": 60
+        }
+      ],
+      "expected": {
+        "currentHp": 6,
+        "maxHp": 12,
+        "con": 60,
+        "majorWound": true,
+        "unconscious": false,
+        "dying": false,
+        "dead": false,
+        "history": [
+          {
+            "eventKey": "half",
+            "damage": 6,
+            "majorWound": true,
+            "instantDeath": false,
+            "conCheck": {
+              "roll": 60,
+              "target": 60,
+              "success": true
+            }
+          }
+        ],
+        "lastEvent": {
+          "eventKey": "half",
+          "damage": 6,
+          "majorWound": true,
+          "instantDeath": false,
+          "conCheck": {
+            "roll": 60,
+            "target": 60,
+            "success": true
+          }
+        }
+      }
+    },
+    {
+      "name": "major-wound-con-failure",
+      "initial": {
+        "currentHp": 12,
+        "maxHp": 12,
+        "con": 60,
+        "majorWound": false,
+        "unconscious": false,
+        "dying": false,
+        "dead": false,
+        "history": [],
+        "lastEvent": null
+      },
+      "commands": [
+        {
+          "eventKey": "con-fail",
+          "damage": 6,
+          "conRoll": 61
+        }
+      ],
+      "expected": {
+        "currentHp": 6,
+        "maxHp": 12,
+        "con": 60,
+        "majorWound": true,
+        "unconscious": true,
+        "dying": false,
+        "dead": false,
+        "history": [
+          {
+            "eventKey": "con-fail",
+            "damage": 6,
+            "majorWound": true,
+            "instantDeath": false,
+            "conCheck": {
+              "roll": 61,
+              "target": 60,
+              "success": false
+            }
+          }
+        ],
+        "lastEvent": {
+          "eventKey": "con-fail",
+          "damage": 6,
+          "majorWound": true,
+          "instantDeath": false,
+          "conCheck": {
+            "roll": 61,
+            "target": 60,
+            "success": false
+          }
+        }
+      }
+    },
+    {
+      "name": "instant-death",
+      "initial": {
+        "currentHp": 12,
+        "maxHp": 12,
+        "con": 60,
+        "majorWound": false,
+        "unconscious": false,
+        "dying": false,
+        "dead": false,
+        "history": [],
+        "lastEvent": null
+      },
+      "commands": [
+        {
+          "eventKey": "instant",
+          "damage": 12
+        }
+      ],
+      "expected": {
+        "currentHp": 0,
+        "maxHp": 12,
+        "con": 60,
+        "majorWound": false,
+        "unconscious": false,
+        "dying": false,
+        "dead": true,
+        "history": [
+          {
+            "eventKey": "instant",
+            "damage": 12,
+            "majorWound": false,
+            "instantDeath": true,
+            "conCheck": null
+          }
+        ],
+        "lastEvent": {
+          "eventKey": "instant",
+          "damage": 12,
+          "majorWound": false,
+          "instantDeath": true,
+          "conCheck": null
+        }
+      }
+    },
+    {
+      "name": "zero-hp-without-major-wound",
+      "initial": {
+        "currentHp": 3,
+        "maxHp": 12,
+        "con": 60,
+        "majorWound": false,
+        "unconscious": false,
+        "dying": false,
+        "dead": false,
+        "history": [],
+        "lastEvent": null
+      },
+      "commands": [
+        {
+          "eventKey": "zero",
+          "damage": 3
+        }
+      ],
+      "expected": {
+        "currentHp": 0,
+        "maxHp": 12,
+        "con": 60,
+        "majorWound": false,
+        "unconscious": true,
+        "dying": false,
+        "dead": false,
+        "history": [
+          {
+            "eventKey": "zero",
+            "damage": 3,
+            "majorWound": false,
+            "instantDeath": false,
+            "conCheck": null
+          }
+        ],
+        "lastEvent": {
+          "eventKey": "zero",
+          "damage": 3,
+          "majorWound": false,
+          "instantDeath": false,
+          "conCheck": null
+        }
+      }
+    },
+    {
+      "name": "major-wound-then-dying",
+      "initial": {
+        "currentHp": 8,
+        "maxHp": 12,
+        "con": 60,
+        "majorWound": false,
+        "unconscious": false,
+        "dying": false,
+        "dead": false,
+        "history": [],
+        "lastEvent": null
+      },
+      "commands": [
+        {
+          "eventKey": "major",
+          "damage": 6,
+          "conRoll": 1
+        },
+        {
+          "eventKey": "zero",
+          "damage": 2
+        }
+      ],
+      "expected": {
+        "currentHp": 0,
+        "maxHp": 12,
+        "con": 60,
+        "majorWound": true,
+        "unconscious": true,
+        "dying": true,
+        "dead": false,
+        "history": [
+          {
+            "eventKey": "major",
+            "damage": 6,
+            "majorWound": true,
+            "instantDeath": false,
+            "conCheck": {
+              "roll": 1,
+              "target": 60,
+              "success": true
+            }
+          },
+          {
+            "eventKey": "zero",
+            "damage": 2,
+            "majorWound": false,
+            "instantDeath": false,
+            "conCheck": null
+          }
+        ],
+        "lastEvent": {
+          "eventKey": "zero",
+          "damage": 2,
+          "majorWound": false,
+          "instantDeath": false,
+          "conCheck": null
+        }
+      }
+    },
+    {
+      "name": "separate-small-damage-events",
+      "initial": {
+        "currentHp": 12,
+        "maxHp": 12,
+        "con": 60,
+        "majorWound": false,
+        "unconscious": false,
+        "dying": false,
+        "dead": false,
+        "history": [],
+        "lastEvent": null
+      },
+      "commands": [
+        {
+          "eventKey": "one",
+          "damage": 3
+        },
+        {
+          "eventKey": "two",
+          "damage": 3
+        }
+      ],
+      "expected": {
+        "currentHp": 6,
+        "maxHp": 12,
+        "con": 60,
+        "majorWound": false,
+        "unconscious": false,
+        "dying": false,
+        "dead": false,
+        "history": [
+          {
+            "eventKey": "one",
+            "damage": 3,
+            "majorWound": false,
+            "instantDeath": false,
+            "conCheck": null
+          },
+          {
+            "eventKey": "two",
+            "damage": 3,
+            "majorWound": false,
+            "instantDeath": false,
+            "conCheck": null
+          }
+        ],
+        "lastEvent": {
+          "eventKey": "two",
+          "damage": 3,
+          "majorWound": false,
+          "instantDeath": false,
+          "conCheck": null
+        }
+      }
+    },
+    {
+      "name": "overkill-uses-original-damage",
+      "initial": {
+        "currentHp": 2,
+        "maxHp": 10,
+        "con": 60,
+        "majorWound": false,
+        "unconscious": false,
+        "dying": false,
+        "dead": false,
+        "history": [],
+        "lastEvent": null
+      },
+      "commands": [
+        {
+          "eventKey": "overkill",
+          "damage": 10
+        }
+      ],
+      "expected": {
+        "currentHp": 0,
+        "maxHp": 10,
+        "con": 60,
+        "majorWound": false,
+        "unconscious": false,
+        "dying": false,
+        "dead": true,
+        "history": [
+          {
+            "eventKey": "overkill",
+            "damage": 10,
+            "majorWound": false,
+            "instantDeath": true,
+            "conCheck": null
+          }
+        ],
+        "lastEvent": {
+          "eventKey": "overkill",
+          "damage": 10,
+          "majorWound": false,
+          "instantDeath": true,
+          "conCheck": null
+        }
+      }
+    },
+    {
+      "name": "deduplicated-event",
+      "initial": {
+        "currentHp": 12,
+        "maxHp": 12,
+        "con": 60,
+        "majorWound": false,
+        "unconscious": false,
+        "dying": false,
+        "dead": false,
+        "history": [],
+        "lastEvent": null
+      },
+      "commands": [
+        {
+          "eventKey": "duplicate",
+          "damage": 6,
+          "conRoll": 60
+        },
+        {
+          "eventKey": "duplicate",
+          "damage": 6,
+          "conRoll": 99
+        }
+      ],
+      "expected": {
+        "currentHp": 6,
+        "maxHp": 12,
+        "con": 60,
+        "majorWound": true,
+        "unconscious": false,
+        "dying": false,
+        "dead": false,
+        "history": [
+          {
+            "eventKey": "duplicate",
+            "damage": 6,
+            "majorWound": true,
+            "instantDeath": false,
+            "conCheck": {
+              "roll": 60,
+              "target": 60,
+              "success": true
+            }
+          }
+        ],
+        "lastEvent": {
+          "eventKey": "duplicate",
+          "damage": 6,
+          "majorWound": true,
+          "instantDeath": false,
+          "conCheck": {
+            "roll": 60,
+            "target": 60,
+            "success": true
+          }
+        }
+      }
+    },
+    {
+      "name": "already-dead-does-not-apply-next-event",
+      "initial": {
+        "currentHp": 12,
+        "maxHp": 12,
+        "con": 60,
+        "majorWound": false,
+        "unconscious": false,
+        "dying": false,
+        "dead": false,
+        "history": [],
+        "lastEvent": null
+      },
+      "commands": [
+        {
+          "eventKey": "death",
+          "damage": 12
+        },
+        {
+          "eventKey": "after-death",
+          "damage": 1
+        }
+      ],
+      "expected": {
+        "currentHp": 0,
+        "maxHp": 12,
+        "con": 60,
+        "majorWound": false,
+        "unconscious": false,
+        "dying": false,
+        "dead": true,
+        "history": [
+          {
+            "eventKey": "death",
+            "damage": 12,
+            "majorWound": false,
+            "instantDeath": true,
+            "conCheck": null
+          }
+        ],
+        "lastEvent": {
+          "eventKey": "death",
+          "damage": 12,
+          "majorWound": false,
+          "instantDeath": true,
+          "conCheck": null
+        }
+      }
+    }
+  ]
+}

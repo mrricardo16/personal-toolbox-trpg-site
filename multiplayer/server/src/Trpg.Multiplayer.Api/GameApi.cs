@@ -47,7 +47,10 @@ public static class GameApi
                     .Select(character => new InitializeCharacterCommand(
                         character.PlayerId,
                         character.Name ?? string.Empty,
-                        character.CheckValues ?? new Dictionary<string, int>()))
+                        character.CheckValues ?? new Dictionary<string, int>(),
+                        character.Health is null
+                            ? null
+                            : new CharacterHealthSetup(character.Health.CurrentHp, character.Health.MaxHp, character.Health.Con)))
                     .ToArray()));
             if (!result.IsSuccess)
             {
@@ -162,7 +165,7 @@ public static class GameApi
         GameErrorCode.RoomNotFound or GameErrorCode.GameNotFound or GameErrorCode.CharacterNotFound => Results.NotFound(),
         GameErrorCode.RoomClosed or GameErrorCode.AlreadyInitialized => Results.Conflict(),
         GameErrorCode.NotMember or GameErrorCode.NotHost or GameErrorCode.CharacterNotOwned => Results.StatusCode((int)HttpStatusCode.Forbidden),
-        GameErrorCode.InvalidRoster or GameErrorCode.UnknownPlayer or GameErrorCode.DuplicateCharacterOwnership or GameErrorCode.InvalidCheckKey or GameErrorCode.InvalidCheckRequest => Results.BadRequest(),
+        GameErrorCode.InvalidRoster or GameErrorCode.UnknownPlayer or GameErrorCode.DuplicateCharacterOwnership or GameErrorCode.InvalidCheckKey or GameErrorCode.InvalidCheckRequest or GameErrorCode.InvalidHealthSetup => Results.BadRequest(),
         GameErrorCode.StateConflict => Results.Conflict(),
         _ => Results.StatusCode((int)HttpStatusCode.InternalServerError)
     };
@@ -180,6 +183,17 @@ public sealed class InitializeCharacterRequest
     public string? Name { get; init; }
 
     public Dictionary<string, int>? CheckValues { get; init; }
+
+    public InitializeCharacterHealthRequest? Health { get; init; }
+}
+
+public sealed class InitializeCharacterHealthRequest
+{
+    public int CurrentHp { get; init; }
+
+    public int MaxHp { get; init; }
+
+    public int Con { get; init; }
 }
 
 public sealed class ResolveCheckRequest

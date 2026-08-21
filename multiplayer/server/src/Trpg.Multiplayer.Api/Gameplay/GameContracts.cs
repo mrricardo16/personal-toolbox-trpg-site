@@ -8,7 +8,10 @@ public sealed record InitializeGameCommand(
 public sealed record InitializeCharacterCommand(
     Guid PlayerId,
     string Name,
-    IReadOnlyDictionary<string, int> CheckValues);
+    IReadOnlyDictionary<string, int> CheckValues,
+    CharacterHealthSetup? Health);
+
+public sealed record CharacterHealthSetup(int CurrentHp, int MaxHp, int Con);
 
 public sealed record ResolveCheckCommand(
     Guid RoomId,
@@ -52,6 +55,7 @@ public enum GameErrorCode
     CharacterNotOwned,
     InvalidCheckKey,
     InvalidCheckRequest,
+    InvalidHealthSetup,
     StateConflict
 }
 

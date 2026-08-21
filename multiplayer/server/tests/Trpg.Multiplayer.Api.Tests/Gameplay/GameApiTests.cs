@@ -23,7 +23,7 @@ public sealed class GameApiTests(WebApplicationFactory<Program> factory)
             {
                 characters = new[]
                 {
-                    new { playerId = created.PlayerId, name = "Investigator", checkValues = new Dictionary<string, int> { ["spotHidden"] = 60 } }
+                    new { playerId = created.PlayerId, name = "Investigator", checkValues = new Dictionary<string, int> { ["spotHidden"] = 60 }, health = new { currentHp = 12, maxHp = 12, con = 60 } }
                 }
             });
 
@@ -63,14 +63,14 @@ public sealed class GameApiTests(WebApplicationFactory<Program> factory)
             HttpMethod.Post,
             $"/api/rooms/{created.RoomId}/game/initialize",
             member.PlayerSessionToken,
-            new { characters = new[] { new { playerId = member.PlayerId, name = "Member", checkValues = new Dictionary<string, int> { ["spotHidden"] = 40 } } } });
+            new { characters = new[] { new { playerId = member.PlayerId, name = "Member", checkValues = new Dictionary<string, int> { ["spotHidden"] = 40 }, health = new { currentHp = 12, maxHp = 12, con = 60 } } } });
         Assert.Equal(HttpStatusCode.Forbidden, nonHost.StatusCode);
 
         var unknown = await SendAuthorizedAsync(
             HttpMethod.Post,
             $"/api/rooms/{created.RoomId}/game/initialize",
             created.PlayerSessionToken,
-            new { characters = new[] { new { playerId = Guid.NewGuid(), name = "Unknown", checkValues = new Dictionary<string, int> { ["spotHidden"] = 40 } } } });
+            new { characters = new[] { new { playerId = Guid.NewGuid(), name = "Unknown", checkValues = new Dictionary<string, int> { ["spotHidden"] = 40 }, health = new { currentHp = 12, maxHp = 12, con = 60 } } } });
         Assert.Equal(HttpStatusCode.BadRequest, unknown.StatusCode);
     }
 
@@ -82,7 +82,7 @@ public sealed class GameApiTests(WebApplicationFactory<Program> factory)
             HttpMethod.Post,
             $"/api/rooms/{created.RoomId}/game/initialize",
             created.PlayerSessionToken,
-            new { characters = new[] { new { playerId = created.PlayerId, name = "Host", checkValues = new Dictionary<string, int> { ["spotHidden"] = 60 } } } });
+            new { characters = new[] { new { playerId = created.PlayerId, name = "Host", checkValues = new Dictionary<string, int> { ["spotHidden"] = 60 }, health = new { currentHp = 12, maxHp = 12, con = 60 } } } });
         Assert.Equal(HttpStatusCode.Created, initialize.StatusCode);
         var gameStates = factory.Services.GetRequiredService<IGameStateStore>();
         Assert.True(gameStates.Exists(created.RoomId));
@@ -98,7 +98,7 @@ public sealed class GameApiTests(WebApplicationFactory<Program> factory)
         var created = await ReadCreatedAsync(await factory.CreateClient().PostAsJsonAsync("/api/rooms", new { nickname = "Host", maxPlayers = 2 }));
         var initialized = await InitializeAsync(created, new[]
         {
-            new { playerId = created.PlayerId, name = "Host", checkValues = new Dictionary<string, int> { ["spotHidden"] = 60 } }
+            new { playerId = created.PlayerId, name = "Host", checkValues = new Dictionary<string, int> { ["spotHidden"] = 60 }, health = new { currentHp = 12, maxHp = 12, con = 60 } }
         });
         var game = await initialized.Content.ReadFromJsonAsync<GameSnapshot>();
         var characterId = Assert.Single(game!.Characters).CharacterId;
@@ -140,8 +140,8 @@ public sealed class GameApiTests(WebApplicationFactory<Program> factory)
         var member = Assert.IsType<JoinedResponse>(await memberResponse.Content.ReadFromJsonAsync<JoinedResponse>());
         var initialized = await InitializeAsync(created, new[]
         {
-            new { playerId = created.PlayerId, name = "Host", checkValues = new Dictionary<string, int> { ["spotHidden"] = 60 } },
-            new { playerId = member.PlayerId, name = "Member", checkValues = new Dictionary<string, int> { ["spotHidden"] = 40 } }
+            new { playerId = created.PlayerId, name = "Host", checkValues = new Dictionary<string, int> { ["spotHidden"] = 60 }, health = new { currentHp = 12, maxHp = 12, con = 60 } },
+            new { playerId = member.PlayerId, name = "Member", checkValues = new Dictionary<string, int> { ["spotHidden"] = 40 }, health = new { currentHp = 12, maxHp = 12, con = 60 } }
         });
         var game = await initialized.Content.ReadFromJsonAsync<GameSnapshot>();
         var hostCharacterId = game!.Characters.Single(character => character.OwnerPlayerId == created.PlayerId).CharacterId;
@@ -167,8 +167,8 @@ public sealed class GameApiTests(WebApplicationFactory<Program> factory)
         var member = Assert.IsType<JoinedResponse>(await memberResponse.Content.ReadFromJsonAsync<JoinedResponse>());
         var initialized = await InitializeAsync(created, new[]
         {
-            new { playerId = created.PlayerId, name = "Host", checkValues = new Dictionary<string, int> { ["spotHidden"] = 60 } },
-            new { playerId = member.PlayerId, name = "Member", checkValues = new Dictionary<string, int> { ["spotHidden"] = 40 } }
+            new { playerId = created.PlayerId, name = "Host", checkValues = new Dictionary<string, int> { ["spotHidden"] = 60 }, health = new { currentHp = 12, maxHp = 12, con = 60 } },
+            new { playerId = member.PlayerId, name = "Member", checkValues = new Dictionary<string, int> { ["spotHidden"] = 40 }, health = new { currentHp = 12, maxHp = 12, con = 60 } }
         });
         var game = await initialized.Content.ReadFromJsonAsync<GameSnapshot>();
         var hostCharacterId = game!.Characters.Single(character => character.OwnerPlayerId == created.PlayerId).CharacterId;

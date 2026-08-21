@@ -52,8 +52,8 @@ public sealed class SignalRGameDeliveryTests(WebApplicationFactory<Program> fact
             {
                 characters = new[]
                 {
-                    new { playerId = room.PlayerId, name = "Host Character", checkValues = new Dictionary<string, int> { ["spotHidden"] = 60 } },
-                    new { playerId = member.PlayerId, name = "Member Character", checkValues = new Dictionary<string, int> { ["spotHidden"] = 40 } }
+                    new { playerId = room.PlayerId, name = "Host Character", checkValues = new Dictionary<string, int> { ["spotHidden"] = 60 }, health = new { currentHp = 12, maxHp = 12, con = 60 } },
+                    new { playerId = member.PlayerId, name = "Member Character", checkValues = new Dictionary<string, int> { ["spotHidden"] = 40 }, health = new { currentHp = 12, maxHp = 12, con = 60 } }
                 }
             });
 
@@ -105,7 +105,7 @@ public sealed class SignalRGameDeliveryTests(WebApplicationFactory<Program> fact
             {
                 characters = new[]
                 {
-                    new { playerId = room.PlayerId, name = "Investigator", checkValues = new Dictionary<string, int> { ["spotHidden"] = 60 } }
+                    new { playerId = room.PlayerId, name = "Investigator", checkValues = new Dictionary<string, int> { ["spotHidden"] = 60 }, health = new { currentHp = 12, maxHp = 12, con = 60 } }
                 }
             });
         Assert.Equal(HttpStatusCode.Created, initialize.StatusCode);
@@ -142,7 +142,7 @@ public sealed class SignalRGameDeliveryTests(WebApplicationFactory<Program> fact
             {
                 characters = new[]
                 {
-                    new { playerId = first.PlayerId, name = "First Character", checkValues = new Dictionary<string, int> { ["spotHidden"] = 60 } }
+                    new { playerId = first.PlayerId, name = "First Character", checkValues = new Dictionary<string, int> { ["spotHidden"] = 60 }, health = new { currentHp = 12, maxHp = 12, con = 60 } }
                 }
             });
         Assert.Equal(HttpStatusCode.Created, initialize.StatusCode);

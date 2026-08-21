@@ -13,13 +13,15 @@ public sealed class CharacterState
         Guid characterId,
         Guid ownerPlayerId,
         string name,
-        IReadOnlyDictionary<string, int> checkValues)
+        IReadOnlyDictionary<string, int> checkValues,
+        CharacterHealthState health)
     {
         CharacterId = characterId;
         OwnerPlayerId = ownerPlayerId;
         Name = name;
         CheckValues = new ReadOnlyDictionary<string, int>(
             new Dictionary<string, int>(checkValues, StringComparer.OrdinalIgnoreCase));
+        Health = health;
     }
 
     public Guid CharacterId { get; }
@@ -30,6 +32,8 @@ public sealed class CharacterState
 
     // Provisional Phase 2A rule-value container. It is intentionally narrow and strongly typed.
     public IReadOnlyDictionary<string, int> CheckValues { get; }
+
+    public CharacterHealthState Health { get; }
 }
 
 public sealed class MultiplayerGameState

@@ -141,11 +141,30 @@ public sealed class GameCoordinator : IGameCoordinator
                 return GameResult<MultiplayerGameState>.Failure(GameErrorCode.InvalidRoster);
             }
 
+            if (requested.Health is null
+                || requested.Health.MaxHp < 1
+                || requested.Health.CurrentHp < 0
+                || requested.Health.CurrentHp > requested.Health.MaxHp
+                || requested.Health.Con is < 0 or > 100)
+            {
+                return GameResult<MultiplayerGameState>.Failure(GameErrorCode.InvalidHealthSetup);
+            }
+
             characters.Add(new CharacterState(
                 Guid.NewGuid(),
                 requested.PlayerId,
                 requested.Name.Trim(),
-                requested.CheckValues));
+                requested.CheckValues,
+                new CharacterHealthState(
+                    requested.Health.CurrentHp,
+                    requested.Health.MaxHp,
+                    requested.Health.Con,
+                    MajorWound: false,
+                    Unconscious: requested.Health.CurrentHp == 0,
+                    Dying: false,
+                    Dead: false,
+                    History: [],
+                    LastDamageEvent: null)));
         }
 
         var state = new MultiplayerGameState(
