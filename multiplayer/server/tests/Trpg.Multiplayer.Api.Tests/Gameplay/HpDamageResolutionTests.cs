@@ -7,6 +7,32 @@ namespace Trpg.Multiplayer.Api.Tests.Gameplay;
 public sealed class HpDamageResolutionTests
 {
     [Fact]
+    public void FreshDamageTransitionClearsStabilizedConditionButUnrelatedDamagePreservesIt()
+    {
+        var stabilized = new CharacterHealthState(
+            1,
+            12,
+            60,
+            majorWound: true,
+            unconscious: false,
+            dyingEpisode: null,
+            stabilized: new StabilizedConditionState("first-aid", "first_aid", 60, 1, null),
+            deadCondition: null,
+            treatmentHistory: [],
+            history: [],
+            lastDamageEvent: null);
+        var engine = new CocHpDamageEngine();
+
+        var freshTransition = engine.Apply(stabilized, new HpDamageInput("fresh-dying", 1, null));
+        Assert.True(freshTransition.State.Dying);
+        Assert.Null(freshTransition.State.Stabilized);
+
+        var unrelated = engine.Apply(stabilized with { CurrentHp = 5, MajorWound = false }, new HpDamageInput("unrelated", 1, null));
+        Assert.False(unrelated.State.Dying);
+        Assert.NotNull(unrelated.State.Stabilized);
+    }
+
+    [Fact]
     public void CocEngine_ConsumesEveryCommittedSinglePlayerFixtureCase()
     {
         var path = Path.Combine(AppContext.BaseDirectory, "Fixtures", "hp-damage.json");

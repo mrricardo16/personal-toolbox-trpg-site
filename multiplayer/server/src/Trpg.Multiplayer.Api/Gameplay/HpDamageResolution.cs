@@ -9,18 +9,89 @@ public sealed record HpDamageEvent(
     bool InstantDeath,
     HpConCheck? ConCheck);
 
-public sealed record CharacterHealthState(
-    int CurrentHp,
-    int MaxHp,
-    int Con,
-    bool MajorWound,
-    bool Unconscious,
-    bool Dying,
-    bool Dead,
-    IReadOnlyList<HpDamageEvent> History,
-    HpDamageEvent? LastDamageEvent)
+public sealed record CharacterHealthState
 {
     public const int HistoryLimit = 80;
+    public const int TreatmentHistoryLimit = 60;
+    public const int DyingCheckHistoryLimit = 40;
+
+    public CharacterHealthState(
+        int currentHp,
+        int maxHp,
+        int con,
+        bool majorWound,
+        bool unconscious,
+        DyingEpisodeState? dyingEpisode,
+        StabilizedConditionState? stabilized,
+        DeadConditionState? deadCondition,
+        IReadOnlyList<TreatmentRecord> treatmentHistory,
+        IReadOnlyList<HpDamageEvent> history,
+        HpDamageEvent? lastDamageEvent)
+    {
+        CurrentHp = currentHp;
+        MaxHp = maxHp;
+        Con = con;
+        MajorWound = majorWound;
+        Unconscious = unconscious;
+        DyingEpisode = dyingEpisode;
+        Stabilized = stabilized;
+        DeadCondition = deadCondition;
+        TreatmentHistory = treatmentHistory ?? [];
+        History = history ?? [];
+        LastDamageEvent = lastDamageEvent;
+    }
+
+    // Kept as a source-compatible construction seam for the existing game initialization and HP fixture.
+    public CharacterHealthState(
+        int CurrentHp,
+        int MaxHp,
+        int Con,
+        bool MajorWound,
+        bool Unconscious,
+        bool Dying,
+        bool Dead,
+        IReadOnlyList<HpDamageEvent> History,
+        HpDamageEvent? LastDamageEvent)
+        : this(
+            CurrentHp,
+            MaxHp,
+            Con,
+            MajorWound,
+            Unconscious,
+            Dying ? new DyingEpisodeState(null, [], 1, false) : null,
+            null,
+            Dead ? new DeadConditionState(null, "legacy_dead", null) : null,
+            [],
+            History,
+            LastDamageEvent)
+    {
+    }
+
+    public int CurrentHp { get; init; }
+
+    public int MaxHp { get; init; }
+
+    public int Con { get; init; }
+
+    public bool MajorWound { get; init; }
+
+    public bool Unconscious { get; init; }
+
+    public DyingEpisodeState? DyingEpisode { get; init; }
+
+    public StabilizedConditionState? Stabilized { get; init; }
+
+    public DeadConditionState? DeadCondition { get; init; }
+
+    public IReadOnlyList<TreatmentRecord> TreatmentHistory { get; init; }
+
+    public IReadOnlyList<HpDamageEvent> History { get; init; }
+
+    public HpDamageEvent? LastDamageEvent { get; init; }
+
+    public bool Dying => DyingEpisode is not null;
+
+    public bool Dead => DeadCondition is not null;
 }
 
 public sealed record HpDamageInput(string EventKey, int Damage, int? ConRoll);
@@ -77,14 +148,16 @@ public sealed class CocHpDamageEngine : IHpDamageEngine
         var currentHp = Math.Max(0, state.CurrentHp - input.Damage);
         var damageEvent = new HpDamageEvent(input.EventKey, input.Damage, majorWound, instantDeath, conCheck);
         var history = state.History.Concat([damageEvent]).TakeLast(CharacterHealthState.HistoryLimit).ToArray();
+        var freshDying = !state.Dying && currentHp == 0 && (state.MajorWound || majorWound);
 
         var next = instantDeath
             ? state with
             {
                 CurrentHp = currentHp,
                 Unconscious = false,
-                Dying = false,
-                Dead = true,
+                DyingEpisode = null,
+                Stabilized = null,
+                DeadCondition = new DeadConditionState(input.EventKey, "instant_death", null),
                 History = history,
                 LastDamageEvent = damageEvent
             }
@@ -93,7 +166,10 @@ public sealed class CocHpDamageEngine : IHpDamageEngine
                 CurrentHp = currentHp,
                 MajorWound = state.MajorWound || majorWound,
                 Unconscious = state.Unconscious || (majorWound && conCheck is { Success: false }) || currentHp == 0,
-                Dying = state.Dying || (currentHp == 0 && (state.MajorWound || majorWound)),
+                DyingEpisode = freshDying
+                    ? new DyingEpisodeState(input.EventKey, [], 1, false)
+                    : state.DyingEpisode,
+                Stabilized = freshDying ? null : state.Stabilized,
                 History = history,
                 LastDamageEvent = damageEvent
             };

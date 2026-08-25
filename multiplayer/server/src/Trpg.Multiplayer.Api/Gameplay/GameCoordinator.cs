@@ -294,7 +294,7 @@ public sealed class GameCoordinator : IGameCoordinator
         var input = new HpDamageInput(
             command.EventKey.Trim(),
             command.Damage,
-            command.ConRoll ?? Random.Shared.Next(1, 101));
+            command.ConRoll ?? diceRoller.RollPercentile(0, 0).SelectedRoll);
         HpDamageResolutionResult resolution;
         try
         {

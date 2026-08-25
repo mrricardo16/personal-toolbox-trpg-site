@@ -236,6 +236,50 @@ public sealed class GameStateTests
     }
 
     [Fact]
+    public async Task InternalDamage_UsesInjectedDiceWhenConRollIsMissing_AndHonorsForcedRoll()
+    {
+        var roomStore = new InMemoryRoomStore();
+        var stateStore = new InMemoryGameStateStore();
+        var hostId = Guid.NewGuid();
+        var room = CreateRoom(roomStore, hostId, "Host");
+        var diceRoller = new FixedDiceRoller(61);
+        var coordinator = new GameCoordinator(
+            roomStore,
+            stateStore,
+            diceRoller,
+            new CocCheckResolutionEngine(),
+            new CocHpDamageEngine());
+        var initialized = await coordinator.InitializeAsync(new InitializeGameCommand(
+            room.RoomId,
+            hostId,
+            [new InitializeCharacterCommand(hostId, "Host", Values(), Health())]));
+        var characterId = initialized.Value!.Characters.Single().CharacterId;
+
+        var injected = await coordinator.ApplyDamageAsync(new ApplyDamageCommand(
+            room.RoomId,
+            characterId,
+            "major-injected",
+            6));
+
+        Assert.True(injected.IsSuccess);
+        Assert.Equal(1, diceRoller.PercentileCalls);
+        Assert.Equal(61, injected.Value!.Event!.ConCheck!.Roll);
+        Assert.False(injected.Value.Event.ConCheck.Success);
+
+        var forced = await coordinator.ApplyDamageAsync(new ApplyDamageCommand(
+            room.RoomId,
+            characterId,
+            "major-forced",
+            6,
+            1));
+
+        Assert.True(forced.IsSuccess);
+        Assert.Equal(1, diceRoller.PercentileCalls);
+        Assert.Equal(1, forced.Value!.Event!.ConCheck!.Roll);
+        Assert.True(forced.Value.Event.ConCheck.Success);
+    }
+
+    [Fact]
     public async Task InternalDamage_IsSerializedAndDoesNotCrossRoomBoundaries()
     {
         var roomStore = new InMemoryRoomStore();
@@ -278,4 +322,15 @@ public sealed class GameStateTests
     private static Dictionary<string, int> Values() => new() { ["spotHidden"] = 60 };
 
     private static CharacterHealthSetup Health() => new(12, 12, 60);
+
+    private sealed class FixedDiceRoller(int selectedRoll) : IDiceRoller
+    {
+        public int PercentileCalls { get; private set; }
+
+        public PercentileDiceRoll RollPercentile(int bonusDice, int penaltyDice)
+        {
+            PercentileCalls++;
+            return new PercentileDiceRoll(selectedRoll, [selectedRoll]);
+        }
+    }
 }

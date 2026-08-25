@@ -1,0 +1,3454 @@
+{
+  "version": 1,
+  "referenceSources": [
+    "src/hp-damage-state.js",
+    "src/health-stabilization.js"
+  ],
+  "cases": [
+    {
+      "name": "dying-baseline",
+      "timestampsNonSemantic": true,
+      "initial": {
+        "currentHp": 0,
+        "maxHp": 12,
+        "con": 60,
+        "majorWound": true,
+        "unconscious": true,
+        "dyingEpisode": {
+          "sourceEventKey": "dying-source",
+          "checks": [],
+          "nextRoundOrdinal": 1,
+          "roundChecksManaged": false
+        },
+        "stabilized": null,
+        "dead": null,
+        "treatmentHistory": [],
+        "history": [
+          {
+            "eventKey": "dying-source",
+            "damage": 6,
+            "majorWound": true,
+            "instantDeath": false,
+            "conCheck": {
+              "roll": 1,
+              "target": 60,
+              "success": true
+            }
+          }
+        ],
+        "lastEvent": {
+          "eventKey": "dying-source",
+          "damage": 6,
+          "majorWound": true,
+          "instantDeath": false,
+          "conCheck": {
+            "roll": 1,
+            "target": 60,
+            "success": true
+          }
+        }
+      },
+      "operations": [],
+      "expected": {
+        "currentHp": 0,
+        "maxHp": 12,
+        "con": 60,
+        "majorWound": true,
+        "unconscious": true,
+        "dyingEpisode": {
+          "sourceEventKey": "dying-source",
+          "checks": [],
+          "nextRoundOrdinal": 1,
+          "roundChecksManaged": false
+        },
+        "stabilized": null,
+        "dead": null,
+        "treatmentHistory": [],
+        "history": [
+          {
+            "eventKey": "dying-source",
+            "damage": 6,
+            "majorWound": true,
+            "instantDeath": false,
+            "conCheck": {
+              "roll": 1,
+              "target": 60,
+              "success": true
+            }
+          }
+        ],
+        "lastEvent": {
+          "eventKey": "dying-source",
+          "damage": 6,
+          "majorWound": true,
+          "instantDeath": false,
+          "conCheck": {
+            "roll": 1,
+            "target": 60,
+            "success": true
+          }
+        }
+      }
+    },
+    {
+      "name": "dying-roll-equals-con",
+      "timestampsNonSemantic": true,
+      "initial": {
+        "currentHp": 0,
+        "maxHp": 12,
+        "con": 60,
+        "majorWound": true,
+        "unconscious": true,
+        "dyingEpisode": {
+          "sourceEventKey": "dying-source",
+          "checks": [],
+          "nextRoundOrdinal": 1,
+          "roundChecksManaged": false
+        },
+        "stabilized": null,
+        "dead": null,
+        "treatmentHistory": [],
+        "history": [
+          {
+            "eventKey": "dying-source",
+            "damage": 6,
+            "majorWound": true,
+            "instantDeath": false,
+            "conCheck": {
+              "roll": 1,
+              "target": 60,
+              "success": true
+            }
+          }
+        ],
+        "lastEvent": {
+          "eventKey": "dying-source",
+          "damage": 6,
+          "majorWound": true,
+          "instantDeath": false,
+          "conCheck": {
+            "roll": 1,
+            "target": 60,
+            "success": true
+          }
+        }
+      },
+      "operations": [
+        {
+          "kind": "dyingRound",
+          "roll": 60,
+          "sourceId": "dying-equals",
+          "occurredAt": "2026-08-25T12:00:00.000Z",
+          "expected": {
+            "changed": true,
+            "error": null,
+            "dyingCheck": {
+              "ordinal": 1,
+              "roll": 60,
+              "target": 60,
+              "success": true,
+              "sourceId": "dying-equals",
+              "occurredAt": "2026-08-25T12:00:00.000Z"
+            },
+            "treatment": null,
+            "damageEvent": null,
+            "state": {
+              "currentHp": 0,
+              "maxHp": 12,
+              "con": 60,
+              "majorWound": true,
+              "unconscious": true,
+              "dyingEpisode": {
+                "sourceEventKey": "dying-source",
+                "checks": [
+                  {
+                    "ordinal": 1,
+                    "roll": 60,
+                    "target": 60,
+                    "success": true,
+                    "sourceId": "dying-equals",
+                    "occurredAt": "2026-08-25T12:00:00.000Z"
+                  }
+                ],
+                "nextRoundOrdinal": 2,
+                "roundChecksManaged": true
+              },
+              "stabilized": null,
+              "dead": null,
+              "treatmentHistory": [],
+              "history": [
+                {
+                  "eventKey": "dying-source",
+                  "damage": 6,
+                  "majorWound": true,
+                  "instantDeath": false,
+                  "conCheck": {
+                    "roll": 1,
+                    "target": 60,
+                    "success": true
+                  }
+                }
+              ],
+              "lastEvent": {
+                "eventKey": "dying-source",
+                "damage": 6,
+                "majorWound": true,
+                "instantDeath": false,
+                "conCheck": {
+                  "roll": 1,
+                  "target": 60,
+                  "success": true
+                }
+              }
+            }
+          }
+        }
+      ],
+      "expected": {
+        "currentHp": 0,
+        "maxHp": 12,
+        "con": 60,
+        "majorWound": true,
+        "unconscious": true,
+        "dyingEpisode": {
+          "sourceEventKey": "dying-source",
+          "checks": [
+            {
+              "ordinal": 1,
+              "roll": 60,
+              "target": 60,
+              "success": true,
+              "sourceId": "dying-equals",
+              "occurredAt": "2026-08-25T12:00:00.000Z"
+            }
+          ],
+          "nextRoundOrdinal": 2,
+          "roundChecksManaged": true
+        },
+        "stabilized": null,
+        "dead": null,
+        "treatmentHistory": [],
+        "history": [
+          {
+            "eventKey": "dying-source",
+            "damage": 6,
+            "majorWound": true,
+            "instantDeath": false,
+            "conCheck": {
+              "roll": 1,
+              "target": 60,
+              "success": true
+            }
+          }
+        ],
+        "lastEvent": {
+          "eventKey": "dying-source",
+          "damage": 6,
+          "majorWound": true,
+          "instantDeath": false,
+          "conCheck": {
+            "roll": 1,
+            "target": 60,
+            "success": true
+          }
+        }
+      }
+    },
+    {
+      "name": "dying-roll-just-above-con",
+      "timestampsNonSemantic": true,
+      "initial": {
+        "currentHp": 0,
+        "maxHp": 12,
+        "con": 60,
+        "majorWound": true,
+        "unconscious": true,
+        "dyingEpisode": {
+          "sourceEventKey": "dying-source",
+          "checks": [],
+          "nextRoundOrdinal": 1,
+          "roundChecksManaged": false
+        },
+        "stabilized": null,
+        "dead": null,
+        "treatmentHistory": [],
+        "history": [
+          {
+            "eventKey": "dying-source",
+            "damage": 6,
+            "majorWound": true,
+            "instantDeath": false,
+            "conCheck": {
+              "roll": 1,
+              "target": 60,
+              "success": true
+            }
+          }
+        ],
+        "lastEvent": {
+          "eventKey": "dying-source",
+          "damage": 6,
+          "majorWound": true,
+          "instantDeath": false,
+          "conCheck": {
+            "roll": 1,
+            "target": 60,
+            "success": true
+          }
+        }
+      },
+      "operations": [
+        {
+          "kind": "dyingRound",
+          "roll": 61,
+          "sourceId": "dying-above",
+          "occurredAt": "2026-08-25T12:00:00.000Z",
+          "expected": {
+            "changed": true,
+            "error": null,
+            "dyingCheck": {
+              "ordinal": 1,
+              "roll": 61,
+              "target": 60,
+              "success": false,
+              "sourceId": "dying-above",
+              "occurredAt": "2026-08-25T12:00:00.000Z"
+            },
+            "treatment": null,
+            "damageEvent": null,
+            "state": {
+              "currentHp": 0,
+              "maxHp": 12,
+              "con": 60,
+              "majorWound": true,
+              "unconscious": false,
+              "dyingEpisode": null,
+              "stabilized": null,
+              "dead": {
+                "sourceEventKey": "dying-source",
+                "reason": "dying_con_failure",
+                "occurredAt": "2026-08-25T12:00:00.000Z"
+              },
+              "treatmentHistory": [],
+              "history": [
+                {
+                  "eventKey": "dying-source",
+                  "damage": 6,
+                  "majorWound": true,
+                  "instantDeath": false,
+                  "conCheck": {
+                    "roll": 1,
+                    "target": 60,
+                    "success": true
+                  }
+                }
+              ],
+              "lastEvent": {
+                "eventKey": "dying-source",
+                "damage": 6,
+                "majorWound": true,
+                "instantDeath": false,
+                "conCheck": {
+                  "roll": 1,
+                  "target": 60,
+                  "success": true
+                }
+              }
+            }
+          }
+        }
+      ],
+      "expected": {
+        "currentHp": 0,
+        "maxHp": 12,
+        "con": 60,
+        "majorWound": true,
+        "unconscious": false,
+        "dyingEpisode": null,
+        "stabilized": null,
+        "dead": {
+          "sourceEventKey": "dying-source",
+          "reason": "dying_con_failure",
+          "occurredAt": "2026-08-25T12:00:00.000Z"
+        },
+        "treatmentHistory": [],
+        "history": [
+          {
+            "eventKey": "dying-source",
+            "damage": 6,
+            "majorWound": true,
+            "instantDeath": false,
+            "conCheck": {
+              "roll": 1,
+              "target": 60,
+              "success": true
+            }
+          }
+        ],
+        "lastEvent": {
+          "eventKey": "dying-source",
+          "damage": 6,
+          "majorWound": true,
+          "instantDeath": false,
+          "conCheck": {
+            "roll": 1,
+            "target": 60,
+            "success": true
+          }
+        }
+      }
+    },
+    {
+      "name": "dying-two-successive-rounds",
+      "timestampsNonSemantic": true,
+      "initial": {
+        "currentHp": 0,
+        "maxHp": 12,
+        "con": 60,
+        "majorWound": true,
+        "unconscious": true,
+        "dyingEpisode": {
+          "sourceEventKey": "dying-source",
+          "checks": [],
+          "nextRoundOrdinal": 1,
+          "roundChecksManaged": false
+        },
+        "stabilized": null,
+        "dead": null,
+        "treatmentHistory": [],
+        "history": [
+          {
+            "eventKey": "dying-source",
+            "damage": 6,
+            "majorWound": true,
+            "instantDeath": false,
+            "conCheck": {
+              "roll": 1,
+              "target": 60,
+              "success": true
+            }
+          }
+        ],
+        "lastEvent": {
+          "eventKey": "dying-source",
+          "damage": 6,
+          "majorWound": true,
+          "instantDeath": false,
+          "conCheck": {
+            "roll": 1,
+            "target": 60,
+            "success": true
+          }
+        }
+      },
+      "operations": [
+        {
+          "kind": "dyingRound",
+          "roll": 20,
+          "sourceId": "dying-round-1",
+          "occurredAt": "2026-08-25T12:00:00.000Z",
+          "expected": {
+            "changed": true,
+            "error": null,
+            "dyingCheck": {
+              "ordinal": 1,
+              "roll": 20,
+              "target": 60,
+              "success": true,
+              "sourceId": "dying-round-1",
+              "occurredAt": "2026-08-25T12:00:00.000Z"
+            },
+            "treatment": null,
+            "damageEvent": null,
+            "state": {
+              "currentHp": 0,
+              "maxHp": 12,
+              "con": 60,
+              "majorWound": true,
+              "unconscious": true,
+              "dyingEpisode": {
+                "sourceEventKey": "dying-source",
+                "checks": [
+                  {
+                    "ordinal": 1,
+                    "roll": 20,
+                    "target": 60,
+                    "success": true,
+                    "sourceId": "dying-round-1",
+                    "occurredAt": "2026-08-25T12:00:00.000Z"
+                  }
+                ],
+                "nextRoundOrdinal": 2,
+                "roundChecksManaged": true
+              },
+              "stabilized": null,
+              "dead": null,
+              "treatmentHistory": [],
+              "history": [
+                {
+                  "eventKey": "dying-source",
+                  "damage": 6,
+                  "majorWound": true,
+                  "instantDeath": false,
+                  "conCheck": {
+                    "roll": 1,
+                    "target": 60,
+                    "success": true
+                  }
+                }
+              ],
+              "lastEvent": {
+                "eventKey": "dying-source",
+                "damage": 6,
+                "majorWound": true,
+                "instantDeath": false,
+                "conCheck": {
+                  "roll": 1,
+                  "target": 60,
+                  "success": true
+                }
+              }
+            }
+          }
+        },
+        {
+          "kind": "dyingRound",
+          "roll": 30,
+          "sourceId": "dying-round-2",
+          "occurredAt": "2026-08-25T12:00:00.000Z",
+          "expected": {
+            "changed": true,
+            "error": null,
+            "dyingCheck": {
+              "ordinal": 2,
+              "roll": 30,
+              "target": 60,
+              "success": true,
+              "sourceId": "dying-round-2",
+              "occurredAt": "2026-08-25T12:00:00.000Z"
+            },
+            "treatment": null,
+            "damageEvent": null,
+            "state": {
+              "currentHp": 0,
+              "maxHp": 12,
+              "con": 60,
+              "majorWound": true,
+              "unconscious": true,
+              "dyingEpisode": {
+                "sourceEventKey": "dying-source",
+                "checks": [
+                  {
+                    "ordinal": 1,
+                    "roll": 20,
+                    "target": 60,
+                    "success": true,
+                    "sourceId": "dying-round-1",
+                    "occurredAt": "2026-08-25T12:00:00.000Z"
+                  },
+                  {
+                    "ordinal": 2,
+                    "roll": 30,
+                    "target": 60,
+                    "success": true,
+                    "sourceId": "dying-round-2",
+                    "occurredAt": "2026-08-25T12:00:00.000Z"
+                  }
+                ],
+                "nextRoundOrdinal": 3,
+                "roundChecksManaged": true
+              },
+              "stabilized": null,
+              "dead": null,
+              "treatmentHistory": [],
+              "history": [
+                {
+                  "eventKey": "dying-source",
+                  "damage": 6,
+                  "majorWound": true,
+                  "instantDeath": false,
+                  "conCheck": {
+                    "roll": 1,
+                    "target": 60,
+                    "success": true
+                  }
+                }
+              ],
+              "lastEvent": {
+                "eventKey": "dying-source",
+                "damage": 6,
+                "majorWound": true,
+                "instantDeath": false,
+                "conCheck": {
+                  "roll": 1,
+                  "target": 60,
+                  "success": true
+                }
+              }
+            }
+          }
+        }
+      ],
+      "expected": {
+        "currentHp": 0,
+        "maxHp": 12,
+        "con": 60,
+        "majorWound": true,
+        "unconscious": true,
+        "dyingEpisode": {
+          "sourceEventKey": "dying-source",
+          "checks": [
+            {
+              "ordinal": 1,
+              "roll": 20,
+              "target": 60,
+              "success": true,
+              "sourceId": "dying-round-1",
+              "occurredAt": "2026-08-25T12:00:00.000Z"
+            },
+            {
+              "ordinal": 2,
+              "roll": 30,
+              "target": 60,
+              "success": true,
+              "sourceId": "dying-round-2",
+              "occurredAt": "2026-08-25T12:00:00.000Z"
+            }
+          ],
+          "nextRoundOrdinal": 3,
+          "roundChecksManaged": true
+        },
+        "stabilized": null,
+        "dead": null,
+        "treatmentHistory": [],
+        "history": [
+          {
+            "eventKey": "dying-source",
+            "damage": 6,
+            "majorWound": true,
+            "instantDeath": false,
+            "conCheck": {
+              "roll": 1,
+              "target": 60,
+              "success": true
+            }
+          }
+        ],
+        "lastEvent": {
+          "eventKey": "dying-source",
+          "damage": 6,
+          "majorWound": true,
+          "instantDeath": false,
+          "conCheck": {
+            "roll": 1,
+            "target": 60,
+            "success": true
+          }
+        }
+      }
+    },
+    {
+      "name": "dying-failure-death",
+      "timestampsNonSemantic": true,
+      "initial": {
+        "currentHp": 0,
+        "maxHp": 12,
+        "con": 60,
+        "majorWound": true,
+        "unconscious": true,
+        "dyingEpisode": {
+          "sourceEventKey": "dying-source",
+          "checks": [],
+          "nextRoundOrdinal": 1,
+          "roundChecksManaged": false
+        },
+        "stabilized": null,
+        "dead": null,
+        "treatmentHistory": [],
+        "history": [
+          {
+            "eventKey": "dying-source",
+            "damage": 6,
+            "majorWound": true,
+            "instantDeath": false,
+            "conCheck": {
+              "roll": 1,
+              "target": 60,
+              "success": true
+            }
+          }
+        ],
+        "lastEvent": {
+          "eventKey": "dying-source",
+          "damage": 6,
+          "majorWound": true,
+          "instantDeath": false,
+          "conCheck": {
+            "roll": 1,
+            "target": 60,
+            "success": true
+          }
+        }
+      },
+      "operations": [
+        {
+          "kind": "dyingRound",
+          "roll": 99,
+          "sourceId": "dying-failure",
+          "occurredAt": "2026-08-25T12:00:00.000Z",
+          "expected": {
+            "changed": true,
+            "error": null,
+            "dyingCheck": {
+              "ordinal": 1,
+              "roll": 99,
+              "target": 60,
+              "success": false,
+              "sourceId": "dying-failure",
+              "occurredAt": "2026-08-25T12:00:00.000Z"
+            },
+            "treatment": null,
+            "damageEvent": null,
+            "state": {
+              "currentHp": 0,
+              "maxHp": 12,
+              "con": 60,
+              "majorWound": true,
+              "unconscious": false,
+              "dyingEpisode": null,
+              "stabilized": null,
+              "dead": {
+                "sourceEventKey": "dying-source",
+                "reason": "dying_con_failure",
+                "occurredAt": "2026-08-25T12:00:00.000Z"
+              },
+              "treatmentHistory": [],
+              "history": [
+                {
+                  "eventKey": "dying-source",
+                  "damage": 6,
+                  "majorWound": true,
+                  "instantDeath": false,
+                  "conCheck": {
+                    "roll": 1,
+                    "target": 60,
+                    "success": true
+                  }
+                }
+              ],
+              "lastEvent": {
+                "eventKey": "dying-source",
+                "damage": 6,
+                "majorWound": true,
+                "instantDeath": false,
+                "conCheck": {
+                  "roll": 1,
+                  "target": 60,
+                  "success": true
+                }
+              }
+            }
+          }
+        }
+      ],
+      "expected": {
+        "currentHp": 0,
+        "maxHp": 12,
+        "con": 60,
+        "majorWound": true,
+        "unconscious": false,
+        "dyingEpisode": null,
+        "stabilized": null,
+        "dead": {
+          "sourceEventKey": "dying-source",
+          "reason": "dying_con_failure",
+          "occurredAt": "2026-08-25T12:00:00.000Z"
+        },
+        "treatmentHistory": [],
+        "history": [
+          {
+            "eventKey": "dying-source",
+            "damage": 6,
+            "majorWound": true,
+            "instantDeath": false,
+            "conCheck": {
+              "roll": 1,
+              "target": 60,
+              "success": true
+            }
+          }
+        ],
+        "lastEvent": {
+          "eventKey": "dying-source",
+          "damage": 6,
+          "majorWound": true,
+          "instantDeath": false,
+          "conCheck": {
+            "roll": 1,
+            "target": 60,
+            "success": true
+          }
+        }
+      }
+    },
+    {
+      "name": "dying-already-dead-rejected",
+      "timestampsNonSemantic": true,
+      "initial": {
+        "currentHp": 0,
+        "maxHp": 12,
+        "con": 60,
+        "majorWound": true,
+        "unconscious": false,
+        "dyingEpisode": null,
+        "stabilized": null,
+        "dead": {
+          "sourceEventKey": "dying-source",
+          "reason": "dying_con_failure",
+          "occurredAt": "2026-08-25T12:00:00.000Z"
+        },
+        "treatmentHistory": [],
+        "history": [
+          {
+            "eventKey": "dying-source",
+            "damage": 6,
+            "majorWound": true,
+            "instantDeath": false,
+            "conCheck": {
+              "roll": 1,
+              "target": 60,
+              "success": true
+            }
+          }
+        ],
+        "lastEvent": {
+          "eventKey": "dying-source",
+          "damage": 6,
+          "majorWound": true,
+          "instantDeath": false,
+          "conCheck": {
+            "roll": 1,
+            "target": 60,
+            "success": true
+          }
+        }
+      },
+      "operations": [
+        {
+          "kind": "dyingRound",
+          "roll": 1,
+          "sourceId": "dead-round",
+          "occurredAt": "2026-08-25T12:00:00.000Z",
+          "expected": {
+            "changed": false,
+            "error": "AlreadyDead",
+            "dyingCheck": null,
+            "treatment": null,
+            "damageEvent": null,
+            "state": {
+              "currentHp": 0,
+              "maxHp": 12,
+              "con": 60,
+              "majorWound": true,
+              "unconscious": false,
+              "dyingEpisode": null,
+              "stabilized": null,
+              "dead": {
+                "sourceEventKey": "dying-source",
+                "reason": "dying_con_failure",
+                "occurredAt": "2026-08-25T12:00:00.000Z"
+              },
+              "treatmentHistory": [],
+              "history": [
+                {
+                  "eventKey": "dying-source",
+                  "damage": 6,
+                  "majorWound": true,
+                  "instantDeath": false,
+                  "conCheck": {
+                    "roll": 1,
+                    "target": 60,
+                    "success": true
+                  }
+                }
+              ],
+              "lastEvent": {
+                "eventKey": "dying-source",
+                "damage": 6,
+                "majorWound": true,
+                "instantDeath": false,
+                "conCheck": {
+                  "roll": 1,
+                  "target": 60,
+                  "success": true
+                }
+              }
+            }
+          }
+        }
+      ],
+      "expected": {
+        "currentHp": 0,
+        "maxHp": 12,
+        "con": 60,
+        "majorWound": true,
+        "unconscious": false,
+        "dyingEpisode": null,
+        "stabilized": null,
+        "dead": {
+          "sourceEventKey": "dying-source",
+          "reason": "dying_con_failure",
+          "occurredAt": "2026-08-25T12:00:00.000Z"
+        },
+        "treatmentHistory": [],
+        "history": [
+          {
+            "eventKey": "dying-source",
+            "damage": 6,
+            "majorWound": true,
+            "instantDeath": false,
+            "conCheck": {
+              "roll": 1,
+              "target": 60,
+              "success": true
+            }
+          }
+        ],
+        "lastEvent": {
+          "eventKey": "dying-source",
+          "damage": 6,
+          "majorWound": true,
+          "instantDeath": false,
+          "conCheck": {
+            "roll": 1,
+            "target": 60,
+            "success": true
+          }
+        }
+      }
+    },
+    {
+      "name": "dying-not-active-rejected",
+      "timestampsNonSemantic": true,
+      "initial": {
+        "currentHp": 8,
+        "maxHp": 12,
+        "con": 60,
+        "majorWound": false,
+        "unconscious": false,
+        "dyingEpisode": null,
+        "stabilized": null,
+        "dead": null,
+        "treatmentHistory": [],
+        "history": [],
+        "lastEvent": null
+      },
+      "operations": [
+        {
+          "kind": "dyingRound",
+          "roll": 1,
+          "sourceId": "not-dying",
+          "occurredAt": "2026-08-25T12:00:00.000Z",
+          "expected": {
+            "changed": false,
+            "error": "NoActiveDying",
+            "dyingCheck": null,
+            "treatment": null,
+            "damageEvent": null,
+            "state": {
+              "currentHp": 8,
+              "maxHp": 12,
+              "con": 60,
+              "majorWound": false,
+              "unconscious": false,
+              "dyingEpisode": null,
+              "stabilized": null,
+              "dead": null,
+              "treatmentHistory": [],
+              "history": [],
+              "lastEvent": null
+            }
+          }
+        }
+      ],
+      "expected": {
+        "currentHp": 8,
+        "maxHp": 12,
+        "con": 60,
+        "majorWound": false,
+        "unconscious": false,
+        "dyingEpisode": null,
+        "stabilized": null,
+        "dead": null,
+        "treatmentHistory": [],
+        "history": [],
+        "lastEvent": null
+      }
+    },
+    {
+      "name": "first-aid-within-hour-rejected",
+      "timestampsNonSemantic": true,
+      "initial": {
+        "currentHp": 8,
+        "maxHp": 12,
+        "con": 60,
+        "majorWound": false,
+        "unconscious": false,
+        "dyingEpisode": null,
+        "stabilized": null,
+        "dead": null,
+        "treatmentHistory": [],
+        "history": [],
+        "lastEvent": null
+      },
+      "operations": [
+        {
+          "kind": "firstAid",
+          "target": 50,
+          "roll": 1,
+          "withinHour": false,
+          "sourceId": "aid-window",
+          "occurredAt": "2026-08-25T12:00:00.000Z",
+          "expected": {
+            "changed": false,
+            "error": "FirstAidOutsideHour",
+            "dyingCheck": null,
+            "treatment": null,
+            "damageEvent": null,
+            "state": {
+              "currentHp": 8,
+              "maxHp": 12,
+              "con": 60,
+              "majorWound": false,
+              "unconscious": false,
+              "dyingEpisode": null,
+              "stabilized": null,
+              "dead": null,
+              "treatmentHistory": [],
+              "history": [],
+              "lastEvent": null
+            }
+          }
+        }
+      ],
+      "expected": {
+        "currentHp": 8,
+        "maxHp": 12,
+        "con": 60,
+        "majorWound": false,
+        "unconscious": false,
+        "dyingEpisode": null,
+        "stabilized": null,
+        "dead": null,
+        "treatmentHistory": [],
+        "history": [],
+        "lastEvent": null
+      }
+    },
+    {
+      "name": "first-aid-target-range-rejected",
+      "timestampsNonSemantic": true,
+      "initial": {
+        "currentHp": 8,
+        "maxHp": 12,
+        "con": 60,
+        "majorWound": false,
+        "unconscious": false,
+        "dyingEpisode": null,
+        "stabilized": null,
+        "dead": null,
+        "treatmentHistory": [],
+        "history": [],
+        "lastEvent": null
+      },
+      "operations": [
+        {
+          "kind": "firstAid",
+          "target": 101,
+          "roll": 1,
+          "withinHour": true,
+          "sourceId": "aid-range",
+          "occurredAt": "2026-08-25T12:00:00.000Z",
+          "expected": {
+            "changed": false,
+            "error": "InvalidTarget",
+            "dyingCheck": null,
+            "treatment": null,
+            "damageEvent": null,
+            "state": {
+              "currentHp": 8,
+              "maxHp": 12,
+              "con": 60,
+              "majorWound": false,
+              "unconscious": false,
+              "dyingEpisode": null,
+              "stabilized": null,
+              "dead": null,
+              "treatmentHistory": [],
+              "history": [],
+              "lastEvent": null
+            }
+          }
+        }
+      ],
+      "expected": {
+        "currentHp": 8,
+        "maxHp": 12,
+        "con": 60,
+        "majorWound": false,
+        "unconscious": false,
+        "dyingEpisode": null,
+        "stabilized": null,
+        "dead": null,
+        "treatmentHistory": [],
+        "history": [],
+        "lastEvent": null
+      }
+    },
+    {
+      "name": "first-aid-injured-success",
+      "timestampsNonSemantic": true,
+      "initial": {
+        "currentHp": 8,
+        "maxHp": 12,
+        "con": 60,
+        "majorWound": false,
+        "unconscious": false,
+        "dyingEpisode": null,
+        "stabilized": null,
+        "dead": null,
+        "treatmentHistory": [],
+        "history": [],
+        "lastEvent": null
+      },
+      "operations": [
+        {
+          "kind": "firstAid",
+          "target": 50,
+          "roll": 50,
+          "withinHour": true,
+          "sourceId": "aid-success",
+          "occurredAt": "2026-08-25T12:00:00.000Z",
+          "expected": {
+            "changed": true,
+            "error": null,
+            "dyingCheck": null,
+            "treatment": {
+              "sourceId": "aid-success",
+              "target": 50,
+              "roll": 50,
+              "success": true,
+              "withinHour": true,
+              "hpBefore": 8,
+              "hpAfter": 9,
+              "healedHp": 1,
+              "wasDying": false,
+              "wasUnconscious": false,
+              "stabilizedDying": false,
+              "rousedUnconscious": false,
+              "occurredAt": "2026-08-25T12:00:00.000Z"
+            },
+            "damageEvent": null,
+            "state": {
+              "currentHp": 9,
+              "maxHp": 12,
+              "con": 60,
+              "majorWound": false,
+              "unconscious": false,
+              "dyingEpisode": null,
+              "stabilized": null,
+              "dead": null,
+              "treatmentHistory": [
+                {
+                  "sourceId": "aid-success",
+                  "target": 50,
+                  "roll": 50,
+                  "success": true,
+                  "withinHour": true,
+                  "hpBefore": 8,
+                  "hpAfter": 9,
+                  "healedHp": 1,
+                  "wasDying": false,
+                  "wasUnconscious": false,
+                  "stabilizedDying": false,
+                  "rousedUnconscious": false,
+                  "occurredAt": "2026-08-25T12:00:00.000Z"
+                }
+              ],
+              "history": [],
+              "lastEvent": null
+            }
+          }
+        }
+      ],
+      "expected": {
+        "currentHp": 9,
+        "maxHp": 12,
+        "con": 60,
+        "majorWound": false,
+        "unconscious": false,
+        "dyingEpisode": null,
+        "stabilized": null,
+        "dead": null,
+        "treatmentHistory": [
+          {
+            "sourceId": "aid-success",
+            "target": 50,
+            "roll": 50,
+            "success": true,
+            "withinHour": true,
+            "hpBefore": 8,
+            "hpAfter": 9,
+            "healedHp": 1,
+            "wasDying": false,
+            "wasUnconscious": false,
+            "stabilizedDying": false,
+            "rousedUnconscious": false,
+            "occurredAt": "2026-08-25T12:00:00.000Z"
+          }
+        ],
+        "history": [],
+        "lastEvent": null
+      }
+    },
+    {
+      "name": "first-aid-injured-failure",
+      "timestampsNonSemantic": true,
+      "initial": {
+        "currentHp": 8,
+        "maxHp": 12,
+        "con": 60,
+        "majorWound": false,
+        "unconscious": false,
+        "dyingEpisode": null,
+        "stabilized": null,
+        "dead": null,
+        "treatmentHistory": [],
+        "history": [],
+        "lastEvent": null
+      },
+      "operations": [
+        {
+          "kind": "firstAid",
+          "target": 50,
+          "roll": 51,
+          "withinHour": true,
+          "sourceId": "aid-failure",
+          "occurredAt": "2026-08-25T12:00:00.000Z",
+          "expected": {
+            "changed": true,
+            "error": null,
+            "dyingCheck": null,
+            "treatment": {
+              "sourceId": "aid-failure",
+              "target": 50,
+              "roll": 51,
+              "success": false,
+              "withinHour": true,
+              "hpBefore": 8,
+              "hpAfter": 8,
+              "healedHp": 0,
+              "wasDying": false,
+              "wasUnconscious": false,
+              "stabilizedDying": false,
+              "rousedUnconscious": false,
+              "occurredAt": "2026-08-25T12:00:00.000Z"
+            },
+            "damageEvent": null,
+            "state": {
+              "currentHp": 8,
+              "maxHp": 12,
+              "con": 60,
+              "majorWound": false,
+              "unconscious": false,
+              "dyingEpisode": null,
+              "stabilized": null,
+              "dead": null,
+              "treatmentHistory": [
+                {
+                  "sourceId": "aid-failure",
+                  "target": 50,
+                  "roll": 51,
+                  "success": false,
+                  "withinHour": true,
+                  "hpBefore": 8,
+                  "hpAfter": 8,
+                  "healedHp": 0,
+                  "wasDying": false,
+                  "wasUnconscious": false,
+                  "stabilizedDying": false,
+                  "rousedUnconscious": false,
+                  "occurredAt": "2026-08-25T12:00:00.000Z"
+                }
+              ],
+              "history": [],
+              "lastEvent": null
+            }
+          }
+        }
+      ],
+      "expected": {
+        "currentHp": 8,
+        "maxHp": 12,
+        "con": 60,
+        "majorWound": false,
+        "unconscious": false,
+        "dyingEpisode": null,
+        "stabilized": null,
+        "dead": null,
+        "treatmentHistory": [
+          {
+            "sourceId": "aid-failure",
+            "target": 50,
+            "roll": 51,
+            "success": false,
+            "withinHour": true,
+            "hpBefore": 8,
+            "hpAfter": 8,
+            "healedHp": 0,
+            "wasDying": false,
+            "wasUnconscious": false,
+            "stabilizedDying": false,
+            "rousedUnconscious": false,
+            "occurredAt": "2026-08-25T12:00:00.000Z"
+          }
+        ],
+        "history": [],
+        "lastEvent": null
+      }
+    },
+    {
+      "name": "first-aid-max-hp-cap",
+      "timestampsNonSemantic": true,
+      "initial": {
+        "currentHp": 12,
+        "maxHp": 12,
+        "con": 60,
+        "majorWound": true,
+        "unconscious": true,
+        "dyingEpisode": null,
+        "stabilized": null,
+        "dead": null,
+        "treatmentHistory": [],
+        "history": [
+          {
+            "eventKey": "unconscious-source",
+            "damage": 6,
+            "majorWound": true,
+            "instantDeath": false,
+            "conCheck": {
+              "roll": 99,
+              "target": 60,
+              "success": false
+            }
+          }
+        ],
+        "lastEvent": {
+          "eventKey": "unconscious-source",
+          "damage": 6,
+          "majorWound": true,
+          "instantDeath": false,
+          "conCheck": {
+            "roll": 99,
+            "target": 60,
+            "success": false
+          }
+        }
+      },
+      "operations": [
+        {
+          "kind": "firstAid",
+          "target": 80,
+          "roll": 1,
+          "withinHour": true,
+          "sourceId": "aid-cap",
+          "occurredAt": "2026-08-25T12:00:00.000Z",
+          "expected": {
+            "changed": true,
+            "error": null,
+            "dyingCheck": null,
+            "treatment": {
+              "sourceId": "aid-cap",
+              "target": 80,
+              "roll": 1,
+              "success": true,
+              "withinHour": true,
+              "hpBefore": 12,
+              "hpAfter": 12,
+              "healedHp": 0,
+              "wasDying": false,
+              "wasUnconscious": true,
+              "stabilizedDying": false,
+              "rousedUnconscious": true,
+              "occurredAt": "2026-08-25T12:00:00.000Z"
+            },
+            "damageEvent": null,
+            "state": {
+              "currentHp": 12,
+              "maxHp": 12,
+              "con": 60,
+              "majorWound": true,
+              "unconscious": false,
+              "dyingEpisode": null,
+              "stabilized": null,
+              "dead": null,
+              "treatmentHistory": [
+                {
+                  "sourceId": "aid-cap",
+                  "target": 80,
+                  "roll": 1,
+                  "success": true,
+                  "withinHour": true,
+                  "hpBefore": 12,
+                  "hpAfter": 12,
+                  "healedHp": 0,
+                  "wasDying": false,
+                  "wasUnconscious": true,
+                  "stabilizedDying": false,
+                  "rousedUnconscious": true,
+                  "occurredAt": "2026-08-25T12:00:00.000Z"
+                }
+              ],
+              "history": [
+                {
+                  "eventKey": "unconscious-source",
+                  "damage": 6,
+                  "majorWound": true,
+                  "instantDeath": false,
+                  "conCheck": {
+                    "roll": 99,
+                    "target": 60,
+                    "success": false
+                  }
+                }
+              ],
+              "lastEvent": {
+                "eventKey": "unconscious-source",
+                "damage": 6,
+                "majorWound": true,
+                "instantDeath": false,
+                "conCheck": {
+                  "roll": 99,
+                  "target": 60,
+                  "success": false
+                }
+              }
+            }
+          }
+        }
+      ],
+      "expected": {
+        "currentHp": 12,
+        "maxHp": 12,
+        "con": 60,
+        "majorWound": true,
+        "unconscious": false,
+        "dyingEpisode": null,
+        "stabilized": null,
+        "dead": null,
+        "treatmentHistory": [
+          {
+            "sourceId": "aid-cap",
+            "target": 80,
+            "roll": 1,
+            "success": true,
+            "withinHour": true,
+            "hpBefore": 12,
+            "hpAfter": 12,
+            "healedHp": 0,
+            "wasDying": false,
+            "wasUnconscious": true,
+            "stabilizedDying": false,
+            "rousedUnconscious": true,
+            "occurredAt": "2026-08-25T12:00:00.000Z"
+          }
+        ],
+        "history": [
+          {
+            "eventKey": "unconscious-source",
+            "damage": 6,
+            "majorWound": true,
+            "instantDeath": false,
+            "conCheck": {
+              "roll": 99,
+              "target": 60,
+              "success": false
+            }
+          }
+        ],
+        "lastEvent": {
+          "eventKey": "unconscious-source",
+          "damage": 6,
+          "majorWound": true,
+          "instantDeath": false,
+          "conCheck": {
+            "roll": 99,
+            "target": 60,
+            "success": false
+          }
+        }
+      }
+    },
+    {
+      "name": "first-aid-unconscious-wake",
+      "timestampsNonSemantic": true,
+      "initial": {
+        "currentHp": 6,
+        "maxHp": 12,
+        "con": 60,
+        "majorWound": true,
+        "unconscious": true,
+        "dyingEpisode": null,
+        "stabilized": null,
+        "dead": null,
+        "treatmentHistory": [],
+        "history": [
+          {
+            "eventKey": "unconscious-source",
+            "damage": 6,
+            "majorWound": true,
+            "instantDeath": false,
+            "conCheck": {
+              "roll": 99,
+              "target": 60,
+              "success": false
+            }
+          }
+        ],
+        "lastEvent": {
+          "eventKey": "unconscious-source",
+          "damage": 6,
+          "majorWound": true,
+          "instantDeath": false,
+          "conCheck": {
+            "roll": 99,
+            "target": 60,
+            "success": false
+          }
+        }
+      },
+      "operations": [
+        {
+          "kind": "firstAid",
+          "target": 70,
+          "roll": 20,
+          "withinHour": true,
+          "sourceId": "aid-wake",
+          "occurredAt": "2026-08-25T12:00:00.000Z",
+          "expected": {
+            "changed": true,
+            "error": null,
+            "dyingCheck": null,
+            "treatment": {
+              "sourceId": "aid-wake",
+              "target": 70,
+              "roll": 20,
+              "success": true,
+              "withinHour": true,
+              "hpBefore": 6,
+              "hpAfter": 7,
+              "healedHp": 1,
+              "wasDying": false,
+              "wasUnconscious": true,
+              "stabilizedDying": false,
+              "rousedUnconscious": true,
+              "occurredAt": "2026-08-25T12:00:00.000Z"
+            },
+            "damageEvent": null,
+            "state": {
+              "currentHp": 7,
+              "maxHp": 12,
+              "con": 60,
+              "majorWound": true,
+              "unconscious": false,
+              "dyingEpisode": null,
+              "stabilized": null,
+              "dead": null,
+              "treatmentHistory": [
+                {
+                  "sourceId": "aid-wake",
+                  "target": 70,
+                  "roll": 20,
+                  "success": true,
+                  "withinHour": true,
+                  "hpBefore": 6,
+                  "hpAfter": 7,
+                  "healedHp": 1,
+                  "wasDying": false,
+                  "wasUnconscious": true,
+                  "stabilizedDying": false,
+                  "rousedUnconscious": true,
+                  "occurredAt": "2026-08-25T12:00:00.000Z"
+                }
+              ],
+              "history": [
+                {
+                  "eventKey": "unconscious-source",
+                  "damage": 6,
+                  "majorWound": true,
+                  "instantDeath": false,
+                  "conCheck": {
+                    "roll": 99,
+                    "target": 60,
+                    "success": false
+                  }
+                }
+              ],
+              "lastEvent": {
+                "eventKey": "unconscious-source",
+                "damage": 6,
+                "majorWound": true,
+                "instantDeath": false,
+                "conCheck": {
+                  "roll": 99,
+                  "target": 60,
+                  "success": false
+                }
+              }
+            }
+          }
+        }
+      ],
+      "expected": {
+        "currentHp": 7,
+        "maxHp": 12,
+        "con": 60,
+        "majorWound": true,
+        "unconscious": false,
+        "dyingEpisode": null,
+        "stabilized": null,
+        "dead": null,
+        "treatmentHistory": [
+          {
+            "sourceId": "aid-wake",
+            "target": 70,
+            "roll": 20,
+            "success": true,
+            "withinHour": true,
+            "hpBefore": 6,
+            "hpAfter": 7,
+            "healedHp": 1,
+            "wasDying": false,
+            "wasUnconscious": true,
+            "stabilizedDying": false,
+            "rousedUnconscious": true,
+            "occurredAt": "2026-08-25T12:00:00.000Z"
+          }
+        ],
+        "history": [
+          {
+            "eventKey": "unconscious-source",
+            "damage": 6,
+            "majorWound": true,
+            "instantDeath": false,
+            "conCheck": {
+              "roll": 99,
+              "target": 60,
+              "success": false
+            }
+          }
+        ],
+        "lastEvent": {
+          "eventKey": "unconscious-source",
+          "damage": 6,
+          "majorWound": true,
+          "instantDeath": false,
+          "conCheck": {
+            "roll": 99,
+            "target": 60,
+            "success": false
+          }
+        }
+      }
+    },
+    {
+      "name": "first-aid-dying-stabilizes",
+      "timestampsNonSemantic": true,
+      "initial": {
+        "currentHp": 0,
+        "maxHp": 12,
+        "con": 60,
+        "majorWound": true,
+        "unconscious": true,
+        "dyingEpisode": {
+          "sourceEventKey": "dying-source",
+          "checks": [],
+          "nextRoundOrdinal": 1,
+          "roundChecksManaged": false
+        },
+        "stabilized": null,
+        "dead": null,
+        "treatmentHistory": [],
+        "history": [
+          {
+            "eventKey": "dying-source",
+            "damage": 6,
+            "majorWound": true,
+            "instantDeath": false,
+            "conCheck": {
+              "roll": 1,
+              "target": 60,
+              "success": true
+            }
+          }
+        ],
+        "lastEvent": {
+          "eventKey": "dying-source",
+          "damage": 6,
+          "majorWound": true,
+          "instantDeath": false,
+          "conCheck": {
+            "roll": 1,
+            "target": 60,
+            "success": true
+          }
+        }
+      },
+      "operations": [
+        {
+          "kind": "firstAid",
+          "target": 70,
+          "roll": 20,
+          "withinHour": true,
+          "sourceId": "aid-stabilize",
+          "occurredAt": "2026-08-25T12:00:00.000Z",
+          "expected": {
+            "changed": true,
+            "error": null,
+            "dyingCheck": null,
+            "treatment": {
+              "sourceId": "aid-stabilize",
+              "target": 70,
+              "roll": 20,
+              "success": true,
+              "withinHour": true,
+              "hpBefore": 0,
+              "hpAfter": 1,
+              "healedHp": 1,
+              "wasDying": true,
+              "wasUnconscious": true,
+              "stabilizedDying": true,
+              "rousedUnconscious": true,
+              "occurredAt": "2026-08-25T12:00:00.000Z"
+            },
+            "damageEvent": null,
+            "state": {
+              "currentHp": 1,
+              "maxHp": 12,
+              "con": 60,
+              "majorWound": true,
+              "unconscious": false,
+              "dyingEpisode": null,
+              "stabilized": {
+                "sourceId": "aid-stabilize",
+                "reason": "successful_first_aid",
+                "firstAidTarget": 70,
+                "firstAidRoll": 20,
+                "occurredAt": "2026-08-25T12:00:00.000Z"
+              },
+              "dead": null,
+              "treatmentHistory": [
+                {
+                  "sourceId": "aid-stabilize",
+                  "target": 70,
+                  "roll": 20,
+                  "success": true,
+                  "withinHour": true,
+                  "hpBefore": 0,
+                  "hpAfter": 1,
+                  "healedHp": 1,
+                  "wasDying": true,
+                  "wasUnconscious": true,
+                  "stabilizedDying": true,
+                  "rousedUnconscious": true,
+                  "occurredAt": "2026-08-25T12:00:00.000Z"
+                }
+              ],
+              "history": [
+                {
+                  "eventKey": "dying-source",
+                  "damage": 6,
+                  "majorWound": true,
+                  "instantDeath": false,
+                  "conCheck": {
+                    "roll": 1,
+                    "target": 60,
+                    "success": true
+                  }
+                }
+              ],
+              "lastEvent": {
+                "eventKey": "dying-source",
+                "damage": 6,
+                "majorWound": true,
+                "instantDeath": false,
+                "conCheck": {
+                  "roll": 1,
+                  "target": 60,
+                  "success": true
+                }
+              }
+            }
+          }
+        }
+      ],
+      "expected": {
+        "currentHp": 1,
+        "maxHp": 12,
+        "con": 60,
+        "majorWound": true,
+        "unconscious": false,
+        "dyingEpisode": null,
+        "stabilized": {
+          "sourceId": "aid-stabilize",
+          "reason": "successful_first_aid",
+          "firstAidTarget": 70,
+          "firstAidRoll": 20,
+          "occurredAt": "2026-08-25T12:00:00.000Z"
+        },
+        "dead": null,
+        "treatmentHistory": [
+          {
+            "sourceId": "aid-stabilize",
+            "target": 70,
+            "roll": 20,
+            "success": true,
+            "withinHour": true,
+            "hpBefore": 0,
+            "hpAfter": 1,
+            "healedHp": 1,
+            "wasDying": true,
+            "wasUnconscious": true,
+            "stabilizedDying": true,
+            "rousedUnconscious": true,
+            "occurredAt": "2026-08-25T12:00:00.000Z"
+          }
+        ],
+        "history": [
+          {
+            "eventKey": "dying-source",
+            "damage": 6,
+            "majorWound": true,
+            "instantDeath": false,
+            "conCheck": {
+              "roll": 1,
+              "target": 60,
+              "success": true
+            }
+          }
+        ],
+        "lastEvent": {
+          "eventKey": "dying-source",
+          "damage": 6,
+          "majorWound": true,
+          "instantDeath": false,
+          "conCheck": {
+            "roll": 1,
+            "target": 60,
+            "success": true
+          }
+        }
+      }
+    },
+    {
+      "name": "first-aid-dying-failure",
+      "timestampsNonSemantic": true,
+      "initial": {
+        "currentHp": 0,
+        "maxHp": 12,
+        "con": 60,
+        "majorWound": true,
+        "unconscious": true,
+        "dyingEpisode": {
+          "sourceEventKey": "dying-source",
+          "checks": [],
+          "nextRoundOrdinal": 1,
+          "roundChecksManaged": false
+        },
+        "stabilized": null,
+        "dead": null,
+        "treatmentHistory": [],
+        "history": [
+          {
+            "eventKey": "dying-source",
+            "damage": 6,
+            "majorWound": true,
+            "instantDeath": false,
+            "conCheck": {
+              "roll": 1,
+              "target": 60,
+              "success": true
+            }
+          }
+        ],
+        "lastEvent": {
+          "eventKey": "dying-source",
+          "damage": 6,
+          "majorWound": true,
+          "instantDeath": false,
+          "conCheck": {
+            "roll": 1,
+            "target": 60,
+            "success": true
+          }
+        }
+      },
+      "operations": [
+        {
+          "kind": "firstAid",
+          "target": 30,
+          "roll": 80,
+          "withinHour": true,
+          "sourceId": "aid-dying-failure",
+          "occurredAt": "2026-08-25T12:00:00.000Z",
+          "expected": {
+            "changed": true,
+            "error": null,
+            "dyingCheck": null,
+            "treatment": {
+              "sourceId": "aid-dying-failure",
+              "target": 30,
+              "roll": 80,
+              "success": false,
+              "withinHour": true,
+              "hpBefore": 0,
+              "hpAfter": 0,
+              "healedHp": 0,
+              "wasDying": true,
+              "wasUnconscious": true,
+              "stabilizedDying": false,
+              "rousedUnconscious": false,
+              "occurredAt": "2026-08-25T12:00:00.000Z"
+            },
+            "damageEvent": null,
+            "state": {
+              "currentHp": 0,
+              "maxHp": 12,
+              "con": 60,
+              "majorWound": true,
+              "unconscious": true,
+              "dyingEpisode": {
+                "sourceEventKey": "dying-source",
+                "checks": [],
+                "nextRoundOrdinal": 1,
+                "roundChecksManaged": false
+              },
+              "stabilized": null,
+              "dead": null,
+              "treatmentHistory": [
+                {
+                  "sourceId": "aid-dying-failure",
+                  "target": 30,
+                  "roll": 80,
+                  "success": false,
+                  "withinHour": true,
+                  "hpBefore": 0,
+                  "hpAfter": 0,
+                  "healedHp": 0,
+                  "wasDying": true,
+                  "wasUnconscious": true,
+                  "stabilizedDying": false,
+                  "rousedUnconscious": false,
+                  "occurredAt": "2026-08-25T12:00:00.000Z"
+                }
+              ],
+              "history": [
+                {
+                  "eventKey": "dying-source",
+                  "damage": 6,
+                  "majorWound": true,
+                  "instantDeath": false,
+                  "conCheck": {
+                    "roll": 1,
+                    "target": 60,
+                    "success": true
+                  }
+                }
+              ],
+              "lastEvent": {
+                "eventKey": "dying-source",
+                "damage": 6,
+                "majorWound": true,
+                "instantDeath": false,
+                "conCheck": {
+                  "roll": 1,
+                  "target": 60,
+                  "success": true
+                }
+              }
+            }
+          }
+        }
+      ],
+      "expected": {
+        "currentHp": 0,
+        "maxHp": 12,
+        "con": 60,
+        "majorWound": true,
+        "unconscious": true,
+        "dyingEpisode": {
+          "sourceEventKey": "dying-source",
+          "checks": [],
+          "nextRoundOrdinal": 1,
+          "roundChecksManaged": false
+        },
+        "stabilized": null,
+        "dead": null,
+        "treatmentHistory": [
+          {
+            "sourceId": "aid-dying-failure",
+            "target": 30,
+            "roll": 80,
+            "success": false,
+            "withinHour": true,
+            "hpBefore": 0,
+            "hpAfter": 0,
+            "healedHp": 0,
+            "wasDying": true,
+            "wasUnconscious": true,
+            "stabilizedDying": false,
+            "rousedUnconscious": false,
+            "occurredAt": "2026-08-25T12:00:00.000Z"
+          }
+        ],
+        "history": [
+          {
+            "eventKey": "dying-source",
+            "damage": 6,
+            "majorWound": true,
+            "instantDeath": false,
+            "conCheck": {
+              "roll": 1,
+              "target": 60,
+              "success": true
+            }
+          }
+        ],
+        "lastEvent": {
+          "eventKey": "dying-source",
+          "damage": 6,
+          "majorWound": true,
+          "instantDeath": false,
+          "conCheck": {
+            "roll": 1,
+            "target": 60,
+            "success": true
+          }
+        }
+      }
+    },
+    {
+      "name": "first-aid-stabilized-cannot-dying-round",
+      "timestampsNonSemantic": true,
+      "initial": {
+        "currentHp": 1,
+        "maxHp": 12,
+        "con": 60,
+        "majorWound": true,
+        "unconscious": false,
+        "dyingEpisode": null,
+        "stabilized": {
+          "sourceId": "setup-aid",
+          "reason": "successful_first_aid",
+          "firstAidTarget": 70,
+          "firstAidRoll": 20,
+          "occurredAt": "2026-08-25T12:00:00.000Z"
+        },
+        "dead": null,
+        "treatmentHistory": [
+          {
+            "sourceId": "setup-aid",
+            "target": 70,
+            "roll": 20,
+            "success": true,
+            "withinHour": true,
+            "hpBefore": 0,
+            "hpAfter": 1,
+            "healedHp": 1,
+            "wasDying": true,
+            "wasUnconscious": true,
+            "stabilizedDying": true,
+            "rousedUnconscious": true,
+            "occurredAt": "2026-08-25T12:00:00.000Z"
+          }
+        ],
+        "history": [
+          {
+            "eventKey": "dying-source",
+            "damage": 6,
+            "majorWound": true,
+            "instantDeath": false,
+            "conCheck": {
+              "roll": 1,
+              "target": 60,
+              "success": true
+            }
+          }
+        ],
+        "lastEvent": {
+          "eventKey": "dying-source",
+          "damage": 6,
+          "majorWound": true,
+          "instantDeath": false,
+          "conCheck": {
+            "roll": 1,
+            "target": 60,
+            "success": true
+          }
+        }
+      },
+      "operations": [
+        {
+          "kind": "dyingRound",
+          "roll": 1,
+          "sourceId": "stabilized-round",
+          "occurredAt": "2026-08-25T12:00:00.000Z",
+          "expected": {
+            "changed": false,
+            "error": "NoActiveDying",
+            "dyingCheck": null,
+            "treatment": null,
+            "damageEvent": null,
+            "state": {
+              "currentHp": 1,
+              "maxHp": 12,
+              "con": 60,
+              "majorWound": true,
+              "unconscious": false,
+              "dyingEpisode": null,
+              "stabilized": {
+                "sourceId": "setup-aid",
+                "reason": "successful_first_aid",
+                "firstAidTarget": 70,
+                "firstAidRoll": 20,
+                "occurredAt": "2026-08-25T12:00:00.000Z"
+              },
+              "dead": null,
+              "treatmentHistory": [
+                {
+                  "sourceId": "setup-aid",
+                  "target": 70,
+                  "roll": 20,
+                  "success": true,
+                  "withinHour": true,
+                  "hpBefore": 0,
+                  "hpAfter": 1,
+                  "healedHp": 1,
+                  "wasDying": true,
+                  "wasUnconscious": true,
+                  "stabilizedDying": true,
+                  "rousedUnconscious": true,
+                  "occurredAt": "2026-08-25T12:00:00.000Z"
+                }
+              ],
+              "history": [
+                {
+                  "eventKey": "dying-source",
+                  "damage": 6,
+                  "majorWound": true,
+                  "instantDeath": false,
+                  "conCheck": {
+                    "roll": 1,
+                    "target": 60,
+                    "success": true
+                  }
+                }
+              ],
+              "lastEvent": {
+                "eventKey": "dying-source",
+                "damage": 6,
+                "majorWound": true,
+                "instantDeath": false,
+                "conCheck": {
+                  "roll": 1,
+                  "target": 60,
+                  "success": true
+                }
+              }
+            }
+          }
+        }
+      ],
+      "expected": {
+        "currentHp": 1,
+        "maxHp": 12,
+        "con": 60,
+        "majorWound": true,
+        "unconscious": false,
+        "dyingEpisode": null,
+        "stabilized": {
+          "sourceId": "setup-aid",
+          "reason": "successful_first_aid",
+          "firstAidTarget": 70,
+          "firstAidRoll": 20,
+          "occurredAt": "2026-08-25T12:00:00.000Z"
+        },
+        "dead": null,
+        "treatmentHistory": [
+          {
+            "sourceId": "setup-aid",
+            "target": 70,
+            "roll": 20,
+            "success": true,
+            "withinHour": true,
+            "hpBefore": 0,
+            "hpAfter": 1,
+            "healedHp": 1,
+            "wasDying": true,
+            "wasUnconscious": true,
+            "stabilizedDying": true,
+            "rousedUnconscious": true,
+            "occurredAt": "2026-08-25T12:00:00.000Z"
+          }
+        ],
+        "history": [
+          {
+            "eventKey": "dying-source",
+            "damage": 6,
+            "majorWound": true,
+            "instantDeath": false,
+            "conCheck": {
+              "roll": 1,
+              "target": 60,
+              "success": true
+            }
+          }
+        ],
+        "lastEvent": {
+          "eventKey": "dying-source",
+          "damage": 6,
+          "majorWound": true,
+          "instantDeath": false,
+          "conCheck": {
+            "roll": 1,
+            "target": 60,
+            "success": true
+          }
+        }
+      }
+    },
+    {
+      "name": "first-aid-dead-rejected",
+      "timestampsNonSemantic": true,
+      "initial": {
+        "currentHp": 0,
+        "maxHp": 12,
+        "con": 60,
+        "majorWound": true,
+        "unconscious": false,
+        "dyingEpisode": null,
+        "stabilized": null,
+        "dead": {
+          "sourceEventKey": "dying-source",
+          "reason": "dying_con_failure",
+          "occurredAt": "2026-08-25T12:00:00.000Z"
+        },
+        "treatmentHistory": [],
+        "history": [
+          {
+            "eventKey": "dying-source",
+            "damage": 6,
+            "majorWound": true,
+            "instantDeath": false,
+            "conCheck": {
+              "roll": 1,
+              "target": 60,
+              "success": true
+            }
+          }
+        ],
+        "lastEvent": {
+          "eventKey": "dying-source",
+          "damage": 6,
+          "majorWound": true,
+          "instantDeath": false,
+          "conCheck": {
+            "roll": 1,
+            "target": 60,
+            "success": true
+          }
+        }
+      },
+      "operations": [
+        {
+          "kind": "firstAid",
+          "target": 80,
+          "roll": 1,
+          "withinHour": true,
+          "sourceId": "dead-aid",
+          "occurredAt": "2026-08-25T12:00:00.000Z",
+          "expected": {
+            "changed": false,
+            "error": "NoTreatableInjury",
+            "dyingCheck": null,
+            "treatment": null,
+            "damageEvent": null,
+            "state": {
+              "currentHp": 0,
+              "maxHp": 12,
+              "con": 60,
+              "majorWound": true,
+              "unconscious": false,
+              "dyingEpisode": null,
+              "stabilized": null,
+              "dead": {
+                "sourceEventKey": "dying-source",
+                "reason": "dying_con_failure",
+                "occurredAt": "2026-08-25T12:00:00.000Z"
+              },
+              "treatmentHistory": [],
+              "history": [
+                {
+                  "eventKey": "dying-source",
+                  "damage": 6,
+                  "majorWound": true,
+                  "instantDeath": false,
+                  "conCheck": {
+                    "roll": 1,
+                    "target": 60,
+                    "success": true
+                  }
+                }
+              ],
+              "lastEvent": {
+                "eventKey": "dying-source",
+                "damage": 6,
+                "majorWound": true,
+                "instantDeath": false,
+                "conCheck": {
+                  "roll": 1,
+                  "target": 60,
+                  "success": true
+                }
+              }
+            }
+          }
+        }
+      ],
+      "expected": {
+        "currentHp": 0,
+        "maxHp": 12,
+        "con": 60,
+        "majorWound": true,
+        "unconscious": false,
+        "dyingEpisode": null,
+        "stabilized": null,
+        "dead": {
+          "sourceEventKey": "dying-source",
+          "reason": "dying_con_failure",
+          "occurredAt": "2026-08-25T12:00:00.000Z"
+        },
+        "treatmentHistory": [],
+        "history": [
+          {
+            "eventKey": "dying-source",
+            "damage": 6,
+            "majorWound": true,
+            "instantDeath": false,
+            "conCheck": {
+              "roll": 1,
+              "target": 60,
+              "success": true
+            }
+          }
+        ],
+        "lastEvent": {
+          "eventKey": "dying-source",
+          "damage": 6,
+          "majorWound": true,
+          "instantDeath": false,
+          "conCheck": {
+            "roll": 1,
+            "target": 60,
+            "success": true
+          }
+        }
+      }
+    },
+    {
+      "name": "damage-dying-con-success-sequence",
+      "timestampsNonSemantic": true,
+      "initial": {
+        "currentHp": 12,
+        "maxHp": 12,
+        "con": 60,
+        "majorWound": false,
+        "unconscious": false,
+        "dyingEpisode": null,
+        "stabilized": null,
+        "dead": null,
+        "treatmentHistory": [],
+        "history": [],
+        "lastEvent": null
+      },
+      "operations": [
+        {
+          "kind": "damage",
+          "eventKey": "sequence-major",
+          "damage": 6,
+          "roll": 60,
+          "occurredAt": null,
+          "expected": {
+            "changed": true,
+            "error": null,
+            "dyingCheck": null,
+            "treatment": null,
+            "damageEvent": {
+              "eventKey": "sequence-major",
+              "damage": 6,
+              "majorWound": true,
+              "instantDeath": false,
+              "conCheck": {
+                "roll": 60,
+                "target": 60,
+                "success": true
+              }
+            },
+            "state": {
+              "currentHp": 6,
+              "maxHp": 12,
+              "con": 60,
+              "majorWound": true,
+              "unconscious": false,
+              "dyingEpisode": null,
+              "stabilized": null,
+              "dead": null,
+              "treatmentHistory": [],
+              "history": [
+                {
+                  "eventKey": "sequence-major",
+                  "damage": 6,
+                  "majorWound": true,
+                  "instantDeath": false,
+                  "conCheck": {
+                    "roll": 60,
+                    "target": 60,
+                    "success": true
+                  }
+                }
+              ],
+              "lastEvent": {
+                "eventKey": "sequence-major",
+                "damage": 6,
+                "majorWound": true,
+                "instantDeath": false,
+                "conCheck": {
+                  "roll": 60,
+                  "target": 60,
+                  "success": true
+                }
+              }
+            }
+          }
+        },
+        {
+          "kind": "damage",
+          "eventKey": "sequence-zero",
+          "damage": 6,
+          "roll": 1,
+          "occurredAt": null,
+          "expected": {
+            "changed": true,
+            "error": null,
+            "dyingCheck": null,
+            "treatment": null,
+            "damageEvent": {
+              "eventKey": "sequence-zero",
+              "damage": 6,
+              "majorWound": true,
+              "instantDeath": false,
+              "conCheck": {
+                "roll": 1,
+                "target": 60,
+                "success": true
+              }
+            },
+            "state": {
+              "currentHp": 0,
+              "maxHp": 12,
+              "con": 60,
+              "majorWound": true,
+              "unconscious": true,
+              "dyingEpisode": {
+                "sourceEventKey": "sequence-zero",
+                "checks": [],
+                "nextRoundOrdinal": 1,
+                "roundChecksManaged": false
+              },
+              "stabilized": null,
+              "dead": null,
+              "treatmentHistory": [],
+              "history": [
+                {
+                  "eventKey": "sequence-major",
+                  "damage": 6,
+                  "majorWound": true,
+                  "instantDeath": false,
+                  "conCheck": {
+                    "roll": 60,
+                    "target": 60,
+                    "success": true
+                  }
+                },
+                {
+                  "eventKey": "sequence-zero",
+                  "damage": 6,
+                  "majorWound": true,
+                  "instantDeath": false,
+                  "conCheck": {
+                    "roll": 1,
+                    "target": 60,
+                    "success": true
+                  }
+                }
+              ],
+              "lastEvent": {
+                "eventKey": "sequence-zero",
+                "damage": 6,
+                "majorWound": true,
+                "instantDeath": false,
+                "conCheck": {
+                  "roll": 1,
+                  "target": 60,
+                  "success": true
+                }
+              }
+            }
+          }
+        },
+        {
+          "kind": "dyingRound",
+          "roll": 60,
+          "sourceId": "sequence-round",
+          "occurredAt": "2026-08-25T12:00:00.000Z",
+          "expected": {
+            "changed": true,
+            "error": null,
+            "dyingCheck": {
+              "ordinal": 1,
+              "roll": 60,
+              "target": 60,
+              "success": true,
+              "sourceId": "sequence-round",
+              "occurredAt": "2026-08-25T12:00:00.000Z"
+            },
+            "treatment": null,
+            "damageEvent": null,
+            "state": {
+              "currentHp": 0,
+              "maxHp": 12,
+              "con": 60,
+              "majorWound": true,
+              "unconscious": true,
+              "dyingEpisode": {
+                "sourceEventKey": "sequence-zero",
+                "checks": [
+                  {
+                    "ordinal": 1,
+                    "roll": 60,
+                    "target": 60,
+                    "success": true,
+                    "sourceId": "sequence-round",
+                    "occurredAt": "2026-08-25T12:00:00.000Z"
+                  }
+                ],
+                "nextRoundOrdinal": 2,
+                "roundChecksManaged": true
+              },
+              "stabilized": null,
+              "dead": null,
+              "treatmentHistory": [],
+              "history": [
+                {
+                  "eventKey": "sequence-major",
+                  "damage": 6,
+                  "majorWound": true,
+                  "instantDeath": false,
+                  "conCheck": {
+                    "roll": 60,
+                    "target": 60,
+                    "success": true
+                  }
+                },
+                {
+                  "eventKey": "sequence-zero",
+                  "damage": 6,
+                  "majorWound": true,
+                  "instantDeath": false,
+                  "conCheck": {
+                    "roll": 1,
+                    "target": 60,
+                    "success": true
+                  }
+                }
+              ],
+              "lastEvent": {
+                "eventKey": "sequence-zero",
+                "damage": 6,
+                "majorWound": true,
+                "instantDeath": false,
+                "conCheck": {
+                  "roll": 1,
+                  "target": 60,
+                  "success": true
+                }
+              }
+            }
+          }
+        }
+      ],
+      "expected": {
+        "currentHp": 0,
+        "maxHp": 12,
+        "con": 60,
+        "majorWound": true,
+        "unconscious": true,
+        "dyingEpisode": {
+          "sourceEventKey": "sequence-zero",
+          "checks": [
+            {
+              "ordinal": 1,
+              "roll": 60,
+              "target": 60,
+              "success": true,
+              "sourceId": "sequence-round",
+              "occurredAt": "2026-08-25T12:00:00.000Z"
+            }
+          ],
+          "nextRoundOrdinal": 2,
+          "roundChecksManaged": true
+        },
+        "stabilized": null,
+        "dead": null,
+        "treatmentHistory": [],
+        "history": [
+          {
+            "eventKey": "sequence-major",
+            "damage": 6,
+            "majorWound": true,
+            "instantDeath": false,
+            "conCheck": {
+              "roll": 60,
+              "target": 60,
+              "success": true
+            }
+          },
+          {
+            "eventKey": "sequence-zero",
+            "damage": 6,
+            "majorWound": true,
+            "instantDeath": false,
+            "conCheck": {
+              "roll": 1,
+              "target": 60,
+              "success": true
+            }
+          }
+        ],
+        "lastEvent": {
+          "eventKey": "sequence-zero",
+          "damage": 6,
+          "majorWound": true,
+          "instantDeath": false,
+          "conCheck": {
+            "roll": 1,
+            "target": 60,
+            "success": true
+          }
+        }
+      }
+    },
+    {
+      "name": "damage-dying-first-aid-sequence",
+      "timestampsNonSemantic": true,
+      "initial": {
+        "currentHp": 12,
+        "maxHp": 12,
+        "con": 60,
+        "majorWound": false,
+        "unconscious": false,
+        "dyingEpisode": null,
+        "stabilized": null,
+        "dead": null,
+        "treatmentHistory": [],
+        "history": [],
+        "lastEvent": null
+      },
+      "operations": [
+        {
+          "kind": "damage",
+          "eventKey": "sequence-aid-major",
+          "damage": 6,
+          "roll": 1,
+          "occurredAt": null,
+          "expected": {
+            "changed": true,
+            "error": null,
+            "dyingCheck": null,
+            "treatment": null,
+            "damageEvent": {
+              "eventKey": "sequence-aid-major",
+              "damage": 6,
+              "majorWound": true,
+              "instantDeath": false,
+              "conCheck": {
+                "roll": 1,
+                "target": 60,
+                "success": true
+              }
+            },
+            "state": {
+              "currentHp": 6,
+              "maxHp": 12,
+              "con": 60,
+              "majorWound": true,
+              "unconscious": false,
+              "dyingEpisode": null,
+              "stabilized": null,
+              "dead": null,
+              "treatmentHistory": [],
+              "history": [
+                {
+                  "eventKey": "sequence-aid-major",
+                  "damage": 6,
+                  "majorWound": true,
+                  "instantDeath": false,
+                  "conCheck": {
+                    "roll": 1,
+                    "target": 60,
+                    "success": true
+                  }
+                }
+              ],
+              "lastEvent": {
+                "eventKey": "sequence-aid-major",
+                "damage": 6,
+                "majorWound": true,
+                "instantDeath": false,
+                "conCheck": {
+                  "roll": 1,
+                  "target": 60,
+                  "success": true
+                }
+              }
+            }
+          }
+        },
+        {
+          "kind": "damage",
+          "eventKey": "sequence-aid-zero",
+          "damage": 6,
+          "roll": 1,
+          "occurredAt": null,
+          "expected": {
+            "changed": true,
+            "error": null,
+            "dyingCheck": null,
+            "treatment": null,
+            "damageEvent": {
+              "eventKey": "sequence-aid-zero",
+              "damage": 6,
+              "majorWound": true,
+              "instantDeath": false,
+              "conCheck": {
+                "roll": 1,
+                "target": 60,
+                "success": true
+              }
+            },
+            "state": {
+              "currentHp": 0,
+              "maxHp": 12,
+              "con": 60,
+              "majorWound": true,
+              "unconscious": true,
+              "dyingEpisode": {
+                "sourceEventKey": "sequence-aid-zero",
+                "checks": [],
+                "nextRoundOrdinal": 1,
+                "roundChecksManaged": false
+              },
+              "stabilized": null,
+              "dead": null,
+              "treatmentHistory": [],
+              "history": [
+                {
+                  "eventKey": "sequence-aid-major",
+                  "damage": 6,
+                  "majorWound": true,
+                  "instantDeath": false,
+                  "conCheck": {
+                    "roll": 1,
+                    "target": 60,
+                    "success": true
+                  }
+                },
+                {
+                  "eventKey": "sequence-aid-zero",
+                  "damage": 6,
+                  "majorWound": true,
+                  "instantDeath": false,
+                  "conCheck": {
+                    "roll": 1,
+                    "target": 60,
+                    "success": true
+                  }
+                }
+              ],
+              "lastEvent": {
+                "eventKey": "sequence-aid-zero",
+                "damage": 6,
+                "majorWound": true,
+                "instantDeath": false,
+                "conCheck": {
+                  "roll": 1,
+                  "target": 60,
+                  "success": true
+                }
+              }
+            }
+          }
+        },
+        {
+          "kind": "firstAid",
+          "target": 70,
+          "roll": 20,
+          "withinHour": true,
+          "sourceId": "sequence-aid",
+          "occurredAt": "2026-08-25T12:00:00.000Z",
+          "expected": {
+            "changed": true,
+            "error": null,
+            "dyingCheck": null,
+            "treatment": {
+              "sourceId": "sequence-aid",
+              "target": 70,
+              "roll": 20,
+              "success": true,
+              "withinHour": true,
+              "hpBefore": 0,
+              "hpAfter": 1,
+              "healedHp": 1,
+              "wasDying": true,
+              "wasUnconscious": true,
+              "stabilizedDying": true,
+              "rousedUnconscious": true,
+              "occurredAt": "2026-08-25T12:00:00.000Z"
+            },
+            "damageEvent": null,
+            "state": {
+              "currentHp": 1,
+              "maxHp": 12,
+              "con": 60,
+              "majorWound": true,
+              "unconscious": false,
+              "dyingEpisode": null,
+              "stabilized": {
+                "sourceId": "sequence-aid",
+                "reason": "successful_first_aid",
+                "firstAidTarget": 70,
+                "firstAidRoll": 20,
+                "occurredAt": "2026-08-25T12:00:00.000Z"
+              },
+              "dead": null,
+              "treatmentHistory": [
+                {
+                  "sourceId": "sequence-aid",
+                  "target": 70,
+                  "roll": 20,
+                  "success": true,
+                  "withinHour": true,
+                  "hpBefore": 0,
+                  "hpAfter": 1,
+                  "healedHp": 1,
+                  "wasDying": true,
+                  "wasUnconscious": true,
+                  "stabilizedDying": true,
+                  "rousedUnconscious": true,
+                  "occurredAt": "2026-08-25T12:00:00.000Z"
+                }
+              ],
+              "history": [
+                {
+                  "eventKey": "sequence-aid-major",
+                  "damage": 6,
+                  "majorWound": true,
+                  "instantDeath": false,
+                  "conCheck": {
+                    "roll": 1,
+                    "target": 60,
+                    "success": true
+                  }
+                },
+                {
+                  "eventKey": "sequence-aid-zero",
+                  "damage": 6,
+                  "majorWound": true,
+                  "instantDeath": false,
+                  "conCheck": {
+                    "roll": 1,
+                    "target": 60,
+                    "success": true
+                  }
+                }
+              ],
+              "lastEvent": {
+                "eventKey": "sequence-aid-zero",
+                "damage": 6,
+                "majorWound": true,
+                "instantDeath": false,
+                "conCheck": {
+                  "roll": 1,
+                  "target": 60,
+                  "success": true
+                }
+              }
+            }
+          }
+        }
+      ],
+      "expected": {
+        "currentHp": 1,
+        "maxHp": 12,
+        "con": 60,
+        "majorWound": true,
+        "unconscious": false,
+        "dyingEpisode": null,
+        "stabilized": {
+          "sourceId": "sequence-aid",
+          "reason": "successful_first_aid",
+          "firstAidTarget": 70,
+          "firstAidRoll": 20,
+          "occurredAt": "2026-08-25T12:00:00.000Z"
+        },
+        "dead": null,
+        "treatmentHistory": [
+          {
+            "sourceId": "sequence-aid",
+            "target": 70,
+            "roll": 20,
+            "success": true,
+            "withinHour": true,
+            "hpBefore": 0,
+            "hpAfter": 1,
+            "healedHp": 1,
+            "wasDying": true,
+            "wasUnconscious": true,
+            "stabilizedDying": true,
+            "rousedUnconscious": true,
+            "occurredAt": "2026-08-25T12:00:00.000Z"
+          }
+        ],
+        "history": [
+          {
+            "eventKey": "sequence-aid-major",
+            "damage": 6,
+            "majorWound": true,
+            "instantDeath": false,
+            "conCheck": {
+              "roll": 1,
+              "target": 60,
+              "success": true
+            }
+          },
+          {
+            "eventKey": "sequence-aid-zero",
+            "damage": 6,
+            "majorWound": true,
+            "instantDeath": false,
+            "conCheck": {
+              "roll": 1,
+              "target": 60,
+              "success": true
+            }
+          }
+        ],
+        "lastEvent": {
+          "eventKey": "sequence-aid-zero",
+          "damage": 6,
+          "majorWound": true,
+          "instantDeath": false,
+          "conCheck": {
+            "roll": 1,
+            "target": 60,
+            "success": true
+          }
+        }
+      }
+    },
+    {
+      "name": "damage-stabilized-fresh-damage-invalidates",
+      "timestampsNonSemantic": true,
+      "initial": {
+        "currentHp": 1,
+        "maxHp": 12,
+        "con": 60,
+        "majorWound": true,
+        "unconscious": false,
+        "dyingEpisode": null,
+        "stabilized": {
+          "sourceId": "setup-aid",
+          "reason": "successful_first_aid",
+          "firstAidTarget": 70,
+          "firstAidRoll": 20,
+          "occurredAt": "2026-08-25T12:00:00.000Z"
+        },
+        "dead": null,
+        "treatmentHistory": [
+          {
+            "sourceId": "setup-aid",
+            "target": 70,
+            "roll": 20,
+            "success": true,
+            "withinHour": true,
+            "hpBefore": 0,
+            "hpAfter": 1,
+            "healedHp": 1,
+            "wasDying": true,
+            "wasUnconscious": true,
+            "stabilizedDying": true,
+            "rousedUnconscious": true,
+            "occurredAt": "2026-08-25T12:00:00.000Z"
+          }
+        ],
+        "history": [
+          {
+            "eventKey": "dying-source",
+            "damage": 6,
+            "majorWound": true,
+            "instantDeath": false,
+            "conCheck": {
+              "roll": 1,
+              "target": 60,
+              "success": true
+            }
+          }
+        ],
+        "lastEvent": {
+          "eventKey": "dying-source",
+          "damage": 6,
+          "majorWound": true,
+          "instantDeath": false,
+          "conCheck": {
+            "roll": 1,
+            "target": 60,
+            "success": true
+          }
+        }
+      },
+      "operations": [
+        {
+          "kind": "damage",
+          "eventKey": "fresh-damage",
+          "damage": 1,
+          "roll": 1,
+          "occurredAt": null,
+          "expected": {
+            "changed": true,
+            "error": null,
+            "dyingCheck": null,
+            "treatment": null,
+            "damageEvent": {
+              "eventKey": "fresh-damage",
+              "damage": 1,
+              "majorWound": false,
+              "instantDeath": false,
+              "conCheck": null
+            },
+            "state": {
+              "currentHp": 0,
+              "maxHp": 12,
+              "con": 60,
+              "majorWound": true,
+              "unconscious": true,
+              "dyingEpisode": {
+                "sourceEventKey": "fresh-damage",
+                "checks": [],
+                "nextRoundOrdinal": 1,
+                "roundChecksManaged": false
+              },
+              "stabilized": null,
+              "dead": null,
+              "treatmentHistory": [
+                {
+                  "sourceId": "setup-aid",
+                  "target": 70,
+                  "roll": 20,
+                  "success": true,
+                  "withinHour": true,
+                  "hpBefore": 0,
+                  "hpAfter": 1,
+                  "healedHp": 1,
+                  "wasDying": true,
+                  "wasUnconscious": true,
+                  "stabilizedDying": true,
+                  "rousedUnconscious": true,
+                  "occurredAt": "2026-08-25T12:00:00.000Z"
+                }
+              ],
+              "history": [
+                {
+                  "eventKey": "dying-source",
+                  "damage": 6,
+                  "majorWound": true,
+                  "instantDeath": false,
+                  "conCheck": {
+                    "roll": 1,
+                    "target": 60,
+                    "success": true
+                  }
+                },
+                {
+                  "eventKey": "fresh-damage",
+                  "damage": 1,
+                  "majorWound": false,
+                  "instantDeath": false,
+                  "conCheck": null
+                }
+              ],
+              "lastEvent": {
+                "eventKey": "fresh-damage",
+                "damage": 1,
+                "majorWound": false,
+                "instantDeath": false,
+                "conCheck": null
+              }
+            }
+          }
+        }
+      ],
+      "expected": {
+        "currentHp": 0,
+        "maxHp": 12,
+        "con": 60,
+        "majorWound": true,
+        "unconscious": true,
+        "dyingEpisode": {
+          "sourceEventKey": "fresh-damage",
+          "checks": [],
+          "nextRoundOrdinal": 1,
+          "roundChecksManaged": false
+        },
+        "stabilized": null,
+        "dead": null,
+        "treatmentHistory": [
+          {
+            "sourceId": "setup-aid",
+            "target": 70,
+            "roll": 20,
+            "success": true,
+            "withinHour": true,
+            "hpBefore": 0,
+            "hpAfter": 1,
+            "healedHp": 1,
+            "wasDying": true,
+            "wasUnconscious": true,
+            "stabilizedDying": true,
+            "rousedUnconscious": true,
+            "occurredAt": "2026-08-25T12:00:00.000Z"
+          }
+        ],
+        "history": [
+          {
+            "eventKey": "dying-source",
+            "damage": 6,
+            "majorWound": true,
+            "instantDeath": false,
+            "conCheck": {
+              "roll": 1,
+              "target": 60,
+              "success": true
+            }
+          },
+          {
+            "eventKey": "fresh-damage",
+            "damage": 1,
+            "majorWound": false,
+            "instantDeath": false,
+            "conCheck": null
+          }
+        ],
+        "lastEvent": {
+          "eventKey": "fresh-damage",
+          "damage": 1,
+          "majorWound": false,
+          "instantDeath": false,
+          "conCheck": null
+        }
+      }
+    },
+    {
+      "name": "damage-dying-con-failure-sequence",
+      "timestampsNonSemantic": true,
+      "initial": {
+        "currentHp": 12,
+        "maxHp": 12,
+        "con": 60,
+        "majorWound": false,
+        "unconscious": false,
+        "dyingEpisode": null,
+        "stabilized": null,
+        "dead": null,
+        "treatmentHistory": [],
+        "history": [],
+        "lastEvent": null
+      },
+      "operations": [
+        {
+          "kind": "damage",
+          "eventKey": "sequence-fail-major",
+          "damage": 6,
+          "roll": 1,
+          "occurredAt": null,
+          "expected": {
+            "changed": true,
+            "error": null,
+            "dyingCheck": null,
+            "treatment": null,
+            "damageEvent": {
+              "eventKey": "sequence-fail-major",
+              "damage": 6,
+              "majorWound": true,
+              "instantDeath": false,
+              "conCheck": {
+                "roll": 1,
+                "target": 60,
+                "success": true
+              }
+            },
+            "state": {
+              "currentHp": 6,
+              "maxHp": 12,
+              "con": 60,
+              "majorWound": true,
+              "unconscious": false,
+              "dyingEpisode": null,
+              "stabilized": null,
+              "dead": null,
+              "treatmentHistory": [],
+              "history": [
+                {
+                  "eventKey": "sequence-fail-major",
+                  "damage": 6,
+                  "majorWound": true,
+                  "instantDeath": false,
+                  "conCheck": {
+                    "roll": 1,
+                    "target": 60,
+                    "success": true
+                  }
+                }
+              ],
+              "lastEvent": {
+                "eventKey": "sequence-fail-major",
+                "damage": 6,
+                "majorWound": true,
+                "instantDeath": false,
+                "conCheck": {
+                  "roll": 1,
+                  "target": 60,
+                  "success": true
+                }
+              }
+            }
+          }
+        },
+        {
+          "kind": "damage",
+          "eventKey": "sequence-fail-zero",
+          "damage": 6,
+          "roll": 1,
+          "occurredAt": null,
+          "expected": {
+            "changed": true,
+            "error": null,
+            "dyingCheck": null,
+            "treatment": null,
+            "damageEvent": {
+              "eventKey": "sequence-fail-zero",
+              "damage": 6,
+              "majorWound": true,
+              "instantDeath": false,
+              "conCheck": {
+                "roll": 1,
+                "target": 60,
+                "success": true
+              }
+            },
+            "state": {
+              "currentHp": 0,
+              "maxHp": 12,
+              "con": 60,
+              "majorWound": true,
+              "unconscious": true,
+              "dyingEpisode": {
+                "sourceEventKey": "sequence-fail-zero",
+                "checks": [],
+                "nextRoundOrdinal": 1,
+                "roundChecksManaged": false
+              },
+              "stabilized": null,
+              "dead": null,
+              "treatmentHistory": [],
+              "history": [
+                {
+                  "eventKey": "sequence-fail-major",
+                  "damage": 6,
+                  "majorWound": true,
+                  "instantDeath": false,
+                  "conCheck": {
+                    "roll": 1,
+                    "target": 60,
+                    "success": true
+                  }
+                },
+                {
+                  "eventKey": "sequence-fail-zero",
+                  "damage": 6,
+                  "majorWound": true,
+                  "instantDeath": false,
+                  "conCheck": {
+                    "roll": 1,
+                    "target": 60,
+                    "success": true
+                  }
+                }
+              ],
+              "lastEvent": {
+                "eventKey": "sequence-fail-zero",
+                "damage": 6,
+                "majorWound": true,
+                "instantDeath": false,
+                "conCheck": {
+                  "roll": 1,
+                  "target": 60,
+                  "success": true
+                }
+              }
+            }
+          }
+        },
+        {
+          "kind": "dyingRound",
+          "roll": 61,
+          "sourceId": "sequence-fail-round",
+          "occurredAt": "2026-08-25T12:00:00.000Z",
+          "expected": {
+            "changed": true,
+            "error": null,
+            "dyingCheck": {
+              "ordinal": 1,
+              "roll": 61,
+              "target": 60,
+              "success": false,
+              "sourceId": "sequence-fail-round",
+              "occurredAt": "2026-08-25T12:00:00.000Z"
+            },
+            "treatment": null,
+            "damageEvent": null,
+            "state": {
+              "currentHp": 0,
+              "maxHp": 12,
+              "con": 60,
+              "majorWound": true,
+              "unconscious": false,
+              "dyingEpisode": null,
+              "stabilized": null,
+              "dead": {
+                "sourceEventKey": "sequence-fail-zero",
+                "reason": "dying_con_failure",
+                "occurredAt": "2026-08-25T12:00:00.000Z"
+              },
+              "treatmentHistory": [],
+              "history": [
+                {
+                  "eventKey": "sequence-fail-major",
+                  "damage": 6,
+                  "majorWound": true,
+                  "instantDeath": false,
+                  "conCheck": {
+                    "roll": 1,
+                    "target": 60,
+                    "success": true
+                  }
+                },
+                {
+                  "eventKey": "sequence-fail-zero",
+                  "damage": 6,
+                  "majorWound": true,
+                  "instantDeath": false,
+                  "conCheck": {
+                    "roll": 1,
+                    "target": 60,
+                    "success": true
+                  }
+                }
+              ],
+              "lastEvent": {
+                "eventKey": "sequence-fail-zero",
+                "damage": 6,
+                "majorWound": true,
+                "instantDeath": false,
+                "conCheck": {
+                  "roll": 1,
+                  "target": 60,
+                  "success": true
+                }
+              }
+            }
+          }
+        }
+      ],
+      "expected": {
+        "currentHp": 0,
+        "maxHp": 12,
+        "con": 60,
+        "majorWound": true,
+        "unconscious": false,
+        "dyingEpisode": null,
+        "stabilized": null,
+        "dead": {
+          "sourceEventKey": "sequence-fail-zero",
+          "reason": "dying_con_failure",
+          "occurredAt": "2026-08-25T12:00:00.000Z"
+        },
+        "treatmentHistory": [],
+        "history": [
+          {
+            "eventKey": "sequence-fail-major",
+            "damage": 6,
+            "majorWound": true,
+            "instantDeath": false,
+            "conCheck": {
+              "roll": 1,
+              "target": 60,
+              "success": true
+            }
+          },
+          {
+            "eventKey": "sequence-fail-zero",
+            "damage": 6,
+            "majorWound": true,
+            "instantDeath": false,
+            "conCheck": {
+              "roll": 1,
+              "target": 60,
+              "success": true
+            }
+          }
+        ],
+        "lastEvent": {
+          "eventKey": "sequence-fail-zero",
+          "damage": 6,
+          "majorWound": true,
+          "instantDeath": false,
+          "conCheck": {
+            "roll": 1,
+            "target": 60,
+            "success": true
+          }
+        }
+      }
+    }
+  ]
+}
