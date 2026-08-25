@@ -12,5 +12,9 @@ public interface IGameCoordinator
 
     Task<GameResult<HpDamageResult>> ApplyDamageAsync(ApplyDamageCommand command);
 
+    Task<GameResult<HealthStabilizationResult>> ResolveDyingRoundAsync(ResolveDyingRoundCommand command);
+
+    Task<GameResult<HealthStabilizationResult>> ResolveFirstAidAsync(ResolveFirstAidCommand command);
+
     Task<bool> RemoveAsync(Guid roomId);
 }

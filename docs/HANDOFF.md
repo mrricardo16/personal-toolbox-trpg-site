@@ -8,7 +8,7 @@
 
 ## Current Phase
 
-Current verified phase (2026-08-17): Multiplayer Phase 2B Realtime GameState Synchronization + Minimal Check Gameplay Client completed.
+Current verified phase (2026-08-25): Phase 2E Health Stabilization completed.
 
 Completed:
 
@@ -52,7 +52,7 @@ Completed:
 - Minimal host initialization and owner-only Check controls using the actual Phase 2A contracts
 - Real SignalR integration tests and two-tab localhost acceptance for both player directions and RoomClosed cleanup
 
-Phase 2B Realtime GameState + Minimal Check gameplay vertical slice is complete. Reconnect expiry/grace timers remain a future decision.
+Historical Phase 2B Realtime GameState + Minimal Check gameplay vertical slice is complete. Reconnect expiry/grace timers remain a future decision.
 
 ```text
 Single Player v1.6.10        ✅ stable
@@ -60,7 +60,8 @@ Architecture Audit          ✅ complete
 Context Consolidation       ✅ this package
 Dedicated Repo Bootstrap    ✅ complete
 Multiplayer Phase 1         ✅ Lobby MVP complete
-Multiplayer Phase 2B        ✅ Realtime GameState + Minimal Check client complete
+Historical Phase 2B         ✅ Realtime GameState + Minimal Check client complete
+Multiplayer Phase 2E        ✅ Health Stabilization complete
 ```
 
 ---
@@ -176,13 +177,17 @@ Phase 1 Memory Only。
 
 ## Current Task
 
-Phase 2B 已完成 MultiplayerGameState realtime synchronization、Attach/reconnect recovery、viewer-safe GameSnapshot、CheckResolved semantic delivery，以及最小 Vue Check gameplay client。Phase 2A 的 deterministic Check/Dice contract 继续作为服务端权威规则来源。
+历史记录：Phase 2B 已完成 MultiplayerGameState realtime synchronization、Attach/reconnect recovery、viewer-safe GameSnapshot、CheckResolved semantic delivery，以及最小 Vue Check gameplay client。Phase 2A 的 deterministic Check/Dice contract 继续作为服务端权威规则来源。
 
 本轮 Phase 2C audit 已完成并停止：下一条 deterministic gameplay slice 选择为 `HP / Damage State`；runner-up 为 `SAN Loss Resolution + SAN Loss Window`，因 scenario lifecycle 与 projection pressure 暂缓。下一步必须使用独立 implementation prompt。SAN、Stabilization、Healing、Combat、Firearms、Scenario/GameState migration、AI gameplay、Multiplayer AI Protocol、持久化 credential、DB、Redis、matchmaking 与 Azure SignalR 仍明确留待后续任务。
 
 本轮只新增 `docs/PHASE2_RULE_SLICE_AUDIT.md` 及同步更新 current state/handoff；没有修改 production code、Single Player rule code、Multiplayer behavior 或 formal HTML。
 
-Phase 2D 已完成：HP/Damage C# conformance、canonical HP state、internal server damage mutation、owner-safe HP projection、realtime/reconnect snapshot recovery 和 read-only Vue HP display 均已完成。没有 public damage endpoint，Host 不获得任意 HP 修改权限。下一 deterministic slice 仅建议评估 Stabilization / Healing 或 Combat Opposed，不在本轮实现。
+历史记录：Phase 2D 已完成 HP/Damage C# conformance、canonical HP state、internal server damage mutation、owner-safe HP projection、realtime/reconnect snapshot recovery 和 read-only Vue HP display。没有 public damage endpoint，Host 不获得任意 HP 修改权限。
+
+Phase 2E 已完成：JS-to-C# stabilization conformance、canonical dying episode/treatment state、internal coordinator dying-round/First Aid transitions、owner-safe stabilized projection/privacy、existing GameSnapshot realtime/reconnect coverage、read-only Vue stabilized display，以及 omitted internal CON roll 的 injected `IDiceRoller` fallback correction。详细 health records remains owner/server-internal only；non-owner receives `Health = null`，且没有新增 health action API 或 route。
+
+未来 Team Status Visibility 只保留 policy 定义：`AlwaysVisible`（产品规则明确对所有玩家可见）、`Contextual`（按场景/交互/权限可见）、`Last Known Status`（玩家曾合法获知的最后状态，不等同于 live canonical truth）、`PlayerKnowledgeState`（按玩家记录已获知状态、范围与新鲜度）。Location、Communication、knowledge propagation 与 runtime `PlayerKnowledgeState` 尚未实现。
 
 ---
 

@@ -187,6 +187,26 @@ public sealed class GameApiTests(WebApplicationFactory<Program> factory)
         Assert.NotNull(state.LastCheck);
     }
 
+    [Fact]
+    public async Task StabilizationActions_AreNotPublicGameRoutes()
+    {
+        var client = factory.CreateClient();
+
+        var dyingRound = await client.PostAsJsonAsync(
+            "/api/rooms/00000000-0000-0000-0000-000000000001/game/dying-round",
+            new { characterId = Guid.NewGuid(), sourceId = "route-probe" });
+        var firstAid = await client.PostAsJsonAsync(
+            "/api/rooms/00000000-0000-0000-0000-000000000001/game/first-aid",
+            new { characterId = Guid.NewGuid(), target = 60, withinHour = true, sourceId = "route-probe" });
+        var stabilize = await client.PostAsJsonAsync(
+            "/api/rooms/00000000-0000-0000-0000-000000000001/game/stabilize",
+            new { characterId = Guid.NewGuid(), sourceId = "route-probe" });
+
+        Assert.Equal(HttpStatusCode.NotFound, dyingRound.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, firstAid.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, stabilize.StatusCode);
+    }
+
     private async Task<HttpResponseMessage> InitializeAsync(CreatedResponse created, object[] characters)
     {
         return await SendAuthorizedAsync(

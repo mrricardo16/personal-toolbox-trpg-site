@@ -7,7 +7,14 @@ public sealed record CharacterSnapshot(
     IReadOnlyDictionary<string, int> CheckValues,
     CharacterHealthSnapshot? Health);
 
-public sealed record CharacterHealthSnapshot(int CurrentHp, int MaxHp, bool MajorWound, bool Unconscious, bool Dying, bool Dead);
+public sealed record CharacterHealthSnapshot(
+    int CurrentHp,
+    int MaxHp,
+    bool MajorWound,
+    bool Unconscious,
+    bool Dying,
+    bool Dead,
+    bool Stabilized);
 
 public sealed record GameSnapshot(
     Guid RoomId,
@@ -41,7 +48,8 @@ public static class GameProjection
                             character.Health.MajorWound,
                             character.Health.Unconscious,
                             character.Health.Dying,
-                            character.Health.Dead)
+                            character.Health.Dead,
+                            character.Health.Stabilized is not null)
                         : null))
                 .ToArray(),
             state.LastCheck);

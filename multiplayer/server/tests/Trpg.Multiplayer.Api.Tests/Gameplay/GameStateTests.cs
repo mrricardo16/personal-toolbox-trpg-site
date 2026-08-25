@@ -193,6 +193,59 @@ public sealed class GameStateTests
     }
 
     [Fact]
+    public void Projection_ExposesOnlyOwnerStabilizedBooleanAndNoInternalHealthProvenance()
+    {
+        var ownerId = Guid.NewGuid();
+        var otherId = Guid.NewGuid();
+        var ownerCharacterId = Guid.NewGuid();
+        var otherCharacterId = Guid.NewGuid();
+        var state = new MultiplayerGameState(
+            Guid.NewGuid(),
+            3,
+            MultiplayerGameStatus.Active,
+            DateTimeOffset.UtcNow,
+            [
+                new CharacterState(
+                    ownerCharacterId,
+                    ownerId,
+                    "Owner",
+                    Values(),
+                    new CharacterHealthState(
+                        1,
+                        12,
+                        60,
+                        true,
+                        false,
+                        null,
+                        new StabilizedConditionState("aid-source", "successful_first_aid", 100, 1, DateTimeOffset.UtcNow),
+                        null,
+                        [],
+                        [],
+                        null)),
+                new CharacterState(
+                    otherCharacterId,
+                    otherId,
+                    "Other",
+                    Values(),
+                    new CharacterHealthState(12, 12, 60, false, false, null, null, null, [], [], null))
+            ]);
+
+        var projection = GameProjection.Build(state, ownerId);
+        var owner = projection.Characters.Single(character => character.CharacterId == ownerCharacterId);
+        var other = projection.Characters.Single(character => character.CharacterId == otherCharacterId);
+
+        Assert.True(owner.Health!.Stabilized);
+        Assert.True(owner.Health.MajorWound);
+        Assert.Null(other.Health);
+        var json = JsonSerializer.Serialize(projection);
+        Assert.DoesNotContain("DyingCheck", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Treatment", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("SourceId", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Reason", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("aid-source", json, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Remove_IsIdempotentAndDisconnectDoesNotRemoveGameState()
     {
         var roomStore = new InMemoryRoomStore();
@@ -305,6 +358,250 @@ public sealed class GameStateTests
         Assert.Equal(12, Assert.Single(secondProjection.Value.Characters).Health!.CurrentHp);
         Assert.NotEqual(firstCharacter, secondCharacter);
     }
+
+    [Fact]
+    public async Task Stabilization_DyingRoundsUseInjectedRollsCommitRevisionsAndAdvanceOrdinals()
+    {
+        var fixture = await CreateHealthGameAsync(currentHp: 6, diceRoll: 1);
+        var damage = await fixture.Coordinator.ApplyDamageAsync(new ApplyDamageCommand(
+            fixture.Room.RoomId,
+            fixture.CharacterId,
+            "dying-source",
+            6,
+            1));
+
+        Assert.True(damage.IsSuccess);
+        Assert.True(damage.Value!.Snapshot.Characters.Single().Health!.Dying);
+
+        var first = await fixture.Coordinator.ResolveDyingRoundAsync(new ResolveDyingRoundCommand(
+            fixture.Room.RoomId,
+            fixture.CharacterId,
+            "round-1"));
+        var second = await fixture.Coordinator.ResolveDyingRoundAsync(new ResolveDyingRoundCommand(
+            fixture.Room.RoomId,
+            fixture.CharacterId,
+            "round-2"));
+
+        Assert.True(first.IsSuccess);
+        Assert.Equal(1, first.Value!.DyingCheck!.Ordinal);
+        Assert.Equal(1, first.Value.DyingCheck.Roll);
+        Assert.Equal(3, first.Value.Snapshot.Revision);
+        Assert.True(fixture.StateStore.TryGet(fixture.Room.RoomId, out var firstState));
+        Assert.True(firstState!.Characters.Single().Health.DyingEpisode!.RoundChecksManaged);
+        Assert.True(second.IsSuccess);
+        Assert.Equal(2, second.Value!.DyingCheck!.Ordinal);
+        Assert.Equal(4, second.Value.Snapshot.Revision);
+        Assert.True(fixture.StateStore.TryGet(fixture.Room.RoomId, out var secondState));
+        Assert.Equal(2, secondState!.Characters.Single().Health.DyingEpisode!.Checks.Count);
+        Assert.Equal(2, fixture.DiceRoller.PercentileCalls);
+    }
+
+    [Fact]
+    public async Task Stabilization_DyingFailureCreatesDeadStateAndRejectsSubsequentFirstAid()
+    {
+        var fixture = await CreateHealthGameAsync(currentHp: 6, diceRoll: 61);
+        var damage = await fixture.Coordinator.ApplyDamageAsync(new ApplyDamageCommand(
+            fixture.Room.RoomId,
+            fixture.CharacterId,
+            "dying-source",
+            6,
+            1));
+
+        Assert.True(damage.IsSuccess);
+        var failedRound = await fixture.Coordinator.ResolveDyingRoundAsync(new ResolveDyingRoundCommand(
+            fixture.Room.RoomId,
+            fixture.CharacterId,
+            "round-failure"));
+
+        Assert.True(failedRound.IsSuccess);
+        Assert.False(failedRound.Value!.DyingCheck!.Success);
+        Assert.True(failedRound.Value.Snapshot.Characters.Single().Health!.Dead);
+        Assert.False(failedRound.Value.Snapshot.Characters.Single().Health!.Dying);
+        Assert.Equal(3, failedRound.Value.Snapshot.Revision);
+
+        var firstAid = await fixture.Coordinator.ResolveFirstAidAsync(new ResolveFirstAidCommand(
+            fixture.Room.RoomId,
+            fixture.CharacterId,
+            60,
+            true,
+            "dead-aid"));
+
+        Assert.False(firstAid.IsSuccess);
+        Assert.Equal(3, (await fixture.Coordinator.GetProjectionAsync(fixture.Room.RoomId, fixture.HostId)).Value!.Revision);
+    }
+
+    [Fact]
+    public async Task Stabilization_FirstAidRecordsSuccessAndFailureAndFreshDamageClearsStaleStabilization()
+    {
+        var successFixture = await CreateHealthGameAsync(currentHp: 6, diceRoll: 1);
+        Assert.True((await successFixture.Coordinator.ApplyDamageAsync(new ApplyDamageCommand(
+            successFixture.Room.RoomId,
+            successFixture.CharacterId,
+            "dying-source",
+            6,
+            1))).IsSuccess);
+
+        var stabilized = await successFixture.Coordinator.ResolveFirstAidAsync(new ResolveFirstAidCommand(
+            successFixture.Room.RoomId,
+            successFixture.CharacterId,
+            60,
+            true,
+            "aid-success"));
+
+        Assert.True(stabilized.IsSuccess);
+        Assert.True(stabilized.Value!.Treatment!.Success);
+        Assert.True(stabilized.Value.Treatment.StabilizedDying);
+        Assert.True(successFixture.StateStore.TryGet(successFixture.Room.RoomId, out var stabilizedState));
+        Assert.Equal("successful_first_aid", stabilizedState!.Characters.Single().Health.Stabilized!.Reason);
+        Assert.Equal(3, stabilized.Value.Snapshot.Revision);
+
+        var freshDamage = await successFixture.Coordinator.ApplyDamageAsync(new ApplyDamageCommand(
+            successFixture.Room.RoomId,
+            successFixture.CharacterId,
+            "fresh-damage",
+            6,
+            1));
+
+        Assert.True(freshDamage.IsSuccess);
+        Assert.Equal(4, freshDamage.Value!.Snapshot.Revision);
+        Assert.True(freshDamage.Value.Snapshot.Characters.Single().Health!.Dying);
+        Assert.True(successFixture.StateStore.TryGet(successFixture.Room.RoomId, out var freshDamageState));
+        Assert.Null(freshDamageState!.Characters.Single().Health.Stabilized);
+
+        var failureFixture = await CreateHealthGameAsync(currentHp: 6, diceRoll: 61);
+        Assert.True((await failureFixture.Coordinator.ApplyDamageAsync(new ApplyDamageCommand(
+            failureFixture.Room.RoomId,
+            failureFixture.CharacterId,
+            "dying-source",
+            6,
+            1))).IsSuccess);
+
+        var failedAid = await failureFixture.Coordinator.ResolveFirstAidAsync(new ResolveFirstAidCommand(
+            failureFixture.Room.RoomId,
+            failureFixture.CharacterId,
+            60,
+            true,
+            "aid-failure"));
+
+        Assert.True(failedAid.IsSuccess);
+        Assert.False(failedAid.Value!.Treatment!.Success);
+        Assert.True(failedAid.Value.Snapshot.Characters.Single().Health!.Dying);
+        Assert.True(failureFixture.StateStore.TryGet(failureFixture.Room.RoomId, out var failedAidState));
+        Assert.Single(failedAidState!.Characters.Single().Health.TreatmentHistory);
+        Assert.Equal(3, failedAid.Value.Snapshot.Revision);
+    }
+
+    [Fact]
+    public async Task Stabilization_ValidatesPrerequisitesAndSerializesConcurrentRounds()
+    {
+        var fixture = await CreateHealthGameAsync(currentHp: 6, diceRoll: 1);
+        var noDying = await fixture.Coordinator.ResolveDyingRoundAsync(new ResolveDyingRoundCommand(
+            fixture.Room.RoomId,
+            fixture.CharacterId,
+            "missing-dying"));
+        var invalidAid = await fixture.Coordinator.ResolveFirstAidAsync(new ResolveFirstAidCommand(
+            fixture.Room.RoomId,
+            fixture.CharacterId,
+            0,
+            true,
+            "invalid-aid"));
+        var outsideHour = await fixture.Coordinator.ResolveFirstAidAsync(new ResolveFirstAidCommand(
+            fixture.Room.RoomId,
+            fixture.CharacterId,
+            60,
+            false,
+            "late-aid"));
+
+        Assert.False(noDying.IsSuccess);
+        Assert.False(invalidAid.IsSuccess);
+        Assert.False(outsideHour.IsSuccess);
+        Assert.Equal(1, (await fixture.Coordinator.GetProjectionAsync(fixture.Room.RoomId, fixture.HostId)).Value!.Revision);
+
+        Assert.True((await fixture.Coordinator.ApplyDamageAsync(new ApplyDamageCommand(
+            fixture.Room.RoomId,
+            fixture.CharacterId,
+            "dying-source",
+            6,
+            1))).IsSuccess);
+        var rounds = await Task.WhenAll(
+            fixture.Coordinator.ResolveDyingRoundAsync(new ResolveDyingRoundCommand(fixture.Room.RoomId, fixture.CharacterId, "concurrent-1")),
+            fixture.Coordinator.ResolveDyingRoundAsync(new ResolveDyingRoundCommand(fixture.Room.RoomId, fixture.CharacterId, "concurrent-2")));
+
+        Assert.All(rounds, result => Assert.True(result.IsSuccess));
+        Assert.Equal(4, (await fixture.Coordinator.GetProjectionAsync(fixture.Room.RoomId, fixture.HostId)).Value!.Revision);
+        Assert.True(fixture.StateStore.TryGet(fixture.Room.RoomId, out var finalState));
+        Assert.Equal(2, finalState!.Characters.Single().Health.DyingEpisode!.Checks.Count);
+    }
+
+    [Fact]
+    public async Task Stabilization_IsolatedAcrossRooms()
+    {
+        var roomStore = new InMemoryRoomStore();
+        var stateStore = new InMemoryGameStateStore();
+        var firstHost = Guid.NewGuid();
+        var secondHost = Guid.NewGuid();
+        var firstRoom = CreateRoom(roomStore, firstHost, "First");
+        var secondRoom = CreateRoom(roomStore, secondHost, "Second");
+        var coordinator = new GameCoordinator(
+            roomStore,
+            stateStore,
+            new FixedDiceRoller(1),
+            new CocCheckResolutionEngine(),
+            new CocHpDamageEngine(),
+            new CocHealthStabilizationEngine());
+        var first = await coordinator.InitializeAsync(new InitializeGameCommand(
+            firstRoom.RoomId,
+            firstHost,
+            [new InitializeCharacterCommand(firstHost, "First", Values(), new CharacterHealthSetup(6, 12, 60))]));
+        var second = await coordinator.InitializeAsync(new InitializeGameCommand(
+            secondRoom.RoomId,
+            secondHost,
+            [new InitializeCharacterCommand(secondHost, "Second", Values(), new CharacterHealthSetup(6, 12, 60))]));
+        var firstCharacterId = first.Value!.Characters.Single().CharacterId;
+        var secondCharacterId = second.Value!.Characters.Single().CharacterId;
+
+        Assert.True((await coordinator.ApplyDamageAsync(new ApplyDamageCommand(firstRoom.RoomId, firstCharacterId, "first-damage", 6, 1))).IsSuccess);
+        Assert.True((await coordinator.ApplyDamageAsync(new ApplyDamageCommand(secondRoom.RoomId, secondCharacterId, "second-damage", 6, 1))).IsSuccess);
+        var resolved = await coordinator.ResolveDyingRoundAsync(new ResolveDyingRoundCommand(firstRoom.RoomId, firstCharacterId, "first-round"));
+
+        Assert.True(resolved.IsSuccess);
+        Assert.Equal(3, (await coordinator.GetProjectionAsync(firstRoom.RoomId, firstHost)).Value!.Revision);
+        var secondProjection = await coordinator.GetProjectionAsync(secondRoom.RoomId, secondHost);
+        Assert.Equal(2, secondProjection.Value!.Revision);
+        Assert.True(secondProjection.Value.Characters.Single().Health!.Dying);
+        Assert.True(stateStore.TryGet(secondRoom.RoomId, out var secondState));
+        Assert.Empty(secondState!.Characters.Single().Health.DyingEpisode!.Checks);
+    }
+
+    private static async Task<HealthGameFixture> CreateHealthGameAsync(int currentHp, int diceRoll)
+    {
+        var roomStore = new InMemoryRoomStore();
+        var stateStore = new InMemoryGameStateStore();
+        var hostId = Guid.NewGuid();
+        var room = CreateRoom(roomStore, hostId, "Host");
+        var diceRoller = new FixedDiceRoller(diceRoll);
+        var coordinator = new GameCoordinator(
+            roomStore,
+            stateStore,
+            diceRoller,
+            new CocCheckResolutionEngine(),
+            new CocHpDamageEngine(),
+            new CocHealthStabilizationEngine());
+        var initialized = await coordinator.InitializeAsync(new InitializeGameCommand(
+            room.RoomId,
+            hostId,
+            [new InitializeCharacterCommand(hostId, "Host", Values(), new CharacterHealthSetup(currentHp, 12, 60))]));
+
+        return new HealthGameFixture(coordinator, room, hostId, initialized.Value!.Characters.Single().CharacterId, diceRoller, stateStore);
+    }
+
+    private sealed record HealthGameFixture(
+        GameCoordinator Coordinator,
+        RoomSession Room,
+        Guid HostId,
+        Guid CharacterId,
+        FixedDiceRoller DiceRoller,
+        InMemoryGameStateStore StateStore);
 
     private static RoomSession CreateRoom(InMemoryRoomStore store, Guid hostId, string nickname)
     {

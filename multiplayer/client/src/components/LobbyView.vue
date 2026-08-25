@@ -116,7 +116,7 @@ async function resolveCheck(
         <ul class="character-list">
           <li v-for="character in gameSnapshot.characters" :key="character.characterId" :class="{ current: isOwnCharacter(character, currentPlayerId) }">
             <div class="character-heading"><strong>{{ character.name }}</strong><span>{{ isOwnCharacter(character, currentPlayerId) ? 'YOUR CHARACTER' : 'OTHER CHARACTER' }}</span></div>
-            <p v-if="character.health" class="character-health" data-testid="character-health">HP {{ character.health.currentHp }} / {{ character.health.maxHp }}<span v-if="character.health.majorWound"> · MAJOR WOUND</span><span v-if="character.health.unconscious"> · UNCONSCIOUS</span><span v-if="character.health.dying"> · DYING</span><span v-if="character.health.dead"> · DEAD</span></p>
+            <p v-if="character.health" class="character-health" data-testid="character-health">HP {{ character.health.currentHp }} / {{ character.health.maxHp }}<span v-if="character.health.majorWound"> · MAJOR WOUND</span><span v-if="character.health.unconscious"> · UNCONSCIOUS</span><span v-if="character.health.dying"> · DYING</span><span v-if="character.health.dead"> · DEAD</span><span v-if="character.health.stabilized"> · STABILIZED</span></p>
             <p v-else class="muted-copy character-note">Health details are private to the character owner.</p>
             <div v-if="isOwnCharacter(character, currentPlayerId)" class="check-list">
               <button v-for="(_target, checkKey) in character.checkValues" :key="checkKey" class="secondary-button check-button" :data-testid="`check-${checkKey}`" :disabled="gameBusy" type="button" @click="resolveCheck({ room, api, token }, character.characterId, checkKey)">

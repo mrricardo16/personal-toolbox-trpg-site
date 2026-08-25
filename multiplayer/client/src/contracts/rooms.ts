@@ -86,6 +86,7 @@ export interface CharacterHealthSnapshot {
   unconscious: boolean;
   dying: boolean;
   dead: boolean;
+  stabilized: boolean;
 }
 
 export interface GameCheckRecord {

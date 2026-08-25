@@ -13,10 +13,17 @@ public sealed class GameCoordinator : IGameCoordinator
     private readonly IDiceRoller diceRoller;
     private readonly ICheckResolutionEngine checkEngine;
     private readonly IHpDamageEngine hpDamageEngine;
+    private readonly IHealthStabilizationEngine healthStabilizationEngine;
     private readonly IGameRealtimeNotifier? realtimeNotifier;
 
     public GameCoordinator(IRoomStore roomStore, IGameStateStore stateStore)
-        : this(roomStore, stateStore, new SecureDiceRoller(), new CocCheckResolutionEngine(), new CocHpDamageEngine())
+        : this(
+            roomStore,
+            stateStore,
+            new SecureDiceRoller(),
+            new CocCheckResolutionEngine(),
+            new CocHpDamageEngine(),
+            new CocHealthStabilizationEngine())
     {
     }
 
@@ -27,12 +34,32 @@ public sealed class GameCoordinator : IGameCoordinator
         ICheckResolutionEngine checkEngine,
         IHpDamageEngine hpDamageEngine,
         IGameRealtimeNotifier? realtimeNotifier = null)
+        : this(
+            roomStore,
+            stateStore,
+            diceRoller,
+            checkEngine,
+            hpDamageEngine,
+            new CocHealthStabilizationEngine(),
+            realtimeNotifier)
+    {
+    }
+
+    public GameCoordinator(
+        IRoomStore roomStore,
+        IGameStateStore stateStore,
+        IDiceRoller diceRoller,
+        ICheckResolutionEngine checkEngine,
+        IHpDamageEngine hpDamageEngine,
+        IHealthStabilizationEngine healthStabilizationEngine,
+        IGameRealtimeNotifier? realtimeNotifier = null)
     {
         this.roomStore = roomStore;
         this.stateStore = stateStore;
         this.diceRoller = diceRoller;
         this.checkEngine = checkEngine;
         this.hpDamageEngine = hpDamageEngine;
+        this.healthStabilizationEngine = healthStabilizationEngine;
         this.realtimeNotifier = realtimeNotifier;
     }
 
@@ -97,6 +124,34 @@ public sealed class GameCoordinator : IGameCoordinator
         return await WithRoomLockAsync(command.RoomId, async () =>
         {
             var result = ApplyDamageCore(command);
+            if (result.IsSuccess && result.Changed && realtimeNotifier is not null)
+            {
+                await realtimeNotifier.PublishGameSnapshotAsync(command.RoomId);
+            }
+
+            return result;
+        });
+    }
+
+    public async Task<GameResult<HealthStabilizationResult>> ResolveDyingRoundAsync(ResolveDyingRoundCommand command)
+    {
+        return await WithRoomLockAsync(command.RoomId, async () =>
+        {
+            var result = ResolveDyingRoundCore(command);
+            if (result.IsSuccess && result.Changed && realtimeNotifier is not null)
+            {
+                await realtimeNotifier.PublishGameSnapshotAsync(command.RoomId);
+            }
+
+            return result;
+        });
+    }
+
+    public async Task<GameResult<HealthStabilizationResult>> ResolveFirstAidAsync(ResolveFirstAidCommand command)
+    {
+        return await WithRoomLockAsync(command.RoomId, async () =>
+        {
+            var result = ResolveFirstAidCore(command);
             if (result.IsSuccess && result.Changed && realtimeNotifier is not null)
             {
                 await realtimeNotifier.PublishGameSnapshotAsync(command.RoomId);
@@ -326,6 +381,153 @@ public sealed class GameCoordinator : IGameCoordinator
         return GameResult<HpDamageResult>.Success(
             new HpDamageResult(GameProjection.Build(replacement, character.OwnerPlayerId), resolution.Event, false));
     }
+
+    private GameResult<HealthStabilizationResult> ResolveDyingRoundCore(ResolveDyingRoundCommand command)
+    {
+        var access = TryGetInternalCharacter(command.RoomId, command.CharacterId, out var state, out var character);
+        if (access is not null)
+        {
+            return GameResult<HealthStabilizationResult>.Failure(access.Value);
+        }
+
+        if (!character!.Health.Dying)
+        {
+            return GameResult<HealthStabilizationResult>.Failure(GameErrorCode.InvalidHealthStabilization);
+        }
+
+        var health = character.Health;
+        var resolution = ResolveHealth(
+            () => healthStabilizationEngine.ResolveDyingRound(
+                health,
+                new DyingRoundInput(
+                    diceRoller.RollPercentile(0, 0).SelectedRoll,
+                    command.SourceId,
+                    DateTimeOffset.UtcNow)));
+        if (resolution.Error is not null)
+        {
+            return GameResult<HealthStabilizationResult>.Failure(GameErrorCode.InvalidHealthStabilization);
+        }
+
+        return CommitHealthStabilization(state!, character, resolution.Value!);
+    }
+
+    private GameResult<HealthStabilizationResult> ResolveFirstAidCore(ResolveFirstAidCommand command)
+    {
+        var access = TryGetInternalCharacter(command.RoomId, command.CharacterId, out var state, out var character);
+        if (access is not null)
+        {
+            return GameResult<HealthStabilizationResult>.Failure(access.Value);
+        }
+
+        if (command.Target is < 1 or > 100 || !command.WithinHour)
+        {
+            return GameResult<HealthStabilizationResult>.Failure(GameErrorCode.InvalidHealthStabilization);
+        }
+
+        var health = character!.Health;
+        var resolution = ResolveHealth(
+            () => healthStabilizationEngine.ResolveFirstAid(
+                health,
+                new FirstAidInput(
+                    command.Target,
+                    command.WithinHour,
+                    diceRoller.RollPercentile(0, 0).SelectedRoll,
+                    command.SourceId,
+                    DateTimeOffset.UtcNow)));
+        if (resolution.Error is not null)
+        {
+            return GameResult<HealthStabilizationResult>.Failure(GameErrorCode.InvalidHealthStabilization);
+        }
+
+        return CommitHealthStabilization(state!, character!, resolution.Value!);
+    }
+
+    private static HealthResolution ResolveHealth(Func<HealthStabilizationResolutionResult> resolve)
+    {
+        try
+        {
+            return new HealthResolution(resolve(), null);
+        }
+        catch (HealthStabilizationRuleException exception)
+        {
+            return new HealthResolution(null, exception.Error);
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            return new HealthResolution(null, HealthStabilizationError.InvalidTarget);
+        }
+    }
+
+    private GameResult<HealthStabilizationResult> CommitHealthStabilization(
+        MultiplayerGameState state,
+        CharacterState character,
+        HealthStabilizationResolutionResult resolution)
+    {
+        if (!resolution.Changed)
+        {
+            return GameResult<HealthStabilizationResult>.Success(
+                new HealthStabilizationResult(
+                    GameProjection.Build(state, character.OwnerPlayerId),
+                    resolution.DyingCheck,
+                    resolution.Treatment),
+                changed: false);
+        }
+
+        var replacement = new MultiplayerGameState(
+            state.RoomId,
+            state.Revision + 1,
+            state.Status,
+            state.CreatedAt,
+            state.Characters.Select(candidate => candidate.CharacterId == character.CharacterId ? candidate.WithHealth(resolution.State) : candidate),
+            state.LastCheck);
+        if (!stateStore.TryReplace(state, replacement))
+        {
+            return GameResult<HealthStabilizationResult>.Failure(GameErrorCode.StateConflict);
+        }
+
+        return GameResult<HealthStabilizationResult>.Success(
+            new HealthStabilizationResult(
+                GameProjection.Build(replacement, character.OwnerPlayerId),
+                resolution.DyingCheck,
+                resolution.Treatment));
+    }
+
+    private GameErrorCode? TryGetInternalCharacter(
+        Guid roomId,
+        Guid characterId,
+        out MultiplayerGameState? state,
+        out CharacterState? character)
+    {
+        state = null;
+        character = null;
+        if (!roomStore.TryGet(roomId, out var room) || room is null)
+        {
+            return GameErrorCode.RoomNotFound;
+        }
+
+        if (room.Status == RoomStatus.Closed)
+        {
+            return GameErrorCode.RoomClosed;
+        }
+
+        if (!stateStore.TryGet(roomId, out state) || state is null)
+        {
+            return GameErrorCode.GameNotFound;
+        }
+
+        character = state.Characters.SingleOrDefault(candidate => candidate.CharacterId == characterId);
+        if (character is null)
+        {
+            return GameErrorCode.CharacterNotFound;
+        }
+
+        var ownerPlayerId = character.OwnerPlayerId;
+        return room.Players.Any(player => player.PlayerId == ownerPlayerId)
+            ? null
+            : GameErrorCode.NotMember;
+    }
+
+    private sealed record HealthResolution(HealthStabilizationResolutionResult? Value, HealthStabilizationError? Error);
 
     private GameErrorCode? TryGetMember(Guid roomId, Guid playerId, out RoomSession? room)
     {

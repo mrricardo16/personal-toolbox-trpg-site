@@ -139,7 +139,7 @@ Multiplayer Phase 1              ✅ Host Provided Credential Foundation complet
 
 # 7. Current Phase Status
 
-Current verified phase (2026-08-17): Multiplayer Phase 2B Realtime GameState Synchronization + Minimal Check Gameplay Client completed.
+Current verified phase (2026-08-25): Phase 2E Health Stabilization completed.
 
 Completed in this phase:
 
@@ -204,7 +204,7 @@ AI gameplay protocol, database, Redis, matchmaking, or Azure SignalR.
 Phase 2A deliberately does not include gameplay Vue UI, realtime GameState sync, Scenario progression,
 SAN, HP, healing, combat, firearms, AI KP gameplay, persistence, database, Redis, or Phase 3 work.
 
-### Multiplayer Phase 2B
+### Historical: Multiplayer Phase 2B
 
 - Independent `IGameRealtimeNotifier` / SignalR game delivery boundary
 - Canonical GameSnapshot broadcast after committed initialize/check mutations
@@ -318,10 +318,29 @@ Phase 2B Realtime GameState + Minimal Check gameplay vertical slice 已完成。
 
 ---
 
-# Phase 2D — HP / Damage State
+# Historical Phase 2D — HP / Damage State
 
 已完成 JS `src/hp-damage-state.js` → C# conformance fixture、pure `CocHpDamageEngine`、canonical character health state 与 server-internal `GameCoordinator.ApplyDamageAsync`。HP mutation 在 per-room serialization 内 commit 后才生成 viewer-specific SignalR snapshots；没有新增玩家或 Host 的 arbitrary damage HTTP API。
 
 当前 projection policy：角色 owner 可见 `currentHp/maxHp` 与 active condition booleans；非 owner 不接收 HP details、damage history、event key 或 CON roll。reconnect 继续通过现有 GameSnapshot 恢复最新 owner-visible HP。
 
-仍 deferred：Stabilization、Healing、SAN、Combat Opposed/Damage、Firearms、Scenario、AI gameplay、DB、Redis。
+仍 deferred：Healing、SAN、Combat Opposed/Damage、Firearms、Scenario、AI gameplay、DB、Redis。
+
+# Phase 2E — Health Stabilization
+
+Phase 2E is completed. The JS `hp-damage-state.js` and `health-stabilization.js` semantics are covered by the committed 21-case VM-exported conformance fixture and pure C# `CocHealthStabilizationEngine` tests. Canonical server state now tracks dying episodes, dying checks, stabilization, dead conditions, and treatment history without exposing internal provenance.
+
+`GameCoordinator` provides server-internal dying-round and First Aid transitions under the existing per-room lock. Successful mutations commit one revision before viewer-safe realtime delivery; injected `IDiceRoller` is the fallback for omitted internal CON rolls, while explicit forced rolls remain a test/internal seam. Focused coordinator coverage includes prerequisites, ordinals, treatment/revision history, stale stabilization invalidation, concurrent transitions, and cross-room isolation.
+
+The owner-safe projection exposes HP and only simplified booleans (`stabilized`, `dying`, `dead`, `unconscious`, plus the existing major-wound status). Non-owners receive `Health = null`. SignalR uses the existing `GameSnapshot` event, and reconnect recovers the latest committed owner-safe projection. Vue renders the stabilized state read-only; it adds no health action, dice, API method, or route. Detailed health records, rolls, targets, source IDs, event keys, reason fields, and provenance remain owner/server-internal only for Phase 2E.
+
+## Future Team Status Visibility Policy (Not Implemented)
+
+Future team status visibility must be explicit rather than inferred from HP or a global shared health flag:
+
+- `AlwaysVisible`: a status intentionally visible to every player by product rule.
+- `Contextual`: a status visible only when the current scene, interaction, or permission context allows it.
+- `Last Known Status`: the last status a player was legitimately told, retained as knowledge rather than live canonical truth.
+- `PlayerKnowledgeState`: the per-player record of what status or fact that player has learned, including its scope and freshness.
+
+Location, communication, knowledge propagation, and runtime `PlayerKnowledgeState` are not implemented. This policy is documentation for a future projection/knowledge slice only.

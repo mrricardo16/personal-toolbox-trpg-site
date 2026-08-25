@@ -47,6 +47,15 @@ public sealed record ApplyDamageCommand(
 
 public sealed record HpDamageResult(GameSnapshot Snapshot, HpDamageEvent? Event, bool Deduped);
 
+public sealed record ResolveDyingRoundCommand(Guid RoomId, Guid CharacterId, string? SourceId);
+
+public sealed record ResolveFirstAidCommand(Guid RoomId, Guid CharacterId, int Target, bool WithinHour, string? SourceId);
+
+public sealed record HealthStabilizationResult(
+    GameSnapshot Snapshot,
+    DyingCheckRecord? DyingCheck,
+    TreatmentRecord? Treatment);
+
 public sealed record GameError(GameErrorCode Code);
 
 public enum GameErrorCode
@@ -66,6 +75,7 @@ public enum GameErrorCode
     InvalidCheckRequest,
     InvalidHealthSetup,
     InvalidDamage,
+    InvalidHealthStabilization,
     StateConflict
 }
 

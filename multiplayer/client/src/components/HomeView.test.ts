@@ -68,7 +68,7 @@ describe('lobby views', () => {
       snapshot: {
         roomId: 'room-1', revision: 2, status: 'Active', createdAt: '2026-08-17T00:00:00Z',
         characters: [
-          { characterId: 'character-1', ownerPlayerId: 'player-1', name: 'Host Character', checkValues: { spotHidden: 60 }, health: { currentHp: 12, maxHp: 12, majorWound: false, unconscious: false, dying: false, dead: false } },
+          { characterId: 'character-1', ownerPlayerId: 'player-1', name: 'Host Character', checkValues: { spotHidden: 60 }, health: { currentHp: 12, maxHp: 12, majorWound: false, unconscious: false, dying: false, dead: false, stabilized: false } },
           { characterId: 'character-2', ownerPlayerId: 'player-2', name: 'Member Character', checkValues: {}, health: null },
         ],
         lastCheck: { checkId: 'check-1', playerId: 'player-1', characterId: 'character-1', checkKey: 'spotHidden', target: 60, roll: 41, successLevel: 'regular', passed: true, gameRevision: 2, createdAt: '2026-08-17T00:00:00Z' },
@@ -81,7 +81,7 @@ describe('lobby views', () => {
         currentPlayerId: 'player-1', gameSnapshot: {
           roomId: 'room-1', revision: 1, status: 'Active', createdAt: '2026-08-17T00:00:00Z',
           characters: [
-            { characterId: 'character-1', ownerPlayerId: 'player-1', name: 'Host Character', checkValues: { spotHidden: 60 }, health: { currentHp: 7, maxHp: 12, majorWound: true, unconscious: false, dying: false, dead: false } },
+            { characterId: 'character-1', ownerPlayerId: 'player-1', name: 'Host Character', checkValues: { spotHidden: 60 }, health: { currentHp: 7, maxHp: 12, majorWound: true, unconscious: false, dying: false, dead: false, stabilized: false } },
             { characterId: 'character-2', ownerPlayerId: 'player-2', name: 'Member Character', checkValues: {}, health: null },
           ], lastCheck: null,
         },
@@ -116,12 +116,47 @@ describe('lobby views', () => {
         room: { roomId: 'room-1', inviteCode: 'NIGHT-42', hostPlayerId: 'player-1', maxPlayers: 2, status: 'Open', revision: 1, players: [], aiConfiguration: null },
         gameSnapshot: {
           roomId: 'room-1', revision: 2, status: 'Active', createdAt: '2026-08-17T00:00:00Z', lastCheck: null,
-          characters: [{ characterId: 'character-1', ownerPlayerId: 'player-1', name: 'Host Character', checkValues: { spotHidden: 60 }, health: { currentHp: 7, maxHp: 12, majorWound: true, unconscious: false, dying: false, dead: false } }],
+          characters: [{ characterId: 'character-1', ownerPlayerId: 'player-1', name: 'Host Character', checkValues: { spotHidden: 60 }, health: { currentHp: 7, maxHp: 12, majorWound: true, unconscious: false, dying: false, dead: false, stabilized: false } }],
         },
       },
     });
 
     expect(wrapper.get('[data-testid="character-health"]').text()).toContain('HP 7 / 12 · MAJOR WOUND');
     expect(wrapper.findAll('button').map(button => button.text()).join(' ')).not.toMatch(/damage|heal|kill/i);
+  });
+
+  it('renders exact read-only stabilized, dying, dead, and unconscious labels from server snapshots', () => {
+    const resolveCheck = vi.fn();
+    const api = Object.assign({ resolveCheck }, {} as RoomsApi) as RoomsApi;
+    const wrapper = mount(LobbyView, {
+      props: {
+        currentPlayerId: 'player-1', busy: false, errorMessage: '', connectionStatus: 'connected', api, token: 'session-token',
+        room: { roomId: 'room-1', inviteCode: 'NIGHT-42', hostPlayerId: 'player-1', maxPlayers: 2, status: 'Open', revision: 1, players: [], aiConfiguration: null },
+        gameSnapshot: {
+          roomId: 'room-1', revision: 3, status: 'Active', createdAt: '2026-08-17T00:00:00Z', lastCheck: null,
+          characters: [
+            { characterId: 'stabilized', ownerPlayerId: 'player-1', name: 'Stabilized', checkValues: {}, health: { currentHp: 7, maxHp: 12, majorWound: false, unconscious: false, dying: false, dead: false, stabilized: true } },
+            { characterId: 'dying', ownerPlayerId: 'player-1', name: 'Dying', checkValues: {}, health: { currentHp: 0, maxHp: 12, majorWound: true, unconscious: true, dying: true, dead: false, stabilized: false } },
+            { characterId: 'dead', ownerPlayerId: 'player-1', name: 'Dead', checkValues: {}, health: { currentHp: 0, maxHp: 12, majorWound: true, unconscious: false, dying: false, dead: true, stabilized: false } },
+            { characterId: 'unconscious', ownerPlayerId: 'player-1', name: 'Unconscious', checkValues: {}, health: { currentHp: 7, maxHp: 12, majorWound: true, unconscious: true, dying: false, dead: false, stabilized: false } },
+            { characterId: 'other', ownerPlayerId: 'player-2', name: 'Other', checkValues: {}, health: null },
+          ],
+        },
+      },
+    });
+
+    const characterItems = wrapper.findAll('.character-list > li');
+    expect(characterItems[0].text()).toContain('HP 7 / 12 · STABILIZED');
+    expect(characterItems[1].text()).toContain('HP 0 / 12 · MAJOR WOUND · UNCONSCIOUS · DYING');
+    expect(characterItems[2].text()).toContain('HP 0 / 12 · MAJOR WOUND · DEAD');
+    expect(characterItems[3].text()).toContain('HP 7 / 12 · MAJOR WOUND · UNCONSCIOUS');
+    expect(characterItems[4].text()).toContain('Health details are private to the character owner.');
+    expect(characterItems[4].text()).not.toMatch(/STABILIZED|DYING|DEAD|UNCONSCIOUS/);
+
+    const forbiddenActions = /First Aid|Dying Round|Stabilize|Heal|Medicine|Damage|Kill/i;
+    const buttonText = wrapper.findAll('button').map((button) => button.text()).join(' ');
+    expect(buttonText).not.toMatch(forbiddenActions);
+    expect(Object.keys(api).join(' ')).not.toMatch(forbiddenActions);
+    expect(resolveCheck).not.toHaveBeenCalled();
   });
 });

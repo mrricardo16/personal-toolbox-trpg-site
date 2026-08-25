@@ -366,3 +366,20 @@ Parity verification
 ## HP / Damage Migration Boundary
 
 `CocHpDamageEngine` is a pure deterministic C# rule component fed by canonical positive damage and a server-side CON roll. `GameCoordinator.ApplyDamageAsync` is server-internal only, serializes per room, commits canonical state and revision before calling realtime delivery. `GameProjection` exposes health only to the character owner; browser clients render projection fields and contain no HP rule or mutation command.
+
+## Phase 2E Health Stabilization Boundary
+
+`CocHealthStabilizationEngine` is the server-side deterministic implementation of the JS dying-round and First Aid semantics, covered by the committed VM-exported conformance fixture. Canonical `CharacterHealthState` owns the dying episode, checks, stabilization, dead condition, treatment history, and damage invalidation. `GameCoordinator` exposes only server-internal stabilization transitions; both use the existing per-room lock, commit one revision, and publish the existing viewer-safe `GameSnapshot` only after commit. An omitted internal CON roll uses the injected `IDiceRoller` fallback; commands do not accept public rolls.
+
+The owner projection adds only the simplified `stabilized` boolean alongside the existing HP/status booleans. Non-owners receive `Health = null`. Dying checks, treatment records, raw rolls/targets, source IDs, event keys, reason fields, and other provenance are never serialized or broadcast. Reconnect uses the existing `GameSnapshot` recovery path, and Vue renders the stabilized field read-only without health actions, API methods, or routes.
+
+### Future Team Status Visibility Policy (Documentation Only)
+
+Future team status visibility is classified as:
+
+- `AlwaysVisible`: intentionally visible to every player by product rule.
+- `Contextual`: visible only under the current scene, interaction, or permission context.
+- `Last Known Status`: the last status legitimately disclosed to a player, retained as knowledge rather than live canonical truth.
+- `PlayerKnowledgeState`: per-player knowledge of disclosed status/facts, scope, and freshness.
+
+Location, Communication, knowledge propagation, and runtime `PlayerKnowledgeState` are not implemented. This policy does not authorize a new route, action, or client-owned canonical state.
