@@ -1,6 +1,6 @@
 # Multiplayer Phase 2F Combat Opposed Design
 
-**Status:** Approved in conversation; pending committed-spec review. Implementation is not authorized by this document.
+**Status:** Approved design. Implementation plan reviewed; feature implementation pending authorization.
 
 **Date:** 2026-08-25
 
@@ -213,6 +213,7 @@ CombatSession
 ├─ ResponseCounts[ParticipantId]
 ├─ PendingExchange?
 ├─ CompletedHistory[]          // bounded to 120
+├─ PendingDamageDispositions   // ExchangeId -> DamageDisposition; independent of history
 ├─ DyingSchedule[CharacterId]
 ├─ StartedAt / EndedAt
 └─ EndReason
@@ -234,11 +235,15 @@ An exchange ID is not a client-chosen fact. It is not reused, and a duplicate or
 
 `DamageDisposition` belongs to a specific completed `CombatExchange`. It is null for results without damage eligibility. When present, it remains pending with `hpCommitted = false` until a future Combat Damage phase consumes it exactly once under the same room serialization boundary.
 
+The canonical `CombatSession` also owns an independent pending-disposition registry with the exact shape `PendingDamageDispositions: ExchangeId -> DamageDisposition` (implemented as an equivalent strongly typed keyed collection if required by the language). `ResolvePendingExchange` appends the completed exchange to bounded `History` and, when its disposition is non-null, registers that same disposition under its exact `ExchangeId`. History trimming must never remove an unconsumed registry entry. `LastExchange` is only a recent-history convenience and is never the authority for damage consumption. Phase 2F does not consume or remove registry entries; a future Combat Damage transition consumes the exact registered `ExchangeId` exactly once and then removes or marks that entry consumed under the same room serialization boundary. The registry is internal canonical state and is not exposed by projection unless a future approved safe DTO explicitly requires a derived view.
+
 Phase 2F does not mutate `CharacterHealthState` as a result of an opposed hit. The only health transitions in this phase are the already-approved per-character dying timing linkage to the Health Stabilization engine at canonical round wrap.
 
 ### History Bounds
 
 Completed exchange history is bounded to the reference limit of 120 records. Trimming removes the oldest completed records only; it never removes the current `PendingCombatExchange` or changes the exact identity of a pending or recently resolved disposition.
+
+The pending-disposition registry is not bounded by the resolved-history limit. After more than 120 damage-eligible exchanges, an oldest completed exchange may be trimmed from `History` while its unconsumed disposition remains addressable by `ExchangeId`. A duplicate or stale Resolve cannot create a second registry entry for the same `ExchangeId`.
 
 The design does not introduce persistent event sourcing. The existing canonical state and snapshot recovery model remain authoritative.
 
@@ -433,6 +438,10 @@ The separate Multiplayer test layer must cover:
 - response/action counts and turn progression occur only after Resolve;
 - round wrap and per-character dying observation/check timing;
 - multiple dying investigators resolve independently;
+- a damage disposition survives turn advancement;
+- a damage disposition remains addressable after `LastExchange` is replaced;
+- after more than 120 resolved damage-eligible exchanges, the oldest exchange may leave bounded history while its pending disposition remains addressable by `ExchangeId`;
+- duplicate Resolve does not create a duplicate pending-disposition registry entry;
 - one investigator death does not end the complete CombatSession;
 - stabilized state suppresses dying scheduling and fresh dying creates a new observation;
 - `CombatSession` is not directly serialized;

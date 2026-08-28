@@ -30,6 +30,9 @@
 - Production dice come from the existing `IDiceRoller`; forced rolls are test/internal seams only.
 - Combat Opposed consumes existing `CocCheckResolutionEngine` / shared success-level semantics and must not implement a second `cocRank`.
 - `DamageDisposition` is exchange-scoped, remains pending, and does not mutate HP in Phase 2F.
+- `CombatSession.PendingDamageDispositions` is the independent canonical registry keyed by `ExchangeId`; it is not bounded by resolved-history trimming, and `LastExchange` is never the damage-consumption authority.
+- Resolve appends `CombatExchange` to bounded history and registers a non-null disposition under the same `ExchangeId`; Phase 2F never consumes it, while future Combat Damage consumes that exact registered key exactly once.
+- The pending-disposition registry is internal canonical state and is not projected unless a future safe DTO explicitly requires a derived view.
 - Completed exchange history is bounded to 120; pending exchange is separate and never counts as resolved history.
 - Dying timing is keyed by `CharacterId`; health check ordinal, target, history, stabilization, and death records remain in canonical `CharacterHealthState`.
 - Multiple eligible dying investigators are processed in deterministic combat order in one room-locked round-wrap transaction, one replacement, one revision, and one snapshot broadcast.
@@ -100,8 +103,8 @@ public sealed record CombatParticipantState(
 
 public sealed record DamageDisposition(
     string ExchangeId,
-    string OwnerParticipantId,
-    string TargetParticipantId,
+    CombatParticipantId OwnerParticipantId,
+    CombatParticipantId TargetParticipantId,
     string Mode,
     bool Pending,
     bool HpCommitted);
@@ -151,6 +154,7 @@ public sealed record CombatSession(
     PendingCombatExchange? PendingExchange,
     CombatExchange? LastExchange,
     IReadOnlyList<CombatExchange> History,
+    IReadOnlyDictionary<string, DamageDisposition> PendingDamageDispositions,
     IReadOnlyDictionary<Guid, DyingScheduleState> DyingSchedule,
     DateTimeOffset StartedAt,
     DateTimeOffset? EndedAt,
@@ -327,7 +331,7 @@ Map attacker extreme/critical to `initiator_extreme_eligible` and defender wins 
 
 - [ ] **Step 2: Implement immutable domain records without transport serialization.**
 
-Normalize `AvailableResponses` to a read-only distinct list. Reject empty lists at pending creation. Keep `CombatSession.History` bounded to 120 in canonical transition helpers, not in a DTO serializer. Keep `PendingCombatExchange` outside history; keep `LastExchange` as a convenience reference but never the only disposition source.
+Normalize `AvailableResponses` to a read-only distinct list. Reject empty lists at pending creation. Keep `CombatSession.History` bounded to 120 in canonical transition helpers, not in a DTO serializer. Keep `PendingCombatExchange` outside history; keep `LastExchange` as a convenience reference but never the only disposition source. Add `CombatSession.PendingDamageDispositions` as the independent `ExchangeId -> DamageDisposition` registry. Register a non-null disposition when Resolve appends its completed exchange, retain it when history trims or `LastExchange` changes, reject duplicate registration for the same `ExchangeId`, and leave consumption to a future exactly-once Combat Damage transition.
 
 - [ ] **Step 3: Run pure tests and existing Check/HP/Stabilization tests.**
 
@@ -591,7 +595,7 @@ Repeat the GameStateTests filter and require exactly one revision increment per 
 
 - [ ] **Step 1: Add failing Resolve/Pending/End tests.**
 
-Cover wrong/duplicate ExchangeId, response outside pending AvailableResponses, attacker selecting player defender response, trusted NPC policy, server dice, response/action increments only after resolution, pending clear, completed history, turn advance, disposition survival after turn advance, Pass rejection while pending, Pass mutation without pending, End cancellation reason, no roll/history on cancellation, no ended+pending state, and stale revision no-op.
+Cover wrong/duplicate ExchangeId, response outside pending AvailableResponses, attacker selecting player defender response, trusted NPC policy, server dice, response/action increments only after resolution, pending clear, completed history, turn advance, disposition survival after turn advancement, disposition survival after `LastExchange` replacement, disposition survival after more than 120 resolved damage-eligible exchanges while the oldest history entry is trimmed, duplicate Resolve not creating a duplicate registry entry, Pass rejection while pending, Pass mutation without pending, End cancellation reason, no roll/history on cancellation, no ended+pending state, and stale revision no-op.
 
 - [ ] **Step 2: Run focused tests and verify missing behavior.**
 
@@ -605,7 +609,7 @@ For a player defender require `RequestingPlayerId == Defender.OwnerPlayerId`; at
 
 - [ ] **Step 4: Implement Resolve with shared Check resolution.**
 
-Under one room lock: validate expected revision, active state, exact pending ID, identities, authority, and response membership; derive `responseCountBefore >= responseAllowance ? 1 : 0`; call attacker/defender `IDiceRoller`; call existing `ICheckResolutionEngine.Resolve`; call `ICombatOpposedEngine.Resolve`; create same-ID completed exchange; create disposition only for a winner; increment response/action; clear pending; append bounded history and retain disposition independently of LastExchange; advance turn; run wrap if needed; replace once, commit, project, publish.
+Under one room lock: validate expected revision, active state, exact pending ID, identities, authority, and response membership; derive `responseCountBefore >= responseAllowance ? 1 : 0`; call attacker/defender `IDiceRoller`; call existing `ICheckResolutionEngine.Resolve`; call `ICombatOpposedEngine.Resolve`; create same-ID completed exchange; create disposition only for a winner; increment response/action; clear pending; append bounded history; register a non-null disposition in `CombatSession.PendingDamageDispositions` under the same `ExchangeId`; retain that registry entry independently when history trims or `LastExchange` changes; advance turn; run wrap if needed; replace once, commit, project, publish. A duplicate Resolve must fail closed before a second registry write.
 
 Do not accept client rolls, damage amounts, weapons, Armor, HP, DB, or NPC HP.
 
@@ -660,7 +664,7 @@ dotnet test multiplayer/server/Trpg.Multiplayer.slnx --no-restore --filter "Full
 
 - [ ] **Step 1: Add failing projection/privacy tests.**
 
-Cover non-serialization of CombatSession, owner-safe active/round/current actor/order/last summary, own-private stats only, hidden other-player/opponent raw stats, safe pending role/status, absence of raw rolls/targets/policy/allowance/history/source/provenance, no Combat for room nonparticipant, and projection without revision change.
+Cover non-serialization of CombatSession and `PendingDamageDispositions`, owner-safe active/round/current actor/order/last summary, own-private stats only, hidden other-player/opponent raw stats, safe pending role/status, absence of raw rolls/targets/policy/allowance/history/source/provenance, no Combat for room nonparticipant, and projection without revision change.
 
 - [ ] **Step 2: Add safe DTOs and viewer-specific projection.**
 
@@ -843,6 +847,9 @@ Before declaring the future implementation complete, record:
 - Pending timeout/disconnect auto response: `NO`.
 - Combat Opposed HP mutation: `NO`.
 - DamageDisposition exact ExchangeId: `YES`.
+- PendingDamageDispositions independent registry: `YES`.
+- History trimming preserves unconsumed dispositions: `YES`.
+- LastExchange is not the damage-consumption authority: `YES`.
 - Per-character dying timing: `YES`.
 - One investigator death ends all Combat: `NO`.
 - Production code, tests, client, Single Player, and formal artifact changed only within approved future Commit 1/2 boundaries.
