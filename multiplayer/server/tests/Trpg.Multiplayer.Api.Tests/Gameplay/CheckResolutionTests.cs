@@ -66,6 +66,18 @@ public sealed class CheckResolutionTests
         Assert.Throws<ArgumentOutOfRangeException>(() => engine.Resolve(new CheckResolutionInput(60, "regular", 0, 0, 101)));
     }
 
+    [Theory]
+    [InlineData("fumble", 0)]
+    [InlineData("failure", 0)]
+    [InlineData("regular", 1)]
+    [InlineData("hard", 2)]
+    [InlineData("extreme", 3)]
+    [InlineData("critical", 4)]
+    public void SuccessLevelRank_matches_single_player_order(string level, int expected)
+    {
+        Assert.Equal(expected, CocCheckResolutionRules.SuccessLevelRank(level));
+    }
+
     private sealed record FixtureDocument(int Version, string ReferenceSource, IReadOnlyList<FixtureCase> Cases);
 
     private sealed record FixtureCase(string Name, FixtureInput Input, FixtureExpected Expected);

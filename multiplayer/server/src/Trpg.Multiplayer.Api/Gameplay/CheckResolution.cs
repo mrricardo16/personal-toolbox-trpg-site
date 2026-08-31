@@ -62,16 +62,6 @@ public sealed class SecureDiceRoller : IDiceRoller
 
 public sealed class CocCheckResolutionEngine : ICheckResolutionEngine
 {
-    private static readonly IReadOnlyDictionary<string, int> SuccessOrder = new Dictionary<string, int>(StringComparer.Ordinal)
-    {
-        ["fumble"] = 0,
-        ["failure"] = 0,
-        ["regular"] = 1,
-        ["hard"] = 2,
-        ["extreme"] = 3,
-        ["critical"] = 4
-    };
-
     public CheckResolutionResult Resolve(CheckResolutionInput input)
     {
         if (input.Target is < 1 or > 100)
@@ -97,7 +87,7 @@ public sealed class CocCheckResolutionEngine : ICheckResolutionEngine
             "extreme" => 3,
             _ => 1
         };
-        var passed = SuccessOrder[successLevel] >= required;
+        var passed = CocCheckResolutionRules.SuccessLevelRank(successLevel) >= required;
         return new CheckResolutionResult(
             input.Roll,
             input.Target,
@@ -140,6 +130,23 @@ public sealed class CocCheckResolutionEngine : ICheckResolutionEngine
         "extreme" => (int)Math.Floor(target / 5m),
         _ => target
     };
+}
+
+public static class CocCheckResolutionRules
+{
+    private static readonly IReadOnlyDictionary<string, int> SuccessOrder =
+        new Dictionary<string, int>(StringComparer.Ordinal)
+        {
+            ["fumble"] = 0,
+            ["failure"] = 0,
+            ["regular"] = 1,
+            ["hard"] = 2,
+            ["extreme"] = 3,
+            ["critical"] = 4,
+        };
+
+    public static int SuccessLevelRank(string successLevel) =>
+        SuccessOrder.TryGetValue(successLevel, out var rank) ? rank : 0;
 }
 
 public static class CheckDifficulty

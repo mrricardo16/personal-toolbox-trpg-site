@@ -25,5 +25,6 @@
     <None Include="Fixtures\check-resolution.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="Fixtures\hp-damage.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="Fixtures\health-stabilization.json" CopyToOutputDirectory="PreserveNewest" Condition="Exists('Fixtures\health-stabilization.json')" />
+    <None Include="Fixtures\combat-opposed.json" CopyToOutputDirectory="PreserveNewest" Condition="Exists('Fixtures\combat-opposed.json')" />
   </ItemGroup>
 </Project>

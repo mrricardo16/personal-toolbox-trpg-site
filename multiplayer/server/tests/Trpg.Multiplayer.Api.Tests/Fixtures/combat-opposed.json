@@ -1,0 +1,1007 @@
+{
+  "version": 1,
+  "referenceSources": [
+    "src/check-engine.js",
+    "src/coc-resolution-engine.js",
+    "src/hp-damage-state.js",
+    "src/health-stabilization.js",
+    "src/combat-opposed.js"
+  ],
+  "cases": [
+    {
+      "name": "participant-normalization",
+      "scope": "multiplayer_generalization",
+      "input": {
+        "setup": {
+          "character": {
+            "system": "coc7",
+            "name": "Fixture Investigator",
+            "hp": 12,
+            "maxHp": 12,
+            "attributes": {
+              "dex": 90,
+              "con": 60
+            },
+            "skills": [
+              {
+                "id": "fighting_brawl",
+                "name": "斗殴",
+                "value": 60
+              },
+              {
+                "id": "dodge",
+                "name": "闪避",
+                "value": 60
+              }
+            ],
+            "healthState": {
+              "version": "1.0",
+              "authority": "browser_coc_health",
+              "majorWound": null,
+              "unconscious": null,
+              "dying": null,
+              "dead": null,
+              "lastDamageEvent": null,
+              "history": [],
+              "stabilized": null,
+              "treatmentHistory": []
+            }
+          },
+          "opponents": [
+            {
+              "id": "opponent-raw",
+              "name": "Raw Opponent",
+              "dex": 55,
+              "fighting": 45,
+              "dodge": 35,
+              "responsePreference": "unexpected",
+              "responseAllowance": 0
+            }
+          ]
+        },
+        "operations": [
+          {
+            "kind": "combatStart"
+          },
+          {
+            "kind": "snapshot"
+          }
+        ]
+      },
+      "expected": {
+        "normalized": {
+          "active": true,
+          "round": 1,
+          "turnIndex": 0,
+          "currentActorId": "player",
+          "order": [
+            "player",
+            "opponent-raw"
+          ],
+          "participants": [
+            {
+              "id": "player",
+              "label": "Fixture Investigator",
+              "kind": "investigator",
+              "side": "player",
+              "dex": 90,
+              "fighting": 60,
+              "dodge": 60,
+              "responsePreference": "player_choice",
+              "responseAllowance": 1,
+              "active": true
+            },
+            {
+              "id": "opponent-raw",
+              "label": "Raw Opponent",
+              "kind": "opponent",
+              "side": "opposition",
+              "dex": 55,
+              "fighting": 45,
+              "dodge": 35,
+              "responsePreference": "fight_back",
+              "responseAllowance": 1,
+              "active": true
+            }
+          ],
+          "responseCounts": {
+            "player": 0,
+            "opponent-raw": 0
+          },
+          "actionCounts": {
+            "player": 0,
+            "opponent-raw": 0
+          }
+        },
+        "damageDisposition": null
+      }
+    },
+    {
+      "name": "invalid-opponent-stat",
+      "scope": "multiplayer_generalization",
+      "input": {
+        "setup": {
+          "character": {
+            "system": "coc7",
+            "name": "Fixture Investigator",
+            "hp": 12,
+            "maxHp": 12,
+            "attributes": {
+              "dex": 90,
+              "con": 60
+            },
+            "skills": [
+              {
+                "id": "fighting_brawl",
+                "name": "斗殴",
+                "value": 60
+              },
+              {
+                "id": "dodge",
+                "name": "闪避",
+                "value": 60
+              }
+            ],
+            "healthState": {
+              "version": "1.0",
+              "authority": "browser_coc_health",
+              "majorWound": null,
+              "unconscious": null,
+              "dying": null,
+              "dead": null,
+              "lastDamageEvent": null,
+              "history": [],
+              "stabilized": null,
+              "treatmentHistory": []
+            }
+          },
+          "opponents": [
+            {
+              "id": "bad",
+              "label": "Bad opponent",
+              "dex": 101,
+              "fighting": 60,
+              "dodge": 60
+            }
+          ]
+        },
+        "operations": [
+          {
+            "kind": "combatStart"
+          }
+        ]
+      },
+      "expected": {
+        "error": "InvalidOpponentStat",
+        "damageDisposition": null
+      }
+    },
+    {
+      "name": "stable-dex-order",
+      "scope": "multiplayer_generalization",
+      "input": {
+        "participants": [
+          {
+            "id": "slow",
+            "dex": 30
+          },
+          {
+            "id": "fast",
+            "dex": 80
+          },
+          {
+            "id": "middle",
+            "dex": 50
+          }
+        ]
+      },
+      "expected": {
+        "order": [
+          "fast",
+          "middle",
+          "slow"
+        ],
+        "damageDisposition": null
+      }
+    },
+    {
+      "name": "equal-dex-input-order",
+      "scope": "multiplayer_generalization",
+      "input": {
+        "participants": [
+          {
+            "id": "first",
+            "dex": 60
+          },
+          {
+            "id": "second",
+            "dex": 60
+          },
+          {
+            "id": "third",
+            "dex": 60
+          }
+        ]
+      },
+      "expected": {
+        "order": [
+          "first",
+          "second",
+          "third"
+        ],
+        "damageDisposition": null
+      }
+    },
+    {
+      "name": "dodge-equal-regular",
+      "scope": "reference_conformance",
+      "input": {
+        "response": "dodge",
+        "attackerId": "player",
+        "defenderId": "opponent-1",
+        "attacker": {
+          "roll": 50,
+          "target": 60,
+          "difficulty": "regular",
+          "difficultyTarget": 60,
+          "successLevel": "regular",
+          "passed": true,
+          "critical": false,
+          "fumble": false
+        },
+        "defender": {
+          "roll": 50,
+          "target": 60,
+          "difficulty": "regular",
+          "difficultyTarget": 60,
+          "successLevel": "regular",
+          "passed": true,
+          "critical": false,
+          "fumble": false
+        }
+      },
+      "expected": {
+        "outcome": "defender_dodges",
+        "winnerSide": "defender",
+        "damageMode": null,
+        "attackerRollRank": 1,
+        "defenderRollRank": 1,
+        "error": null,
+        "damageDisposition": null
+      }
+    },
+    {
+      "name": "dodge-attacker-higher",
+      "scope": "reference_conformance",
+      "input": {
+        "response": "dodge",
+        "attackerId": "player",
+        "defenderId": "opponent-1",
+        "attacker": {
+          "roll": 30,
+          "target": 60,
+          "difficulty": "regular",
+          "difficultyTarget": 60,
+          "successLevel": "hard",
+          "passed": true,
+          "critical": false,
+          "fumble": false
+        },
+        "defender": {
+          "roll": 50,
+          "target": 60,
+          "difficulty": "regular",
+          "difficultyTarget": 60,
+          "successLevel": "regular",
+          "passed": true,
+          "critical": false,
+          "fumble": false
+        }
+      },
+      "expected": {
+        "outcome": "attacker_hits",
+        "winnerSide": "attacker",
+        "damageMode": "regular",
+        "attackerRollRank": 2,
+        "defenderRollRank": 1,
+        "error": null,
+        "damageDisposition": {
+          "ownerId": "player",
+          "targetId": "opponent-1",
+          "mode": "regular",
+          "pending": true,
+          "hpCommitted": false
+        }
+      }
+    },
+    {
+      "name": "dodge-both-fail",
+      "scope": "reference_conformance",
+      "input": {
+        "response": "dodge",
+        "attackerId": "player",
+        "defenderId": "opponent-1",
+        "attacker": {
+          "roll": 90,
+          "target": 60,
+          "difficulty": "regular",
+          "difficultyTarget": 60,
+          "successLevel": "failure",
+          "passed": false,
+          "critical": false,
+          "fumble": false
+        },
+        "defender": {
+          "roll": 90,
+          "target": 60,
+          "difficulty": "regular",
+          "difficultyTarget": 60,
+          "successLevel": "failure",
+          "passed": false,
+          "critical": false,
+          "fumble": false
+        }
+      },
+      "expected": {
+        "outcome": "both_fail_no_damage",
+        "winnerSide": null,
+        "damageMode": null,
+        "attackerRollRank": 0,
+        "defenderRollRank": 0,
+        "error": null,
+        "damageDisposition": null
+      }
+    },
+    {
+      "name": "fight-back-equal-regular",
+      "scope": "reference_conformance",
+      "input": {
+        "response": "fight_back",
+        "attackerId": "player",
+        "defenderId": "opponent-1",
+        "attacker": {
+          "roll": 50,
+          "target": 60,
+          "difficulty": "regular",
+          "difficultyTarget": 60,
+          "successLevel": "regular",
+          "passed": true,
+          "critical": false,
+          "fumble": false
+        },
+        "defender": {
+          "roll": 50,
+          "target": 60,
+          "difficulty": "regular",
+          "difficultyTarget": 60,
+          "successLevel": "regular",
+          "passed": true,
+          "critical": false,
+          "fumble": false
+        }
+      },
+      "expected": {
+        "outcome": "attacker_hits",
+        "winnerSide": "attacker",
+        "damageMode": "regular",
+        "attackerRollRank": 1,
+        "defenderRollRank": 1,
+        "error": null,
+        "damageDisposition": {
+          "ownerId": "player",
+          "targetId": "opponent-1",
+          "mode": "regular",
+          "pending": true,
+          "hpCommitted": false
+        }
+      }
+    },
+    {
+      "name": "fight-back-defender-higher",
+      "scope": "reference_conformance",
+      "input": {
+        "response": "fight_back",
+        "attackerId": "player",
+        "defenderId": "opponent-1",
+        "attacker": {
+          "roll": 50,
+          "target": 60,
+          "difficulty": "regular",
+          "difficultyTarget": 60,
+          "successLevel": "regular",
+          "passed": true,
+          "critical": false,
+          "fumble": false
+        },
+        "defender": {
+          "roll": 30,
+          "target": 60,
+          "difficulty": "regular",
+          "difficultyTarget": 60,
+          "successLevel": "hard",
+          "passed": true,
+          "critical": false,
+          "fumble": false
+        }
+      },
+      "expected": {
+        "outcome": "defender_fights_back",
+        "winnerSide": "defender",
+        "damageMode": "fight_back_regular_cap",
+        "attackerRollRank": 1,
+        "defenderRollRank": 2,
+        "error": null,
+        "damageDisposition": {
+          "ownerId": "opponent-1",
+          "targetId": "player",
+          "mode": "fight_back_regular_cap",
+          "pending": true,
+          "hpCommitted": false
+        }
+      }
+    },
+    {
+      "name": "fight-back-attacker-failure-defender-success",
+      "scope": "reference_conformance",
+      "input": {
+        "response": "fight_back",
+        "attackerId": "player",
+        "defenderId": "opponent-1",
+        "attacker": {
+          "roll": 90,
+          "target": 60,
+          "difficulty": "regular",
+          "difficultyTarget": 60,
+          "successLevel": "failure",
+          "passed": false,
+          "critical": false,
+          "fumble": false
+        },
+        "defender": {
+          "roll": 50,
+          "target": 60,
+          "difficulty": "regular",
+          "difficultyTarget": 60,
+          "successLevel": "regular",
+          "passed": true,
+          "critical": false,
+          "fumble": false
+        }
+      },
+      "expected": {
+        "outcome": "defender_fights_back",
+        "winnerSide": "defender",
+        "damageMode": "fight_back_regular_cap",
+        "attackerRollRank": 0,
+        "defenderRollRank": 1,
+        "error": null,
+        "damageDisposition": {
+          "ownerId": "opponent-1",
+          "targetId": "player",
+          "mode": "fight_back_regular_cap",
+          "pending": true,
+          "hpCommitted": false
+        }
+      }
+    },
+    {
+      "name": "fight-back-both-fail",
+      "scope": "reference_conformance",
+      "input": {
+        "response": "fight_back",
+        "attackerId": "player",
+        "defenderId": "opponent-1",
+        "attacker": {
+          "roll": 90,
+          "target": 60,
+          "difficulty": "regular",
+          "difficultyTarget": 60,
+          "successLevel": "failure",
+          "passed": false,
+          "critical": false,
+          "fumble": false
+        },
+        "defender": {
+          "roll": 90,
+          "target": 60,
+          "difficulty": "regular",
+          "difficultyTarget": 60,
+          "successLevel": "failure",
+          "passed": false,
+          "critical": false,
+          "fumble": false
+        }
+      },
+      "expected": {
+        "outcome": "both_fail_no_damage",
+        "winnerSide": null,
+        "damageMode": null,
+        "attackerRollRank": 0,
+        "defenderRollRank": 0,
+        "error": null,
+        "damageDisposition": null
+      }
+    },
+    {
+      "name": "initiator-extreme-eligibility",
+      "scope": "reference_conformance",
+      "input": {
+        "response": "dodge",
+        "attackerId": "player",
+        "defenderId": "opponent-1",
+        "attacker": {
+          "roll": 10,
+          "target": 60,
+          "difficulty": "regular",
+          "difficultyTarget": 60,
+          "successLevel": "extreme",
+          "passed": true,
+          "critical": false,
+          "fumble": false
+        },
+        "defender": {
+          "roll": 50,
+          "target": 60,
+          "difficulty": "regular",
+          "difficultyTarget": 60,
+          "successLevel": "regular",
+          "passed": true,
+          "critical": false,
+          "fumble": false
+        }
+      },
+      "expected": {
+        "outcome": "attacker_hits",
+        "winnerSide": "attacker",
+        "damageMode": "initiator_extreme_eligible",
+        "attackerRollRank": 3,
+        "defenderRollRank": 1,
+        "error": null,
+        "damageDisposition": {
+          "ownerId": "player",
+          "targetId": "opponent-1",
+          "mode": "initiator_extreme_eligible",
+          "pending": true,
+          "hpCommitted": false
+        }
+      }
+    },
+    {
+      "name": "fight-back-regular-cap",
+      "scope": "reference_conformance",
+      "input": {
+        "response": "fight_back",
+        "attackerId": "player",
+        "defenderId": "opponent-1",
+        "attacker": {
+          "roll": 50,
+          "target": 60,
+          "difficulty": "regular",
+          "difficultyTarget": 60,
+          "successLevel": "regular",
+          "passed": true,
+          "critical": false,
+          "fumble": false
+        },
+        "defender": {
+          "roll": 10,
+          "target": 60,
+          "difficulty": "regular",
+          "difficultyTarget": 60,
+          "successLevel": "extreme",
+          "passed": true,
+          "critical": false,
+          "fumble": false
+        }
+      },
+      "expected": {
+        "outcome": "defender_fights_back",
+        "winnerSide": "defender",
+        "damageMode": "fight_back_regular_cap",
+        "attackerRollRank": 1,
+        "defenderRollRank": 3,
+        "error": null,
+        "damageDisposition": {
+          "ownerId": "opponent-1",
+          "targetId": "player",
+          "mode": "fight_back_regular_cap",
+          "pending": true,
+          "hpCommitted": false
+        }
+      }
+    },
+    {
+      "name": "response-allowance-outnumbered",
+      "scope": "multiplayer_generalization",
+      "input": {
+        "setup": {
+          "character": {
+            "system": "coc7",
+            "name": "Fixture Investigator",
+            "hp": 12,
+            "maxHp": 12,
+            "attributes": {
+              "dex": 90,
+              "con": 60
+            },
+            "skills": [
+              {
+                "id": "fighting_brawl",
+                "name": "斗殴",
+                "value": 60
+              },
+              {
+                "id": "dodge",
+                "name": "闪避",
+                "value": 60
+              }
+            ],
+            "healthState": {
+              "version": "1.0",
+              "authority": "browser_coc_health",
+              "majorWound": null,
+              "unconscious": null,
+              "dying": null,
+              "dead": null,
+              "lastDamageEvent": null,
+              "history": [],
+              "stabilized": null,
+              "treatmentHistory": []
+            }
+          },
+          "opponents": [
+            {
+              "id": "opponent-1",
+              "label": "Primary",
+              "dex": 60,
+              "fighting": 60,
+              "dodge": 60
+            },
+            {
+              "id": "opponent-2",
+              "label": "Secondary",
+              "dex": 10,
+              "fighting": 60,
+              "dodge": 60
+            }
+          ]
+        },
+        "operations": [
+          {
+            "kind": "combatStart"
+          },
+          {
+            "kind": "passTurn"
+          },
+          {
+            "kind": "melee",
+            "defenderId": "player",
+            "response": "dodge",
+            "attackerRoll": 50,
+            "defenderRoll": 50
+          },
+          {
+            "kind": "melee",
+            "defenderId": "player",
+            "response": "dodge",
+            "attackerRoll": 50,
+            "defenderRoll": 50
+          }
+        ]
+      },
+      "expected": {
+        "firstOutnumberedBonus": 0,
+        "secondOutnumberedBonus": 1,
+        "responseCountBeforeSecond": 1,
+        "damageDisposition": null
+      }
+    },
+    {
+      "name": "pass-turn-and-round-wrap",
+      "scope": "multiplayer_generalization",
+      "input": {
+        "setup": {
+          "character": {
+            "system": "coc7",
+            "name": "Fixture Investigator",
+            "hp": 12,
+            "maxHp": 12,
+            "attributes": {
+              "dex": 90,
+              "con": 60
+            },
+            "skills": [
+              {
+                "id": "fighting_brawl",
+                "name": "斗殴",
+                "value": 60
+              },
+              {
+                "id": "dodge",
+                "name": "闪避",
+                "value": 60
+              }
+            ],
+            "healthState": {
+              "version": "1.0",
+              "authority": "browser_coc_health",
+              "majorWound": null,
+              "unconscious": null,
+              "dying": null,
+              "dead": null,
+              "lastDamageEvent": null,
+              "history": [],
+              "stabilized": null,
+              "treatmentHistory": []
+            }
+          },
+          "opponents": [
+            {
+              "id": "opponent-1",
+              "label": "Fixture Opponent",
+              "dex": 60,
+              "fighting": 60,
+              "dodge": 60
+            }
+          ]
+        },
+        "operations": [
+          {
+            "kind": "combatStart"
+          },
+          {
+            "kind": "passTurn"
+          },
+          {
+            "kind": "passTurn"
+          }
+        ]
+      },
+      "expected": {
+        "firstActorId": "player",
+        "wrapped": true,
+        "finishedRound": 1,
+        "round": 2,
+        "currentActorId": "player",
+        "damageDisposition": null
+      }
+    },
+    {
+      "name": "no-winning-disposition-is-null",
+      "scope": "reference_conformance",
+      "input": {
+        "response": "dodge",
+        "attackerId": "player",
+        "defenderId": "opponent-1",
+        "attacker": {
+          "roll": 90,
+          "target": 60,
+          "difficulty": "regular",
+          "difficultyTarget": 60,
+          "successLevel": "failure",
+          "passed": false,
+          "critical": false,
+          "fumble": false
+        },
+        "defender": {
+          "roll": 90,
+          "target": 60,
+          "difficulty": "regular",
+          "difficultyTarget": 60,
+          "successLevel": "failure",
+          "passed": false,
+          "critical": false,
+          "fumble": false
+        }
+      },
+      "expected": {
+        "outcome": "both_fail_no_damage",
+        "winnerSide": null,
+        "damageMode": null,
+        "attackerRollRank": 0,
+        "defenderRollRank": 0,
+        "error": null,
+        "damageDisposition": null
+      }
+    },
+    {
+      "name": "winning-disposition-is-pending",
+      "scope": "reference_conformance",
+      "input": {
+        "response": "dodge",
+        "attackerId": "player",
+        "defenderId": "opponent-1",
+        "attacker": {
+          "roll": 30,
+          "target": 60,
+          "difficulty": "regular",
+          "difficultyTarget": 60,
+          "successLevel": "hard",
+          "passed": true,
+          "critical": false,
+          "fumble": false
+        },
+        "defender": {
+          "roll": 50,
+          "target": 60,
+          "difficulty": "regular",
+          "difficultyTarget": 60,
+          "successLevel": "regular",
+          "passed": true,
+          "critical": false,
+          "fumble": false
+        }
+      },
+      "expected": {
+        "outcome": "attacker_hits",
+        "winnerSide": "attacker",
+        "damageMode": "regular",
+        "attackerRollRank": 2,
+        "defenderRollRank": 1,
+        "error": null,
+        "damageDisposition": {
+          "ownerId": "player",
+          "targetId": "opponent-1",
+          "mode": "regular",
+          "pending": true,
+          "hpCommitted": false
+        }
+      }
+    },
+    {
+      "name": "active-combat-dying-observation",
+      "scope": "multiplayer_generalization",
+      "input": {
+        "setup": {
+          "character": {
+            "system": "coc7",
+            "name": "Fixture Investigator",
+            "hp": 6,
+            "maxHp": 12,
+            "attributes": {
+              "dex": 90,
+              "con": 60
+            },
+            "skills": [
+              {
+                "id": "fighting_brawl",
+                "name": "斗殴",
+                "value": 60
+              },
+              {
+                "id": "dodge",
+                "name": "闪避",
+                "value": 60
+              }
+            ],
+            "healthState": {
+              "version": "1.0",
+              "authority": "browser_coc_health",
+              "majorWound": null,
+              "unconscious": null,
+              "dying": null,
+              "dead": null,
+              "lastDamageEvent": null,
+              "history": [],
+              "stabilized": null,
+              "treatmentHistory": []
+            }
+          },
+          "damage": {
+            "kind": "damage",
+            "eventKey": "combat-dying-source",
+            "damage": 6,
+            "roll": 1
+          },
+          "opponents": [
+            {
+              "id": "opponent-1",
+              "label": "Fixture Opponent",
+              "dex": 60,
+              "fighting": 60,
+              "dodge": 60
+            }
+          ]
+        },
+        "operations": [
+          {
+            "kind": "combatStart"
+          },
+          {
+            "kind": "snapshot"
+          }
+        ]
+      },
+      "expected": {
+        "active": true,
+        "observedRound": 1,
+        "lastAutoDyingCheckRound": null,
+        "damageDisposition": null
+      }
+    },
+    {
+      "name": "first-following-eligible-dying-round",
+      "scope": "multiplayer_generalization",
+      "input": {
+        "setup": {
+          "character": {
+            "system": "coc7",
+            "name": "Fixture Investigator",
+            "hp": 6,
+            "maxHp": 12,
+            "attributes": {
+              "dex": 90,
+              "con": 60
+            },
+            "skills": [
+              {
+                "id": "fighting_brawl",
+                "name": "斗殴",
+                "value": 60
+              },
+              {
+                "id": "dodge",
+                "name": "闪避",
+                "value": 60
+              }
+            ],
+            "healthState": {
+              "version": "1.0",
+              "authority": "browser_coc_health",
+              "majorWound": null,
+              "unconscious": null,
+              "dying": null,
+              "dead": null,
+              "lastDamageEvent": null,
+              "history": [],
+              "stabilized": null,
+              "treatmentHistory": []
+            }
+          },
+          "damage": {
+            "kind": "damage",
+            "eventKey": "combat-dying-source",
+            "damage": 6,
+            "roll": 1
+          },
+          "opponents": [
+            {
+              "id": "opponent-1",
+              "label": "Fixture Opponent",
+              "dex": 60,
+              "fighting": 60,
+              "dodge": 60
+            }
+          ]
+        },
+        "operations": [
+          {
+            "kind": "combatStart"
+          },
+          {
+            "kind": "passTurn",
+            "dyingRoll": 1
+          },
+          {
+            "kind": "passTurn",
+            "dyingRoll": 1
+          },
+          {
+            "kind": "passTurn",
+            "dyingRoll": 1
+          },
+          {
+            "kind": "passTurn",
+            "dyingRoll": 1
+          }
+        ]
+      },
+      "expected": {
+        "finishedRound": 2,
+        "dyingCheckOrdinal": 1,
+        "lastAutoDyingCheckRound": 2,
+        "damageDisposition": null
+      }
+    }
+  ]
+}
