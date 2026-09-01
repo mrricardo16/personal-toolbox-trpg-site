@@ -18,3 +18,19 @@ public interface IGameCoordinator
 
     Task<bool> RemoveAsync(Guid roomId);
 }
+
+internal interface IInternalCombatCoordinator
+{
+    Task<GameResult<StartCombatResult>> StartCombatAsync(StartCombatCommand command);
+
+    Task<GameResult<BeginOpposedExchangeResult>> BeginOpposedExchangeAsync(BeginOpposedExchangeCommand command);
+}
+
+internal interface IInternalCombatResolutionCoordinator : IInternalCombatCoordinator
+{
+    Task<GameResult<ResolvePendingExchangeResult>> ResolvePendingExchangeAsync(ResolvePendingExchangeCommand command);
+
+    Task<GameResult<PassCombatTurnResult>> PassCombatTurnAsync(PassCombatTurnCommand command);
+
+    Task<GameResult<EndCombatResult>> EndCombatAsync(EndCombatCommand command);
+}

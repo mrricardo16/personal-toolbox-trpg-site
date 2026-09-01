@@ -13,6 +13,57 @@ public sealed record InitializeCharacterCommand(
 
 public sealed record CharacterHealthSetup(int CurrentHp, int MaxHp, int Con);
 
+internal sealed record StartCombatCommand(
+    Guid RoomId,
+    Guid AuthorizedPlayerId,
+    long ExpectedGameRevision,
+    IReadOnlyList<Guid> CharacterIds,
+    IReadOnlyList<OpponentDefinition> Opponents);
+
+internal sealed record BeginOpposedExchangeCommand(
+    Guid RoomId,
+    Guid RequestingPlayerId,
+    long ExpectedGameRevision,
+    string AttackerParticipantId,
+    string DefenderParticipantId);
+
+internal sealed record ResolvePendingExchangeCommand(
+    Guid RoomId,
+    Guid? RequestingPlayerId,
+    long ExpectedGameRevision,
+    string ExchangeId,
+    CombatResponse Response);
+
+internal sealed record PassCombatTurnCommand(
+    Guid RoomId,
+    Guid RequestingPlayerId,
+    long ExpectedGameRevision);
+
+internal sealed record EndCombatCommand(
+    Guid RoomId,
+    Guid AuthorizedPlayerId,
+    long ExpectedGameRevision,
+    string Reason);
+
+internal sealed record OpponentDefinition(
+    string Label,
+    int Dex,
+    int Fighting,
+    int Dodge,
+    IReadOnlyList<CombatResponse> AvailableResponses,
+    int ResponseAllowance,
+    string ResponsePolicy);
+
+internal sealed record StartCombatResult(MultiplayerGameState State);
+
+internal sealed record BeginOpposedExchangeResult(MultiplayerGameState State);
+
+internal sealed record ResolvePendingExchangeResult(MultiplayerGameState State);
+
+internal sealed record PassCombatTurnResult(MultiplayerGameState State);
+
+internal sealed record EndCombatResult(MultiplayerGameState State);
+
 public sealed record ResolveCheckCommand(
     Guid RoomId,
     Guid PlayerId,
@@ -37,6 +88,38 @@ public sealed record GameCheckRecord(
 public sealed record GameCheckResult(
     GameSnapshot Snapshot,
     CheckResolutionResult Check);
+
+public sealed record CombatParticipantStatsSnapshot(
+    int Dex,
+    int Fighting,
+    int Dodge);
+
+public sealed record CombatParticipantSnapshot(
+    string ParticipantId,
+    Guid? CharacterId,
+    string Label,
+    string Side,
+    bool Active,
+    bool Current,
+    bool ViewerOwned,
+    CombatParticipantStatsSnapshot? Stats);
+
+public sealed record CombatExchangeSnapshot(
+    string Outcome,
+    string? WinnerParticipantId,
+    bool DispositionPending);
+
+public sealed record CombatPendingSnapshot(
+    string Role,
+    string Status);
+
+public sealed record CombatSnapshot(
+    bool Active,
+    int Round,
+    string? CurrentActorParticipantId,
+    IReadOnlyList<CombatParticipantSnapshot> Participants,
+    CombatExchangeSnapshot? LastExchange,
+    CombatPendingSnapshot? Pending);
 
 public sealed record ApplyDamageCommand(
     Guid RoomId,
@@ -76,6 +159,12 @@ public enum GameErrorCode
     InvalidHealthSetup,
     InvalidDamage,
     InvalidHealthStabilization,
+    InvalidCombat,
+    InvalidParticipant,
+    InvalidResponse,
+    PendingConflict,
+    EndedCombat,
+    InvalidExchange,
     StateConflict
 }
 

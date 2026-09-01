@@ -35,6 +35,10 @@ function isOwnCharacter(character: GameSnapshot['characters'][number], currentPl
   return character.ownerPlayerId === currentPlayerId;
 }
 
+function combatParticipantLabel(snapshot: GameSnapshot, participantId: string | null): string {
+  return snapshot.combat?.participants.find((participant) => participant.participantId === participantId)?.label ?? '—';
+}
+
 async function initializeGame(props: { room: RoomSnapshot; api: RoomsApi; token: string }): Promise<void> {
   gameBusy.value = true;
   gameError.value = '';
@@ -127,6 +131,14 @@ async function resolveCheck(
           </li>
         </ul>
         <p v-if="gameSnapshot.lastCheck" class="last-check" data-testid="last-check">Last check: {{ gameSnapshot.lastCheck.checkKey }} · {{ gameSnapshot.lastCheck.successLevel }} · {{ gameSnapshot.lastCheck.passed ? 'PASS' : 'FAIL' }} · roll {{ gameSnapshot.lastCheck.roll }}</p>
+        <section v-if="gameSnapshot.combat" class="combat-status" data-testid="combat-status">
+          <p class="card-kicker">COMBAT {{ gameSnapshot.combat.active ? 'ACTIVE' : 'INACTIVE' }}</p>
+          <p>ROUND {{ gameSnapshot.combat.round }}</p>
+          <p>CURRENT {{ combatParticipantLabel(gameSnapshot, gameSnapshot.combat.currentActorParticipantId) }}</p>
+          <p>ORDER {{ gameSnapshot.combat.participants.map((participant) => participant.label).join(' → ') }}</p>
+          <p v-if="gameSnapshot.combat.lastExchange">LAST {{ gameSnapshot.combat.lastExchange.outcome }} · {{ combatParticipantLabel(gameSnapshot, gameSnapshot.combat.lastExchange.winnerParticipantId) }} · {{ gameSnapshot.combat.lastExchange.dispositionPending ? 'PENDING' : 'COMPLETE' }}</p>
+          <p v-if="gameSnapshot.combat.pending">WAITING {{ gameSnapshot.combat.pending.role }} · {{ gameSnapshot.combat.pending.status }}</p>
+        </section>
       </template>
       <template v-else>
         <p class="muted-copy">The host can initialize the minimal shared roster when the table is ready.</p>

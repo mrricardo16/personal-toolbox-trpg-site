@@ -323,6 +323,76 @@ public sealed class SignalRGameDeliveryTests(WebApplicationFactory<Program> fact
         Assert.True(factory.Services.GetRequiredService<IGameStateStore>().Exists(first.RoomId));
     }
 
+    [Fact]
+    public async Task InternalCombat_PublishesSafeSnapshotsAndAttachRecoversPendingWithoutMutation()
+    {
+        var room = await CreateRoomAsync("Host", 2);
+        var member = await JoinRoomAsync(room.InviteCode, "Member");
+        var hostConnection = await AttachAsync(room.PlayerSessionToken);
+        var memberConnection = await AttachAsync(member.PlayerSessionToken);
+        using var initialize = await PostAuthorizedAsync(
+            $"/api/rooms/{room.RoomId}/game/initialize", room.PlayerSessionToken, new
+            {
+                characters = new[]
+                {
+                    new { playerId = room.PlayerId, name = "Host", checkValues = new Dictionary<string, int> { ["dex"] = 80, ["fighting_brawl"] = 55, ["dodge"] = 45 }, health = new { currentHp = 12, maxHp = 12, con = 60 } },
+                    new { playerId = member.PlayerId, name = "Member", checkValues = new Dictionary<string, int> { ["dex"] = 70, ["fighting_brawl"] = 50, ["dodge"] = 40 }, health = new { currentHp = 12, maxHp = 12, con = 60 } }
+                }
+            });
+        var initialized = Assert.IsType<GameSnapshot>(await initialize.Content.ReadFromJsonAsync<GameSnapshot>());
+        var hostUpdate = NewCompletion<GameSnapshot>();
+        var memberUpdate = NewCompletion<GameSnapshot>();
+        hostConnection.On<GameSnapshot>("GameSnapshot", snapshot => { if (snapshot.Revision == 3) hostUpdate.TrySetResult(snapshot); });
+        memberConnection.On<GameSnapshot>("GameSnapshot", snapshot => { if (snapshot.Revision == 3) memberUpdate.TrySetResult(snapshot); });
+
+        var coordinator = Assert.IsType<GameCoordinator>(factory.Services.GetRequiredService<IGameCoordinator>());
+        await InvokeInternalCombatAsync(coordinator, "StartCombatAsync", room.RoomId, room.PlayerId, 1L,
+            new[] { initialized.Characters.Single(character => character.OwnerPlayerId == room.PlayerId).CharacterId }, CreateOpponentDefinitions(coordinator));
+        await InvokeInternalCombatAsync(coordinator, "BeginOpposedExchangeAsync", room.RoomId, room.PlayerId, 2L,
+            "character:" + initialized.Characters.Single(character => character.OwnerPlayerId == room.PlayerId).CharacterId, "opponent:0");
+
+        var hostSnapshot = await hostUpdate.Task.WaitAsync(EventTimeout);
+        var memberSnapshot = await memberUpdate.Task.WaitAsync(EventTimeout);
+        Assert.True(factory.Services.GetRequiredService<IGameStateStore>().TryGet(room.RoomId, out var committed));
+        var committedCombat = Assert.IsType<CombatSession>(committed!.Combat);
+        var pendingExchangeId = committedCombat.PendingExchange!.ExchangeId;
+        var currentActor = committedCombat.Order[committedCombat.TurnIndex].Value;
+        var actionCounts = committedCombat.ActionCounts.ToDictionary(pair => pair.Key, pair => pair.Value);
+        var responseCounts = committedCombat.ResponseCounts.ToDictionary(pair => pair.Key, pair => pair.Value);
+        Assert.Equal(3, committed.Revision);
+        Assert.Equal(committed.Revision, hostSnapshot.Revision);
+        Assert.NotNull(hostSnapshot.Combat);
+        Assert.NotNull(hostSnapshot.Combat!.Pending);
+        Assert.Null(memberSnapshot.Combat);
+        Assert.Null(hostSnapshot.Combat.Participants.Single(participant => participant.CharacterId is null).Stats);
+        var serializedSnapshot = JsonSerializer.Serialize(hostSnapshot);
+        foreach (var internalTerm in new[] { "PendingDamageDispositions", "DyingSchedule", "AttackerCheck", "DefenderCheck", "Roll", "Target", "ResponsePolicy", "ResponseAllowance", "History", "SourceId", "Provenance" })
+        {
+            Assert.DoesNotContain(internalTerm, serializedSnapshot, StringComparison.OrdinalIgnoreCase);
+        }
+
+        await hostConnection.StopAsync();
+        var recoveredEvent = NewCompletion<GameSnapshot>();
+        var reattached = CreateHubConnection();
+        reattached.On<GameSnapshot>("GameSnapshot", snapshot => recoveredEvent.TrySetResult(snapshot));
+        await reattached.StartAsync();
+        await reattached.InvokeAsync<RoomSnapshot>("AttachSession", room.PlayerSessionToken);
+        var recovered = await recoveredEvent.Task.WaitAsync(EventTimeout);
+        Assert.Equal(3, recovered.Revision);
+        Assert.NotNull(recovered.Combat?.Pending);
+        Assert.True(factory.Services.GetRequiredService<IGameStateStore>().TryGet(room.RoomId, out var canonical));
+        Assert.Equal(3, canonical!.Revision);
+        var canonicalCombat = Assert.IsType<CombatSession>(canonical.Combat);
+        Assert.Equal(1, canonicalCombat.Round);
+        Assert.Equal(currentActor, canonicalCombat.Order[canonicalCombat.TurnIndex].Value);
+        Assert.Equal(pendingExchangeId, canonicalCombat.PendingExchange!.ExchangeId);
+        Assert.Null(canonicalCombat.LastExchange);
+        Assert.Equal(actionCounts, canonicalCombat.ActionCounts);
+        Assert.Equal(responseCounts, canonicalCombat.ResponseCounts);
+        Assert.Equal(JsonSerializer.Serialize(GameProjection.Build(canonical, room.PlayerId)), JsonSerializer.Serialize(recovered));
+        await reattached.StopAsync();
+    }
+
     public Task InitializeAsync() => Task.CompletedTask;
 
     public async Task DisposeAsync()
@@ -385,6 +455,24 @@ public sealed class SignalRGameDeliveryTests(WebApplicationFactory<Program> fact
 
     private static TaskCompletionSource<T> NewCompletion<T>() =>
         new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    private static Array CreateOpponentDefinitions(GameCoordinator coordinator)
+    {
+        var type = typeof(GameCoordinator).Assembly.GetType("Trpg.Multiplayer.Api.Gameplay.OpponentDefinition")!;
+        var definitions = Array.CreateInstance(type, 1);
+        definitions.SetValue(Activator.CreateInstance(type, "Cultist", 70, 55, 40, new[] { CombatResponse.Dodge }, 1, "trusted"), 0);
+        return definitions;
+    }
+
+    private static async Task InvokeInternalCombatAsync(GameCoordinator coordinator, string methodName, params object?[] arguments)
+    {
+        var method = typeof(GameCoordinator).GetMethod(methodName, System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        var command = Activator.CreateInstance(method.GetParameters().Single().ParameterType, arguments)!;
+        var task = Assert.IsAssignableFrom<Task>(method.Invoke(coordinator, [command]));
+        await task;
+        var result = task.GetType().GetProperty("Result")!.GetValue(task)!;
+        Assert.True(Assert.IsType<bool>(result.GetType().GetProperty("IsSuccess")!.GetValue(result)));
+    }
 
     private static async Task AssertNoEventWithinAsync<T>(Task<T> task)
     {

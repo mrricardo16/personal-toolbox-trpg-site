@@ -207,6 +207,29 @@ public sealed class GameApiTests(WebApplicationFactory<Program> factory)
         Assert.Equal(HttpStatusCode.NotFound, stabilize.StatusCode);
     }
 
+    [Fact]
+    public async Task CombatActions_AreNotPublicGameRoutes()
+    {
+        var client = factory.CreateClient();
+        var roomId = Guid.NewGuid();
+        var combatPaths = new[]
+        {
+            "combat/start",
+            "combat/attack",
+            "combat/respond",
+            "combat/dodge",
+            "combat/fight-back",
+            "combat/pass",
+            "combat/end"
+        };
+
+        foreach (var combatPath in combatPaths)
+        {
+            var response = await client.PostAsJsonAsync($"/api/rooms/{roomId}/game/{combatPath}", new { });
+            Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        }
+    }
+
     private async Task<HttpResponseMessage> InitializeAsync(CreatedResponse created, object[] characters)
     {
         return await SendAuthorizedAsync(

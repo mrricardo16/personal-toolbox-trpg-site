@@ -51,7 +51,8 @@ public sealed class MultiplayerGameState
         MultiplayerGameStatus status,
         DateTimeOffset createdAt,
         IEnumerable<CharacterState> characters,
-        GameCheckRecord? lastCheck = null)
+        GameCheckRecord? lastCheck = null,
+        CombatSession? combat = null)
     {
         RoomId = roomId;
         Revision = revision;
@@ -59,6 +60,7 @@ public sealed class MultiplayerGameState
         CreatedAt = createdAt;
         Characters = new ReadOnlyCollection<CharacterState>((characters ?? []).ToArray());
         LastCheck = lastCheck;
+        Combat = combat;
     }
 
     public Guid RoomId { get; }
@@ -72,4 +74,6 @@ public sealed class MultiplayerGameState
     public IReadOnlyList<CharacterState> Characters { get; }
 
     public GameCheckRecord? LastCheck { get; }
+
+    public CombatSession? Combat { get; }
 }

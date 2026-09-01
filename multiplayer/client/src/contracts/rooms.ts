@@ -109,6 +109,44 @@ export interface GameSnapshot {
   createdAt: string;
   characters: CharacterSnapshot[];
   lastCheck?: GameCheckRecord | null;
+  combat?: CombatSnapshot | null;
+}
+
+export interface CombatParticipantStatsSnapshot {
+  dex: number;
+  fighting: number;
+  dodge: number;
+}
+
+export interface CombatParticipantSnapshot {
+  participantId: string;
+  characterId: string | null;
+  label: string;
+  side: string;
+  active: boolean;
+  current: boolean;
+  viewerOwned: boolean;
+  stats: CombatParticipantStatsSnapshot | null;
+}
+
+export interface CombatExchangeSnapshot {
+  outcome: string;
+  winnerParticipantId: string | null;
+  dispositionPending: boolean;
+}
+
+export interface CombatPendingSnapshot {
+  role: string;
+  status: string;
+}
+
+export interface CombatSnapshot {
+  active: boolean;
+  round: number;
+  currentActorParticipantId: string | null;
+  participants: CombatParticipantSnapshot[];
+  lastExchange: CombatExchangeSnapshot | null;
+  pending: CombatPendingSnapshot | null;
 }
 
 export interface CheckResolvedEvent {

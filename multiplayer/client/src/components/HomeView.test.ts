@@ -159,4 +159,35 @@ describe('lobby views', () => {
     expect(Object.keys(api).join(' ')).not.toMatch(forbiddenActions);
     expect(resolveCheck).not.toHaveBeenCalled();
   });
+
+  it('renders server-projected combat as read-only status without combat actions', () => {
+    const api = {} as RoomsApi;
+    const wrapper = mount(LobbyView, {
+      props: {
+        currentPlayerId: 'player-1', busy: false, errorMessage: '', connectionStatus: 'connected', api, token: 'session-token',
+        room: { roomId: 'room-1', inviteCode: 'NIGHT-42', hostPlayerId: 'player-1', maxPlayers: 2, status: 'Open', revision: 1, players: [], aiConfiguration: null },
+        gameSnapshot: {
+          roomId: 'room-1', revision: 4, status: 'Active', createdAt: '2026-08-17T00:00:00Z', characters: [], lastCheck: null,
+          combat: {
+            active: true, round: 2, currentActorParticipantId: 'character-1',
+            participants: [
+              { participantId: 'character-1', characterId: 'character-1', label: 'Host', side: 'investigator', active: true, current: true, viewerOwned: true, stats: { dex: 80, fighting: 55, dodge: 45 } },
+              { participantId: 'opponent-1', characterId: null, label: 'Cultist', side: 'opponent', active: true, current: false, viewerOwned: false, stats: null },
+            ],
+            lastExchange: { outcome: 'attacker_hits', winnerParticipantId: 'character-1', dispositionPending: true },
+            pending: { role: 'attacker', status: 'awaiting_response' },
+          },
+        },
+      },
+    });
+
+    expect(wrapper.text()).toContain('COMBAT ACTIVE');
+    expect(wrapper.text()).toContain('ROUND 2');
+    expect(wrapper.text()).toContain('CURRENT Host');
+    expect(wrapper.text()).toContain('ORDER Host → Cultist');
+    expect(wrapper.text()).toContain('LAST attacker_hits · Host · PENDING');
+    expect(wrapper.text()).toContain('WAITING attacker · awaiting_response');
+    expect(wrapper.findAll('button').map((button) => button.text()).join(' ')).not.toMatch(/Attack|Dodge|Fight Back|Pass|Start|End|Resolve|timeout/i);
+    expect(Object.keys(api).join(' ')).not.toMatch(/combat|attack|dodge|fight|pass|start|end|resolve/i);
+  });
 });
