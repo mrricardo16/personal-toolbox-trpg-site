@@ -2,7 +2,7 @@
 
 ## Status
 
-Pending review.
+Approved design after retry-semantics review. Implementation plan pending.
 
 **Date:** 2026-09-02
 
@@ -261,7 +261,9 @@ This replaces ambiguous `Pending`/`HpCommitted` booleans. It retains exactly-onc
 
 Removing the entry plus a separate marker adds two collections and synchronization risk. A bounded consumed collection is rejected because eviction would permit re-consumption. Normal progression allows only one blocking Pending entry, although the registry can represent multiple entries for Phase 2F compatibility, diagnostics, and future migration.
 
-An exact retry of a Consumed ExchangeId returns the stored result with `Changed=false`. It does not roll, mutate HP/vitality, repair again, increment revision, append history, or broadcast a new state. A new consumption still requires the current expected revision. A missing ExchangeId or malformed Pending entry fails closed before RNG.
+`ResolveCombatDamage` validates room/game existence, trusted internal authority, and registry existence, then looks up the exact ExchangeId and its status **before** applying expected-revision validation for a Pending mutation. An exact retry whose status is Consumed returns the stored immutable result with `Changed=false`, even when the caller still carries the stale `ExpectedRevision` from the successful first attempt. This is an idempotent read of canonical truth, not a new mutation. It does not validate a mutation revision, roll, call HP, mutate vitality, repair again, increment revision, append history, commit, or broadcast.
+
+Only a Pending entry enters the mutation path and requires `ExpectedRevision == CurrentGameRevision`. A stale Pending mutation fails before RNG. A missing ExchangeId fails closed. A malformed or internally inconsistent disposition/result/status combination is an internal invariant failure, not a reason to infer or recreate damage.
 
 ## Dice Authority
 
@@ -279,9 +281,12 @@ For regular/Fight Back damage, roll weapon dice and dice DB only when applicable
 
 ```text
 load latest game/session
-  -> exact ExchangeId lookup
-  -> consumed retry short-circuit
-  -> validate blocking pending disposition and immutable profiles
+  -> validate room/game, trusted internal authority, and registry existence
+  -> exact ExchangeId/status lookup
+  -> if Consumed: return stored result Changed=false before revision validation
+  -> if Pending: validate expected revision and blocking order
+  -> validate owner/target, target eligibility classification, immutable profiles,
+     damage mode, expression/STR/SIZ/Armor bounds, and complete roll plan
   -> if target already ineligible: build no-op consumed result without RNG
   -> otherwise build roll plan and obtain secure server dice
   -> pure CombatDamageEngine calculation
@@ -297,7 +302,11 @@ load latest game/session
   -> existing realtime broadcast
 ```
 
-There is no intermediate commit between HP mutation and disposition consumption. Any validation, dice-contract, or HP-engine error aborts the whole transaction without state replacement. Because RNG cannot be rolled back, validation must complete before dice; a rare store replacement failure after rolling returns a conflict and the command must be retried from canonical state. The existing room lock and `TryReplace` discipline make such failure exceptional, but no partial HP state exists.
+There is no intermediate commit between HP mutation and disposition consumption. Before any damage RNG, while holding the per-room canonical mutation lock, the application must complete every ordinary fail-closed or conflict check: room/game and internal authority, exact ExchangeId, disposition existence/status, deterministic blocking order, Pending expected revision, owner and target existence, target eligibility classification, participant/profile validity, supported mode, weapon expression, canonical STR/SIZ, Armor, and the complete dice plan. No ordinary caller/state conflict remains after RNG begins.
+
+After canonical damage RNG has begun, `TryReplace(expected, replacement) == false` is an **internal invariant/storage consistency failure**, not a normal retryable `StateConflict`. The caller must never be told to retry the same Pending ExchangeId in a way that re-rolls it, and the coordinator must not automatically re-run the roll. Under the current in-memory store, per-room `SemaphoreSlim`, and expected-object replacement, the serialized path makes a post-validation stale race invalid; failure indicates that the storage/locking invariant was broken and requires operational escalation.
+
+If a future distributed database, optimistic transaction, or multi-process authority makes post-RNG commit conflict realistic, that architecture must first add durable roll reservation, a deterministic committed roll record, a transaction-owned RNG outcome, or an equivalent exactly-once mechanism. Re-rolling the same ExchangeId is never an acceptable conflict strategy.
 
 ## Causal Progression Gate
 
@@ -310,7 +319,7 @@ While any Pending disposition exists, the server rejects:
 - another normal action or turn progression;
 - trusted manual End Combat after an exchange has resolved to damage.
 
-An unresolved `PendingExchange` retains Phase 2F's trusted cancellation/end behavior because it has not yet produced a hit. A resolved damage disposition is not cancelled by manual End: the already-adjudicated hit must be consumed first. Automatic termination caused by its own damage occurs within the consumption transaction.
+An unresolved `PendingCombatExchange` retains Phase 2F's trusted cancellation/end behavior because it has not yet resolved into a hit. A resolved blocking `DamageDisposition` is not cancelled, erased, or skipped by manual End: the already-adjudicated hit must be consumed first. After consumption, the combat either continues, terminates automatically from the damage result, or may later be ended by a trusted command. A resolved hit cannot disappear because the host ends combat.
 
 The registry may physically hold multiple Pending entries from a pre-gate Phase 2F state. In that exceptional state, the blocking disposition is selected deterministically by completed exchange order and ExchangeId membership, and only it may be consumed. Normal Phase 2G flow can create at most one Pending entry because the first one closes the progression gate.
 
@@ -476,8 +485,9 @@ Future server tests must cover at least:
 - Begin, Pass, normal progress, and manual End rejected while damage is Pending;
 - registry storage capability with multiple legacy Pending entries and deterministic blocking order;
 - successful consumption increments revision and broadcasts exactly once;
-- duplicate consumed retry returns the same result with no roll, HP, vitality, repair, revision, history, or broadcast;
-- stale/missing/malformed disposition failure before RNG;
+- consumed replay with the original stale ExpectedRevision returns the same stored result with `Changed=false` and no roll, HP, vitality, repair, revision, history, commit, or broadcast;
+- Pending stale revision, missing disposition, wrong blocking ExchangeId, malformed mode, and invalid profile all fail before RNG;
+- a forced post-RNG `TryReplace` failure is classified as an internal invariant/storage failure and never as an ordinary retryable conflict;
 - status/result retained after more than 120 exchanges and after HP history exceeds 80 events;
 - zero net damage consumes, records, commits, and skips HP engine;
 - positive investigator damage exclusively uses HP engine and the exact event key;
@@ -581,3 +591,5 @@ Approve Phase 2G for a later, separately planned implementation using:
 20. Reconnect never re-rolls damage.
 21. Public Combat Damage API remains absent.
 22. History trimming cannot destroy exactly-once consumption truth.
+23. ExchangeId/status lookup precedes Pending mutation revision validation, so a Consumed stale-revision replay returns its stored result.
+24. After damage RNG begins, replacement failure is never a normal retry path and never authorizes re-rolling that ExchangeId.
