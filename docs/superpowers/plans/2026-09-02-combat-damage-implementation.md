@@ -83,6 +83,14 @@ Assert.Equal(new DiceExpression("d6+2", 1, 6, 2), parsed);
 var bonus = CocCombatDamageRules.DeriveDamageBonus(65, 60);
 Assert.Equal("1d4", bonus.Expression);
 
+var zeroClamp = CocCombatDamageRules.DeriveDamageBonus(0, 0);
+Assert.Equal(2, zeroClamp.Sum);
+Assert.Equal("-2", zeroClamp.Expression);
+
+var negativeClamp = CocCombatDamageRules.DeriveDamageBonus(-10, 1);
+Assert.Equal(2, negativeClamp.Sum);
+Assert.Equal("-2", negativeClamp.Expression);
+
 var result = new CocCombatDamageEngine().Resolve(new CombatDamageInput(
     Weapon: weapon,
     DamageBonus: bonus,
@@ -193,7 +201,7 @@ public static class CocCombatDamageRules {
 
 - [ ] **Step 1: Write RED unit tests for all deterministic paths.**
 
-Cover DB sums 64, 65, 84, 85, 124, 125, 164, 165, 204, 205, 284, 285 and the next 80-point band; supported `melee_non_impaling`; unsupported mode; regular dice DB; flat -1/-2; `AddsDamageBonus=false`; gross floor zero; extreme weapon modifier maximum; positive/zero/negative DB maximum; Fight Back regular cap; Armor partial/equal/above gross; and exact roll count/faces/range mismatch rejection.
+Cover portable source-semantic DB inputs `(0, 0)` and `(-10, 1)`, both producing effective sum 2 and `-2`, plus DB sums 64, 65, 84, 85, 124, 125, 164, 165, 204, 205, 284, 285 and the next 80-point band. These low/negative integer cases are direct C# pure-rule tests, not added to the fixed 48-case JS fixture. Also cover supported `melee_non_impaling`; unsupported mode; regular dice DB; flat -1/-2; `AddsDamageBonus=false`; gross floor zero; extreme weapon modifier maximum; positive/zero/negative DB maximum; Fight Back regular cap; Armor partial/equal/above gross; and exact roll count/faces/range mismatch rejection.
 
 - [ ] **Step 2: Run focused tests and verify assertion RED.**
 
@@ -205,7 +213,7 @@ Expected RED: missing engine/rule implementation or incorrect new assertions onl
 
 - [ ] **Step 3: Implement Damage Bonus and weapon normalization.**
 
-Use the finalized table and `2 + floor((sum - 205) / 80)` above 204. Require STR/SIZ positive and use checked sum/max. Normalize only `melee_non_impaling`; unsupported modes fail before rolls.
+Use the finalized table and `2 + floor((sum - 205) / 80)` above 204. Use checked arithmetic for `str + siz`, then clamp the pure reference effective sum with `Math.Max(2, sum)`; this function does not validate Multiplayer canonical STR/SIZ ranges. Normalize only `melee_non_impaling`; unsupported modes fail before rolls. Strict investigator `1..100` and opponent `1..999` STR/SIZ validation belongs exclusively to Task 5 Combat-start/profile construction.
 
 - [ ] **Step 4: Implement pure roll validation and regular/Fight Back math.**
 
@@ -345,7 +353,7 @@ internal sealed record OpponentDefinition(
 
 - [ ] **Step 1: Write RED start tests.**
 
-Assert investigators require canonical `str` and `siz` in 1..100, use the narrow character loadout, and snapshot DEX/Fighting/Dodge/STR/SIZ/DB/weapon/Armor. Assert missing/invalid keys fail without dice/revision. Assert opponent profiles require STR/SIZ 1..999, `CurrentHp > 0`, `MaxHp >= CurrentHp`, Armor 0..99, supported weapon, and no legacy fallback.
+Assert investigators require canonical `str` and `siz` in 1..100, use the narrow character loadout, and snapshot DEX/Fighting/Dodge/STR/SIZ/DB/weapon/Armor. Assert missing/invalid keys fail without dice, revision, or state mutation. Assert opponent profiles require STR/SIZ 1..999, `CurrentHp > 0`, `MaxHp >= CurrentHp`, Armor 0..99, supported weapon, and no legacy fallback. These strict profile-validation cases are Multiplayer generalization tests only; they do not alter or add cases to the fixed 48-case JS fixture.
 
 - [ ] **Step 2: Add snapshot immutability RED.**
 
