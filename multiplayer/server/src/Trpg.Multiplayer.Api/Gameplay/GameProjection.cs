@@ -98,7 +98,9 @@ public static class GameProjection
                 : new CombatExchangeSnapshot(
                     session.LastExchange.Outcome,
                     session.LastExchange.WinnerParticipantId?.Value,
-                    session.LastExchange.DamageDisposition?.Pending == true),
+                    session.LastExchange.DamageDisposition is not null
+                    && session.DamageDispositions.TryGetValue(session.LastExchange.ExchangeId, out var disposition)
+                    && disposition.Status == DamageDispositionStatus.Pending),
             session.PendingExchange is null
                 ? null
                 : new CombatPendingSnapshot(

@@ -499,6 +499,8 @@ public sealed class SignalRGameDeliveryTests(WebApplicationFactory<Program> fact
         Assert.Equal(1, Volatile.Read(ref observerDeliveryCount));
         Assert.Null(memberObserved.Snapshot.Characters.Single(character => character.CharacterId == hostCharacterId).Health);
         Assert.Equal(12, memberObserved.Snapshot.Characters.Single(character => character.CharacterId == memberCharacterId).Health!.CurrentHp);
+        Assert.False(memberObserved.Snapshot.Combat!.LastExchange!.DispositionPending);
+        Assert.Equal(seeded.ExchangeId, memberObserved.Snapshot.Combat.LastDamage!.ExchangeId);
         Assert.True(memberObserved.Snapshot.Combat!.LastDamage!.TargetDefeated);
         Assert.Equal("character:" + memberCharacterId, memberObserved.Snapshot.Combat.CurrentActorParticipantId);
         Assert.Null(observerObserved.Snapshot.Combat);
@@ -648,6 +650,22 @@ public sealed class SignalRGameDeliveryTests(WebApplicationFactory<Program> fact
                 state!.Revision),
             DamageDispositionStatus.Pending,
             null);
+        var historicalExchange = new CombatExchange(
+            exchangeId,
+            state.Combat!.Round,
+            state.Combat.TurnIndex,
+            new CombatParticipantId(ownerParticipantId),
+            new CombatParticipantId(targetParticipantId),
+            CombatResponse.Dodge,
+            new CheckResolutionResult(1, 99, "regular", 99, "success", true, false, false),
+            new CheckResolutionResult(100, 99, "regular", 99, "failure", false, false, false),
+            0,
+            0,
+            1,
+            "attacker_hits",
+            new CombatParticipantId(ownerParticipantId),
+            disposition,
+            DateTimeOffset.UtcNow);
         var replacement = new MultiplayerGameState(
             state.RoomId,
             state.Revision,
@@ -657,6 +675,8 @@ public sealed class SignalRGameDeliveryTests(WebApplicationFactory<Program> fact
             state.LastCheck,
             state.Combat! with
             {
+                LastExchange = historicalExchange,
+                History = state.Combat.History.Append(historicalExchange).ToArray(),
                 DamageDispositions = new Dictionary<string, DamageDispositionState>(StringComparer.Ordinal)
                 {
                     [exchangeId] = disposition

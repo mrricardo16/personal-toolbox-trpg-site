@@ -707,6 +707,10 @@ public sealed class GameStateTests
         var pendingState = await CreatePendingDamageDispositionAsync(fixture);
         var exchangeId = Assert.Single(pendingState.Combat!.DamageDispositions).Key;
         var originalExpectedRevision = pendingState.Revision;
+        var pendingProjection = Assert.IsType<CombatSnapshot>(GameProjection.Build(pendingState, fixture.HostId).Combat);
+
+        Assert.True(pendingProjection.LastExchange!.DispositionPending);
+        Assert.Null(pendingProjection.LastDamage);
 
         var first = await ResolveCombatDamageAsync(
             fixture.Coordinator,
@@ -727,6 +731,12 @@ public sealed class GameStateTests
         var sessionAfterFirstConsumption = stateAfterFirstConsumption.Combat!;
         var targetAfterFirstConsumption = sessionAfterFirstConsumption.Participants.Single(
             participant => participant.ParticipantId == storedResult.TargetParticipantId);
+        var consumedProjection = Assert.IsType<CombatSnapshot>(GameProjection.Build(stateAfterFirstConsumption, fixture.HostId).Combat);
+
+        Assert.False(consumedProjection.LastExchange!.DispositionPending);
+        Assert.Equal(exchangeId, consumedProjection.LastDamage!.ExchangeId);
+        Assert.Same(pendingState.Combat.LastExchange, sessionAfterFirstConsumption.LastExchange);
+        Assert.Equal(pendingState.Combat.History, sessionAfterFirstConsumption.History);
 
         var replay = await ResolveCombatDamageAsync(
             fixture.Coordinator,
@@ -752,6 +762,9 @@ public sealed class GameStateTests
         Assert.Equal(pendingState.Combat.ResponseCounts, replay.State.Combat.ResponseCounts);
         Assert.Equal(targetAfterFirstConsumption, replay.State.Combat.Participants.Single(
             participant => participant.ParticipantId == storedResult.TargetParticipantId));
+        var replayProjection = Assert.IsType<CombatSnapshot>(GameProjection.Build(replay.State, fixture.HostId).Combat);
+        Assert.False(replayProjection.LastExchange!.DispositionPending);
+        Assert.Equal(exchangeId, replayProjection.LastDamage!.ExchangeId);
     }
 
     [Fact]
@@ -935,6 +948,10 @@ public sealed class GameStateTests
         Assert.Equal(before.Combat.History, result.State.Combat.History);
         Assert.Equal(target.OpponentVitality, result.State.Combat.Participants.Single(
             participant => participant.ParticipantId == target.ParticipantId).OpponentVitality);
+        var consumedProjection = Assert.IsType<CombatSnapshot>(GameProjection.Build(result.State, fixture.HostId).Combat);
+        Assert.False(consumedProjection.LastExchange!.DispositionPending);
+        Assert.Equal(entry.Disposition.ExchangeId, consumedProjection.LastDamage!.ExchangeId);
+        Assert.Equal("target_already_ineligible", consumedProjection.LastDamage.Outcome);
 
         var replay = await ResolveCombatDamageAsync(
             fixture.Coordinator,
