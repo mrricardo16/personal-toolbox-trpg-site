@@ -8,7 +8,7 @@
 
 ## Current Phase
 
-Current verified phase (2026-08-25): Phase 2E Health Stabilization completed.
+Current verified phase (2026-09-07): Phase 2G Combat Damage client summary validated; repository-wide validation and publication remain pending aggregation.
 
 Completed:
 
@@ -62,6 +62,7 @@ Dedicated Repo Bootstrap    ✅ complete
 Multiplayer Phase 1         ✅ Lobby MVP complete
 Historical Phase 2B         ✅ Realtime GameState + Minimal Check client complete
 Multiplayer Phase 2E        ✅ Health Stabilization complete
+Multiplayer Phase 2G        ⏳ client read-only summary validated; aggregate validation pending
 ```
 
 ---
@@ -186,6 +187,8 @@ Phase 1 Memory Only。
 历史记录：Phase 2D 已完成 HP/Damage C# conformance、canonical HP state、internal server damage mutation、owner-safe HP projection、realtime/reconnect snapshot recovery 和 read-only Vue HP display。没有 public damage endpoint，Host 不获得任意 HP 修改权限。
 
 Phase 2E 已完成：JS-to-C# stabilization conformance、canonical dying episode/treatment state、internal coordinator dying-round/First Aid transitions、owner-safe stabilized projection/privacy、existing GameSnapshot realtime/reconnect coverage、read-only Vue stabilized display，以及 omitted internal CON roll 的 injected `IDiceRoller` fallback correction。详细 health records remains owner/server-internal only；non-owner receives `Health = null`，且没有新增 health action API 或 route。
+
+Phase 2G 当前 client 记录：`CombatSnapshot.lastDamage` 仅接收 server projection 的六个安全字段（exchange ID、owner/target participant ID、semantic outcome、net damage、defeated）。Lobby 只显示该摘要、现有 current actor/order 与已有 own Health，不推导 HP、伤害、Armor、defeat、turn 或 round，且没有新增 Combat Damage API、输入、按钮、handler 或本地 dice/damage calculation。client focused GREEN 为 8/8，完整 client suite 为 23/23，`npm run build` 已通过；repository-wide server/Single Player aggregate validation、发布与 Phase 2G 完成声明仍待主流程确认。
 
 未来 Team Status Visibility 只保留 policy 定义：`AlwaysVisible`（产品规则明确对所有玩家可见）、`Contextual`（按场景/交互/权限可见）、`Last Known Status`（玩家曾合法获知的最后状态，不等同于 live canonical truth）、`PlayerKnowledgeState`（按玩家记录已获知状态、范围与新鲜度）。Location、Communication、knowledge propagation 与 runtime `PlayerKnowledgeState` 尚未实现。
 

@@ -138,6 +138,7 @@ async function resolveCheck(
           <p>ORDER {{ gameSnapshot.combat.participants.map((participant) => participant.label).join(' → ') }}</p>
           <p v-if="gameSnapshot.combat.lastExchange">LAST {{ gameSnapshot.combat.lastExchange.outcome }} · {{ combatParticipantLabel(gameSnapshot, gameSnapshot.combat.lastExchange.winnerParticipantId) }} · {{ gameSnapshot.combat.lastExchange.dispositionPending ? 'PENDING' : 'COMPLETE' }}</p>
           <p v-if="gameSnapshot.combat.pending">WAITING {{ gameSnapshot.combat.pending.role }} · {{ gameSnapshot.combat.pending.status }}</p>
+          <p v-if="gameSnapshot.combat.lastDamage" data-testid="last-damage">LAST DAMAGE {{ combatParticipantLabel(gameSnapshot, gameSnapshot.combat.lastDamage.ownerParticipantId) }} → {{ combatParticipantLabel(gameSnapshot, gameSnapshot.combat.lastDamage.targetParticipantId) }} · {{ gameSnapshot.combat.lastDamage.outcome }} · NET {{ gameSnapshot.combat.lastDamage.netDamage }} · {{ gameSnapshot.combat.lastDamage.targetDefeated ? 'DEFEATED' : 'ACTIVE' }}</p>
         </section>
       </template>
       <template v-else>

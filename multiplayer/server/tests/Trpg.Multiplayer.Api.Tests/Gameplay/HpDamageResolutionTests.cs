@@ -6,6 +6,24 @@ namespace Trpg.Multiplayer.Api.Tests.Gameplay;
 
 public sealed class HpDamageResolutionTests
 {
+    [Theory]
+    [InlineData(0, false)]
+    [InlineData(5, false)]
+    [InlineData(6, true)]
+    [InlineData(11, true)]
+    [InlineData(12, false)]
+    [InlineData(13, false)]
+    public void RequiresConRoll_OnlyPositiveNonInstantMajorWoundDamageRequiresPercentile(
+        int damage,
+        bool expected)
+    {
+        var state = new CharacterHealthState(12, 12, 60, false, false, false, false, [], null);
+
+        var actual = CocHpDamageEngine.RequiresConRoll(state, damage);
+
+        Assert.Equal(expected, actual);
+    }
+
     [Fact]
     public void FreshDamageTransitionClearsStabilizedConditionButUnrelatedDamagePreservesIt()
     {

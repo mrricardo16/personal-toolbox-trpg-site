@@ -7,6 +7,8 @@ public enum MultiplayerGameStatus
     Active
 }
 
+public sealed record CharacterCombatLoadout(CombatWeaponProfile Weapon, int FixedArmor);
+
 public sealed class CharacterState
 {
     public CharacterState(
@@ -15,6 +17,23 @@ public sealed class CharacterState
         string name,
         IReadOnlyDictionary<string, int> checkValues,
         CharacterHealthState health)
+        : this(
+            characterId,
+            ownerPlayerId,
+            name,
+            checkValues,
+            health,
+            CreateDefaultCombatLoadout())
+    {
+    }
+
+    public CharacterState(
+        Guid characterId,
+        Guid ownerPlayerId,
+        string name,
+        IReadOnlyDictionary<string, int> checkValues,
+        CharacterHealthState health,
+        CharacterCombatLoadout combatLoadout)
     {
         CharacterId = characterId;
         OwnerPlayerId = ownerPlayerId;
@@ -22,6 +41,7 @@ public sealed class CharacterState
         CheckValues = new ReadOnlyDictionary<string, int>(
             new Dictionary<string, int>(checkValues, StringComparer.OrdinalIgnoreCase));
         Health = health;
+        CombatLoadout = combatLoadout;
     }
 
     public Guid CharacterId { get; }
@@ -35,12 +55,24 @@ public sealed class CharacterState
 
     public CharacterHealthState Health { get; }
 
+    public CharacterCombatLoadout CombatLoadout { get; }
+
     public CharacterState WithHealth(CharacterHealthState health) => new(
         CharacterId,
         OwnerPlayerId,
         Name,
         CheckValues,
-        health);
+        health,
+        CombatLoadout);
+
+    private static CharacterCombatLoadout CreateDefaultCombatLoadout() => new(
+        CocCombatDamageRules.NormalizeWeapon(
+            "unarmed",
+            "徒手/拳脚",
+            "1d3",
+            addsDamageBonus: true,
+            "melee_non_impaling"),
+        FixedArmor: 0);
 }
 
 public sealed class MultiplayerGameState

@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Trpg.Multiplayer.Api.Gameplay;
 using Xunit;
@@ -208,19 +209,55 @@ public sealed class GameApiTests(WebApplicationFactory<Program> factory)
     }
 
     [Fact]
-    public async Task CombatActions_AreNotPublicGameRoutes()
+    public async Task CombatActions_AreAbsentFromTheEnumeratedPublicGameApi()
     {
         var client = factory.CreateClient();
         var roomId = Guid.NewGuid();
+        var endpointDataSource = factory.Services.GetRequiredService<EndpointDataSource>();
+        var gameRoutes = endpointDataSource.Endpoints
+            .OfType<RouteEndpoint>()
+            .Select(endpoint => endpoint.RoutePattern.RawText)
+            .Where(route => route is not null && route.StartsWith("/api/rooms/{roomId:guid}/game", StringComparison.OrdinalIgnoreCase))
+            .Select(route => route!)
+            .OrderBy(route => route, StringComparer.Ordinal)
+            .ToArray();
+        Assert.Equal(
+            [
+                "/api/rooms/{roomId:guid}/game",
+                "/api/rooms/{roomId:guid}/game/check",
+                "/api/rooms/{roomId:guid}/game/initialize"
+            ],
+            gameRoutes);
+
+        var forbiddenRouteTerms = new[]
+        {
+            "combat", "damage", "resolve-damage", "weapon", "armor",
+            "start", "attack", "respond", "dodge", "fight-back", "pass", "end"
+        };
+        Assert.DoesNotContain(gameRoutes, route => forbiddenRouteTerms.Any(term =>
+            route!.Split('/', StringSplitOptions.RemoveEmptyEntries).Contains(term, StringComparer.OrdinalIgnoreCase)));
+
         var combatPaths = new[]
         {
+            "combat",
             "combat/start",
             "combat/attack",
             "combat/respond",
             "combat/dodge",
             "combat/fight-back",
             "combat/pass",
-            "combat/end"
+            "combat/end",
+            "damage",
+            "resolve-damage",
+            "weapon",
+            "armor",
+            "start",
+            "attack",
+            "respond",
+            "dodge",
+            "fight-back",
+            "pass",
+            "end"
         };
 
         foreach (var combatPath in combatPaths)

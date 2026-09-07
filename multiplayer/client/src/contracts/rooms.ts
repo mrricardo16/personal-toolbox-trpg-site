@@ -140,6 +140,15 @@ export interface CombatPendingSnapshot {
   status: string;
 }
 
+export interface CombatDamageSnapshot {
+  exchangeId: string;
+  ownerParticipantId: string;
+  targetParticipantId: string;
+  outcome: string;
+  netDamage: number;
+  targetDefeated: boolean;
+}
+
 export interface CombatSnapshot {
   active: boolean;
   round: number;
@@ -147,6 +156,7 @@ export interface CombatSnapshot {
   participants: CombatParticipantSnapshot[];
   lastExchange: CombatExchangeSnapshot | null;
   pending: CombatPendingSnapshot | null;
+  lastDamage?: CombatDamageSnapshot | null;
 }
 
 export interface CheckResolvedEvent {

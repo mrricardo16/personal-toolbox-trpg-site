@@ -130,9 +130,8 @@ public sealed class CocHpDamageEngine : IHpDamageEngine
             return new HpDamageResolutionResult(state, null, false, false);
         }
 
-        var threshold = MajorWoundThreshold(state.MaxHp);
         var instantDeath = input.Damage >= state.MaxHp;
-        var majorWound = !instantDeath && input.Damage >= threshold;
+        var majorWound = RequiresConRoll(state, input.Damage);
         HpConCheck? conCheck = null;
         if (majorWound)
         {
@@ -178,6 +177,19 @@ public sealed class CocHpDamageEngine : IHpDamageEngine
     }
 
     public static int MajorWoundThreshold(int maxHp) => Math.Max(1, (Math.Max(1, maxHp) + 1) / 2);
+
+    // 修改时间：2026-09-07 14:56:39
+    // 修改说明：公开 HP 引擎唯一的重伤 CON 判定边界，供战斗伤害与 Apply 共用。
+    // 修改原因：避免战斗流程复制重伤阈值，并确保零伤害与即死伤害不会额外掷 CON。
+    // 业务影响：仅正数、非即死且达到重伤阈值的伤害需要 CON 百分骰。
+    public static bool RequiresConRoll(CharacterHealthState state, int damage)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        ValidateState(state);
+        return damage > 0
+            && damage < state.MaxHp
+            && damage >= MajorWoundThreshold(state.MaxHp);
+    }
 
     private static void ValidateState(CharacterHealthState state)
     {

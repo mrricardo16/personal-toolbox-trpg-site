@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import type { GameSnapshot } from '../contracts/rooms';
 import HomeView from './HomeView.vue';
 import LobbyView from './LobbyView.vue';
@@ -189,5 +191,41 @@ describe('lobby views', () => {
     expect(wrapper.text()).toContain('WAITING attacker · awaiting_response');
     expect(wrapper.findAll('button').map((button) => button.text()).join(' ')).not.toMatch(/Attack|Dodge|Fight Back|Pass|Start|End|Resolve|timeout/i);
     expect(Object.keys(api).join(' ')).not.toMatch(/combat|attack|dodge|fight|pass|start|end|resolve/i);
+  });
+
+  it('renders only safe combat damage facts without damage authority controls', () => {
+    const api = {} as RoomsApi;
+    const wrapper = mount(LobbyView, {
+      props: {
+        currentPlayerId: 'player-1', busy: false, errorMessage: '', connectionStatus: 'connected', api, token: 'session-token',
+        room: { roomId: 'room-1', inviteCode: 'NIGHT-42', hostPlayerId: 'player-1', maxPlayers: 2, status: 'Open', revision: 1, players: [], aiConfiguration: null },
+        gameSnapshot: {
+          roomId: 'room-1', revision: 5, status: 'Active', createdAt: '2026-09-07T00:00:00Z', characters: [
+            { characterId: 'character-1', ownerPlayerId: 'player-1', name: 'Host Character', checkValues: {}, health: { currentHp: 7, maxHp: 12, majorWound: true, unconscious: false, dying: false, dead: false, stabilized: false } },
+          ], lastCheck: null,
+          combat: {
+            active: true, round: 3, currentActorParticipantId: 'opponent-1',
+            participants: [
+              { participantId: 'character-1', characterId: 'character-1', label: 'Host Character', side: 'investigator', active: true, current: false, viewerOwned: true, stats: { dex: 80, fighting: 55, dodge: 45 } },
+              { participantId: 'opponent-1', characterId: null, label: 'Cultist', side: 'opponent', active: false, current: true, viewerOwned: false, stats: null },
+            ],
+            lastExchange: { outcome: 'attacker_hits', winnerParticipantId: 'character-1', dispositionPending: false },
+            pending: null,
+            lastDamage: { exchangeId: 'exchange-1', ownerParticipantId: 'character-1', targetParticipantId: 'opponent-1', outcome: 'damage_applied', netDamage: 4, targetDefeated: true },
+          },
+        },
+      },
+    });
+
+    expect(wrapper.get('[data-testid="last-damage"]').text()).toContain('Host Character → Cultist · damage_applied · NET 4 · DEFEATED');
+    expect(wrapper.get('[data-testid="character-health"]').text()).toContain('HP 7 / 12');
+    expect(wrapper.get('[data-testid="combat-status"]').text()).toContain('CURRENT Cultist');
+    expect(wrapper.get('[data-testid="combat-status"]').text()).toContain('ORDER Host Character → Cultist');
+
+    const forbidden = /Roll Damage|Apply Damage|Damage Input|\bWeapon\b|\bArmor\b|\bAttack\b|\bDodge\b|Fight Back|\bPass\b|Start Combat|End Combat/i;
+    expect(wrapper.findAll('button, input, textarea').map((element) => element.text()).join(' ')).not.toMatch(forbidden);
+    expect(wrapper.text()).not.toMatch(forbidden);
+    expect(Object.keys(api).join(' ')).not.toMatch(forbidden);
+    expect(readFileSync(resolve(process.cwd(), 'src/components/LobbyView.vue'), 'utf8')).not.toMatch(/\b(?:rollDice|parseDice|calculateDamage|applyDamage)\b/i);
   });
 });

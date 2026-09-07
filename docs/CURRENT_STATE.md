@@ -139,7 +139,7 @@ Multiplayer Phase 1              ✅ Host Provided Credential Foundation complet
 
 # 7. Current Phase Status
 
-Current verified phase (2026-08-25): Phase 2E Health Stabilization completed.
+Current verified phase (2026-09-07): Phase 2G Combat Damage client summary validated; repository-wide validation and publication remain pending aggregation.
 
 Completed in this phase:
 
@@ -333,6 +333,12 @@ Phase 2E is completed. The JS `hp-damage-state.js` and `health-stabilization.js`
 `GameCoordinator` provides server-internal dying-round and First Aid transitions under the existing per-room lock. Successful mutations commit one revision before viewer-safe realtime delivery; injected `IDiceRoller` is the fallback for omitted internal CON rolls, while explicit forced rolls remain a test/internal seam. Focused coordinator coverage includes prerequisites, ordinals, treatment/revision history, stale stabilization invalidation, concurrent transitions, and cross-room isolation.
 
 The owner-safe projection exposes HP and only simplified booleans (`stabilized`, `dying`, `dead`, `unconscious`, plus the existing major-wound status). Non-owners receive `Health = null`. SignalR uses the existing `GameSnapshot` event, and reconnect recovers the latest committed owner-safe projection. Vue renders the stabilized state read-only; it adds no health action, dice, API method, or route. Detailed health records, rolls, targets, source IDs, event keys, reason fields, and provenance remain owner/server-internal only for Phase 2E.
+
+# Phase 2G — Combat Damage Read-only Client Summary
+
+The client contract now recognizes nullable `CombatSnapshot.lastDamage` with exactly six server-projected fields: `exchangeId`, owner/target participant IDs, semantic `outcome`, `netDamage`, and `targetDefeated`. `LobbyView` renders those facts together with the existing server-projected current actor, stable participant order, and owner-only Health. It derives no damage, HP, defeat, Armor, turn, or round value.
+
+The client adds no Combat Damage button, input, handler, API method, dice routine, or local damage calculation. The existing monotonic GameSnapshot revision acceptance remains the stale-snapshot guard. Focused client RED recorded the missing summary; focused GREEN passed 8/8. A fresh `npm ci` completed with 0 vulnerabilities (with the existing transitive `glob@10.5.0` deprecation warning), the full client suite passed 23/23, and the production build passed. Full server and Single Player aggregation, publication, and any repository-wide Phase 2G completion claim remain outside this client validation record.
 
 ## Future Team Status Visibility Policy (Not Implemented)
 

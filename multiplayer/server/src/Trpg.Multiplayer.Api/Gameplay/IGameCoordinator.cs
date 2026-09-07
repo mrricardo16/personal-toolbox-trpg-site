@@ -30,6 +30,8 @@ internal interface IInternalCombatResolutionCoordinator : IInternalCombatCoordin
 {
     Task<GameResult<ResolvePendingExchangeResult>> ResolvePendingExchangeAsync(ResolvePendingExchangeCommand command);
 
+    Task<GameResult<ResolveCombatDamageResult>> ResolveCombatDamageAsync(ResolveCombatDamageCommand command);
+
     Task<GameResult<PassCombatTurnResult>> PassCombatTurnAsync(PassCombatTurnCommand command);
 
     Task<GameResult<EndCombatResult>> EndCombatAsync(EndCombatCommand command);

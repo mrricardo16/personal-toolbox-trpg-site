@@ -103,7 +103,38 @@ public static class GameProjection
                 ? null
                 : new CombatPendingSnapshot(
                     GetPendingRole(session.PendingExchange, viewerParticipantIds),
-                    "awaiting_response"));
+                    "awaiting_response"),
+            BuildLastDamage(session.DamageDispositions));
+    }
+
+    private static CombatDamageSnapshot? BuildLastDamage(
+        IReadOnlyDictionary<string, DamageDispositionState> damageDispositions)
+    {
+        var latest = damageDispositions.Values
+            .Where(disposition => disposition.Status == DamageDispositionStatus.Consumed && disposition.Result is not null)
+            .Select(disposition => disposition.Result!)
+            .OrderByDescending(result => result.ResolvedAt)
+            .ThenByDescending(result => result.ExchangeId, StringComparer.Ordinal)
+            .FirstOrDefault();
+        if (latest is null)
+        {
+            return null;
+        }
+
+        var outcome = latest.Outcome switch
+        {
+            CombatDamageOutcome.Applied => "applied",
+            CombatDamageOutcome.TargetAlreadyIneligible => "target_already_ineligible",
+            _ => throw new CombatDamageStateInvariantException(
+                $"Combat damage exchange '{latest.ExchangeId}' has an unsupported canonical outcome.")
+        };
+        return new CombatDamageSnapshot(
+            latest.ExchangeId,
+            latest.OwnerParticipantId.Value,
+            latest.TargetParticipantId.Value,
+            outcome,
+            latest.NetDamage,
+            latest.TargetDefeated);
     }
 
     private static string GetPendingRole(

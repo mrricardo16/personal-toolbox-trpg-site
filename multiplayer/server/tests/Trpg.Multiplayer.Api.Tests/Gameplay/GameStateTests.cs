@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Trpg.Multiplayer.Api.Gameplay;
+using Trpg.Multiplayer.Api.Realtime;
 using Trpg.Multiplayer.Api.Rooms;
 using Xunit;
 
@@ -81,6 +82,221 @@ public sealed class GameStateTests
     }
 
     [Fact]
+    public void CombatDamageProfile_DefaultCharacterLoadoutIsCanonicalUnarmed()
+    {
+        var character = new CharacterState(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "Investigator",
+            CombatValues(80, 55, 45),
+            new CharacterHealthState(12, 12, 60, false, false, false, false, [], null));
+
+        Assert.Equal(0, character.CombatLoadout.FixedArmor);
+        Assert.Equal("unarmed", character.CombatLoadout.Weapon.WeaponId);
+        Assert.Equal("徒手/拳脚", character.CombatLoadout.Weapon.Label);
+        Assert.Equal("1d3", character.CombatLoadout.Weapon.Damage.Text);
+        Assert.True(character.CombatLoadout.Weapon.AddsDamageBonus);
+        Assert.Equal("melee_non_impaling", character.CombatLoadout.Weapon.Mode);
+    }
+
+    [Fact]
+    public async Task InternalCombat_StartSnapshotsCanonicalInvestigatorAndOpponentDamageProfiles()
+    {
+        var fixture = await CreateCombatGameAsync();
+        var start = await StartCombatAsync(
+            fixture.Coordinator,
+            fixture.Room.RoomId,
+            fixture.HostId,
+            1,
+            [fixture.HostCharacterId],
+            [Opponent("Cultist", 90) with
+            {
+                Str = 90,
+                Siz = 80,
+                CurrentHp = 11,
+                MaxHp = 14,
+                FixedArmor = 2,
+                Weapon = Weapon("ritual-club", "仪式棍", "1d6")
+            }]);
+
+        Assert.True(start.IsSuccess);
+        var session = Assert.IsType<CombatSession>(start.State!.Combat);
+        var investigator = session.Participants.Single(participant => participant.CharacterId == fixture.HostCharacterId);
+        Assert.Equal(80, investigator.Dex);
+        Assert.Equal(55, investigator.Fighting);
+        Assert.Equal(45, investigator.Dodge);
+        Assert.Equal(60, investigator.DamageProfile.Str);
+        Assert.Equal(50, investigator.DamageProfile.Siz);
+        Assert.Equal(CocCombatDamageRules.DeriveDamageBonus(60, 50), investigator.DamageProfile.DamageBonus);
+        Assert.Equal("unarmed", investigator.DamageProfile.Weapon.WeaponId);
+        Assert.Equal(0, investigator.DamageProfile.FixedArmor);
+        Assert.Null(investigator.OpponentVitality);
+
+        var opponent = session.Participants.Single(participant => participant.ParticipantId.Value == "opponent:0");
+        Assert.Equal(90, opponent.DamageProfile.Str);
+        Assert.Equal(80, opponent.DamageProfile.Siz);
+        Assert.Equal(CocCombatDamageRules.DeriveDamageBonus(90, 80), opponent.DamageProfile.DamageBonus);
+        Assert.Equal("ritual-club", opponent.DamageProfile.Weapon.WeaponId);
+        Assert.Equal("1d6", opponent.DamageProfile.Weapon.Damage.Text);
+        Assert.Equal(2, opponent.DamageProfile.FixedArmor);
+        Assert.Equal(new OpponentVitalityState(11, 14), opponent.OpponentVitality);
+        Assert.Equal(0, fixture.DiceRoller.PercentileCalls);
+    }
+
+    [Theory]
+    [InlineData("str", null)]
+    [InlineData("str", 0)]
+    [InlineData("str", 101)]
+    [InlineData("siz", null)]
+    [InlineData("siz", 0)]
+    [InlineData("siz", 101)]
+    public async Task InternalCombat_StartRejectsMissingOrInvalidInvestigatorDamageProfileWithoutMutation(
+        string key,
+        int? value)
+    {
+        var fixture = await CreateCombatGameAsync();
+        var checkValues = CombatValues(80, 55, 45);
+        if (value.HasValue)
+        {
+            checkValues[key] = value.Value;
+        }
+        else
+        {
+            checkValues.Remove(key);
+        }
+
+        ReplaceCharacterCombatProfile(fixture, fixture.HostCharacterId, checkValues, DefaultLoadout());
+        Assert.True(fixture.StateStore.TryGet(fixture.Room.RoomId, out var before));
+
+        var start = await StartCombatAsync(
+            fixture.Coordinator,
+            fixture.Room.RoomId,
+            fixture.HostId,
+            before!.Revision,
+            [fixture.HostCharacterId],
+            [Opponent("Cultist", 90)]);
+
+        Assert.Equal(GameErrorCode.InvalidParticipant, start.ErrorCode);
+        Assert.True(fixture.StateStore.TryGet(fixture.Room.RoomId, out var after));
+        Assert.Same(before, after);
+        Assert.Equal(1, after!.Revision);
+        Assert.Null(after.Combat);
+        Assert.Equal(0, fixture.DiceRoller.PercentileCalls);
+    }
+
+    [Fact]
+    public async Task CombatDamageProfile_StartRejectsMissingCharacterLoadoutWithoutMutation()
+    {
+        var fixture = await CreateCombatGameAsync();
+        ReplaceCharacterCombatProfile(fixture, fixture.HostCharacterId, CombatValues(80, 55, 45), null!);
+        Assert.True(fixture.StateStore.TryGet(fixture.Room.RoomId, out var before));
+
+        var start = await StartCombatAsync(
+            fixture.Coordinator,
+            fixture.Room.RoomId,
+            fixture.HostId,
+            before!.Revision,
+            [fixture.HostCharacterId],
+            [Opponent("Cultist", 90)]);
+
+        Assert.Equal(GameErrorCode.InvalidParticipant, start.ErrorCode);
+        Assert.True(fixture.StateStore.TryGet(fixture.Room.RoomId, out var after));
+        Assert.Same(before, after);
+        Assert.Null(after!.Combat);
+        Assert.Equal(0, fixture.DiceRoller.PercentileCalls);
+    }
+
+    [Theory]
+    [InlineData("str_zero")]
+    [InlineData("str_high")]
+    [InlineData("siz_zero")]
+    [InlineData("siz_high")]
+    [InlineData("current_hp_zero")]
+    [InlineData("max_hp_below_current")]
+    [InlineData("armor_negative")]
+    [InlineData("armor_high")]
+    [InlineData("weapon_missing")]
+    [InlineData("weapon_mode")]
+    [InlineData("weapon_expression")]
+    public async Task InternalCombat_StartRejectsInvalidOpponentDamageProfileWithoutMutation(string invalidCase)
+    {
+        var fixture = await CreateCombatGameAsync();
+        var valid = Opponent("Cultist", 90);
+        var opponent = invalidCase switch
+        {
+            "str_zero" => valid with { Str = 0 },
+            "str_high" => valid with { Str = 1000 },
+            "siz_zero" => valid with { Siz = 0 },
+            "siz_high" => valid with { Siz = 1000 },
+            "current_hp_zero" => valid with { CurrentHp = 0 },
+            "max_hp_below_current" => valid with { CurrentHp = 11, MaxHp = 10 },
+            "armor_negative" => valid with { FixedArmor = -1 },
+            "armor_high" => valid with { FixedArmor = 100 },
+            "weapon_missing" => valid with { Weapon = null },
+            "weapon_mode" => valid with { Weapon = valid.Weapon! with { Mode = "firearm" } },
+            "weapon_expression" => valid with
+            {
+                Weapon = valid.Weapon! with { Damage = new DiceExpression("not-dice", 1, 3, 0) }
+            },
+            _ => throw new ArgumentOutOfRangeException(nameof(invalidCase), invalidCase, null)
+        };
+        Assert.True(fixture.StateStore.TryGet(fixture.Room.RoomId, out var before));
+
+        var start = await StartCombatAsync(
+            fixture.Coordinator,
+            fixture.Room.RoomId,
+            fixture.HostId,
+            before!.Revision,
+            [fixture.HostCharacterId],
+            [opponent]);
+
+        Assert.Equal(GameErrorCode.InvalidCombat, start.ErrorCode);
+        Assert.True(fixture.StateStore.TryGet(fixture.Room.RoomId, out var after));
+        Assert.Same(before, after);
+        Assert.Equal(1, after!.Revision);
+        Assert.Null(after.Combat);
+        Assert.Equal(0, fixture.DiceRoller.PercentileCalls);
+    }
+
+    [Fact]
+    public async Task CombatDamageProfile_StartSnapshotDoesNotDriftWithSourceCharacterProfile()
+    {
+        var fixture = await CreateCombatGameAsync();
+        var initialValues = CombatValues(80, 55, 45, 90, 80);
+        var initialLoadout = new CharacterCombatLoadout(Weapon("sabre", "军刀", "1d8"), 3);
+        ReplaceCharacterCombatProfile(fixture, fixture.HostCharacterId, initialValues, initialLoadout);
+
+        var start = await StartCombatAsync(
+            fixture.Coordinator,
+            fixture.Room.RoomId,
+            fixture.HostId,
+            1,
+            [fixture.HostCharacterId],
+            [Opponent("Cultist", 90)]);
+        Assert.True(start.IsSuccess);
+
+        ReplaceCharacterCombatProfile(
+            fixture,
+            fixture.HostCharacterId,
+            CombatValues(20, 25, 30, 40, 45),
+            new CharacterCombatLoadout(Weapon("club", "棍棒", "1d6", addsDamageBonus: false), 1));
+
+        Assert.True(fixture.StateStore.TryGet(fixture.Room.RoomId, out var afterSourceChange));
+        var participant = afterSourceChange!.Combat!.Participants.Single(
+            candidate => candidate.CharacterId == fixture.HostCharacterId);
+        Assert.Equal(80, participant.Dex);
+        Assert.Equal(55, participant.Fighting);
+        Assert.Equal(45, participant.Dodge);
+        Assert.Equal(90, participant.DamageProfile.Str);
+        Assert.Equal(80, participant.DamageProfile.Siz);
+        Assert.Equal(CocCombatDamageRules.DeriveDamageBonus(90, 80), participant.DamageProfile.DamageBonus);
+        Assert.Equal("sabre", participant.DamageProfile.Weapon.WeaponId);
+        Assert.Equal("1d8", participant.DamageProfile.Weapon.Damage.Text);
+        Assert.Equal(3, participant.DamageProfile.FixedArmor);
+        Assert.Equal(0, fixture.DiceRoller.PercentileCalls);
+    }
+
+    [Fact]
     public async Task InternalCombat_StartUsesExplicitOrderedInvestigatorsAndCanonicalStats()
     {
         var fixture = await CreateCombatGameAsync();
@@ -105,7 +321,7 @@ public sealed class GameStateTests
         Assert.Equal(65, session.Participants.Single(participant => participant.CharacterId == fixture.MemberCharacterId).Fighting);
         Assert.Empty(session.ActionCounts);
         Assert.Empty(session.ResponseCounts);
-        Assert.Empty(session.PendingDamageDispositions);
+        Assert.Empty(session.DamageDispositions);
         Assert.Null(session.PendingExchange);
         Assert.Equal(0, fixture.DiceRoller.PercentileCalls);
     }
@@ -221,7 +437,10 @@ public sealed class GameStateTests
         var start = await StartCombatAsync(
             fixture.Coordinator, fixture.Room.RoomId, fixture.HostId, 1,
             [fixture.HostCharacterId],
-            [new CombatOpponent("Cultist", 60, 55, 40, [CombatResponse.Dodge, CombatResponse.Dodge, CombatResponse.FightBack], 1, "player_or_ai")]);
+            [Opponent("Cultist", 60) with
+            {
+                AvailableResponses = [CombatResponse.Dodge, CombatResponse.Dodge, CombatResponse.FightBack]
+            }]);
         Assert.True(start.IsSuccess);
         var session = start.State!.Combat!;
         var attackerId = session.Order[0].Value;
@@ -289,14 +508,38 @@ public sealed class GameStateTests
         Assert.Equal(exchangeId, session.LastExchange!.ExchangeId);
         Assert.Single(session.History);
         Assert.Equal(1, session.TurnIndex);
-        Assert.True(session.PendingDamageDispositions.ContainsKey(exchangeId));
-        Assert.Equal(exchangeId, session.PendingDamageDispositions[exchangeId].ExchangeId);
+        var disposition = Assert.Single(session.DamageDispositions).Value;
+        Assert.Equal(exchangeId, disposition.Disposition.ExchangeId);
+        Assert.Equal(DamageDispositionStatus.Pending, disposition.Status);
+        Assert.Null(disposition.Result);
+        Assert.Equal(resolved.State.Revision, disposition.Disposition.CreatedGameRevision);
 
         var duplicate = await ResolvePendingExchangeAsync(
             fixture.Coordinator, fixture.Room.RoomId, null, resolved.State.Revision, exchangeId, CombatResponse.Dodge);
-        Assert.Equal(GameErrorCode.InvalidExchange, duplicate.ErrorCode);
+        Assert.Equal(GameErrorCode.PendingConflict, duplicate.ErrorCode);
         Assert.Equal(2, fixture.DiceRoller.PercentileCalls);
-        Assert.Single((await GetCombatStateAsync(fixture)).PendingDamageDispositions);
+        Assert.Single((await GetCombatStateAsync(fixture)).DamageDispositions);
+    }
+
+    [Fact]
+    public async Task InternalCombat_ResolveNoHitCreatesNoDamageDisposition()
+    {
+        var fixture = await CreateResolvableCombatGameAsync([100, 100]);
+        var pending = await StartAndBeginAgainstOpponentAsync(fixture);
+        var exchangeId = pending.State!.Combat!.PendingExchange!.ExchangeId;
+
+        var resolved = await ResolvePendingExchangeAsync(
+            fixture.Coordinator,
+            fixture.Room.RoomId,
+            null,
+            pending.State.Revision,
+            exchangeId,
+            CombatResponse.Dodge);
+
+        Assert.True(resolved.IsSuccess);
+        Assert.Empty(resolved.State!.Combat!.DamageDispositions);
+        Assert.Null(resolved.State.Combat.LastExchange!.DamageDisposition);
+        Assert.Equal(2, fixture.DiceRoller.PercentileCalls);
     }
 
     [Fact]
@@ -348,7 +591,7 @@ public sealed class GameStateTests
         Assert.Equal("combat_ended_before_resolution", endedSession.EndReason);
         Assert.Null(endedSession.LastExchange);
         Assert.Empty(endedSession.History);
-        Assert.Empty(endedSession.PendingDamageDispositions);
+        Assert.Empty(endedSession.DamageDispositions);
         Assert.Equal(0, fixture.DiceRoller.PercentileCalls);
 
         var passFixture = await CreateResolvableCombatGameAsync([]);
@@ -359,6 +602,903 @@ public sealed class GameStateTests
         Assert.Equal(1, passed.State!.Combat!.ActionCounts["character:" + passFixture.HostCharacterId]);
         Assert.Equal(1, passed.State.Combat.TurnIndex);
         Assert.Equal(0, passFixture.DiceRoller.PercentileCalls);
+    }
+
+    [Fact]
+    public async Task CombatDamageGate_ResolvedHitBlocksBeginPassAndManualEndWithoutMutationOrDice()
+    {
+        var fixture = await CreateResolvableCombatGameAsync([1, 100]);
+        var pending = await StartAndBeginAgainstOpponentAsync(fixture);
+        var exchangeId = pending.State!.Combat!.PendingExchange!.ExchangeId;
+        var resolved = await ResolvePendingExchangeAsync(
+            fixture.Coordinator,
+            fixture.Room.RoomId,
+            null,
+            pending.State.Revision,
+            exchangeId,
+            CombatResponse.Dodge);
+        Assert.True(resolved.IsSuccess);
+        Assert.True(fixture.StateStore.TryGet(fixture.Room.RoomId, out var before));
+        var session = before!.Combat!;
+        var attacker = session.Order[session.TurnIndex].Value;
+        var defender = session.Participants.Single(participant => participant.ParticipantId.Value != attacker).ParticipantId.Value;
+
+        var begin = await BeginOpposedExchangeAsync(
+            fixture.Coordinator, fixture.Room.RoomId, fixture.HostId, before.Revision - 1, attacker, defender);
+        var pass = await PassCombatTurnAsync(
+            fixture.Coordinator, fixture.Room.RoomId, fixture.HostId, before.Revision - 1);
+        var end = await EndCombatAsync(
+            fixture.Coordinator, fixture.Room.RoomId, fixture.HostId, before.Revision - 1, "ignored");
+
+        Assert.Equal(GameErrorCode.PendingConflict, begin.ErrorCode);
+        Assert.Equal(GameErrorCode.PendingConflict, pass.ErrorCode);
+        Assert.Equal(GameErrorCode.PendingConflict, end.ErrorCode);
+        Assert.True(fixture.StateStore.TryGet(fixture.Room.RoomId, out var after));
+        Assert.Same(before, after);
+        Assert.Equal(before.Revision, after!.Revision);
+        Assert.True(after.Combat!.Active);
+        Assert.Single(after.Combat.DamageDispositions);
+        Assert.Equal(2, fixture.DiceRoller.PercentileCalls);
+    }
+
+    [Fact]
+    public async Task CombatDamageGate_LegacyPendingDispositionBlocksPendingExchangeResolutionBeforeDice()
+    {
+        var fixture = await CreateResolvableCombatGameAsync([1, 100]);
+        var pending = await StartAndBeginAgainstOpponentAsync(fixture);
+        var exchange = pending.State!.Combat!.PendingExchange!;
+        ReplaceDamageDispositions(
+            fixture,
+            new Dictionary<string, DamageDispositionState>
+            {
+                ["legacy"] = PendingDisposition("legacy", exchange.AttackerParticipantId, exchange.DefenderParticipantId, 1)
+            });
+        Assert.True(fixture.StateStore.TryGet(fixture.Room.RoomId, out var before));
+
+        var blocked = await ResolvePendingExchangeAsync(
+            fixture.Coordinator,
+            fixture.Room.RoomId,
+            null,
+            before!.Revision,
+            exchange.ExchangeId,
+            CombatResponse.Dodge);
+
+        Assert.Equal(GameErrorCode.PendingConflict, blocked.ErrorCode);
+        Assert.True(fixture.StateStore.TryGet(fixture.Room.RoomId, out var after));
+        Assert.Same(before, after);
+        Assert.Equal(0, fixture.DiceRoller.PercentileCalls);
+    }
+
+    [Fact]
+    public void CombatDamageGate_LegacyBlockerUsesRevisionThenOrdinalExchangeId()
+    {
+        var owner = new CombatParticipantId("owner");
+        var target = new CombatParticipantId("target");
+        var dispositions = new Dictionary<string, DamageDispositionState>
+        {
+            ["z-later"] = PendingDisposition("z-later", owner, target, 8),
+            ["z-first-tie"] = PendingDisposition("z-first-tie", owner, target, 3),
+            ["a-first-tie"] = PendingDisposition("a-first-tie", owner, target, 3),
+            ["consumed-earlier"] = ConsumedDisposition("consumed-earlier", owner, target, 1)
+        };
+
+        var method = typeof(GameCoordinator).GetMethod(
+            "FindBlockingDamageDisposition",
+            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!;
+        var blocker = Assert.IsType<DamageDispositionState>(method.Invoke(null, [dispositions]));
+
+        Assert.Equal("a-first-tie", blocker.Disposition.ExchangeId);
+    }
+
+    [Fact]
+    public void ResolveCombatDamage_InternalResolutionInterfaceOwnsTheTrustedCommand()
+    {
+        var assembly = typeof(GameCoordinator).Assembly;
+        var internalCombat = assembly.GetType("Trpg.Multiplayer.Api.Gameplay.IInternalCombatResolutionCoordinator")!;
+
+        Assert.True(internalCombat.IsAssignableFrom(typeof(GameCoordinator)));
+        Assert.Contains(internalCombat.GetMethods(), method => method.Name == "ResolveCombatDamageAsync");
+    }
+
+    [Fact]
+    public async Task Projection_ResolveCombatDamage_ConsumedReplayWithOriginalStaleRevisionReturnsStoredResultWithoutSecondNotification()
+    {
+        var fixture = await CreateCombatDamageGameAsync([2]);
+        var pendingState = await CreatePendingDamageDispositionAsync(fixture);
+        var exchangeId = Assert.Single(pendingState.Combat!.DamageDispositions).Key;
+        var originalExpectedRevision = pendingState.Revision;
+
+        var first = await ResolveCombatDamageAsync(
+            fixture.Coordinator,
+            fixture.Room.RoomId,
+            originalExpectedRevision,
+            exchangeId);
+
+        Assert.True(first.IsSuccess);
+        Assert.True(first.Changed);
+        Assert.Equal(originalExpectedRevision + 1, first.State!.Revision);
+        var storedResult = Assert.IsType<CombatDamageResult>(first.Damage);
+        Assert.Equal(1, fixture.DiceRoller.GenericCalls);
+        Assert.Equal(2, fixture.DiceRoller.PercentileCalls);
+        Assert.Equal(0, fixture.HpDamageEngine.Calls);
+        Assert.Equal(1, fixture.Notifier.GameSnapshotCalls);
+        var replacementsAfterFirstConsumption = fixture.StateStore.ReplacementAttempts;
+        var stateAfterFirstConsumption = GetRequiredState(fixture.StateStore, fixture.Room.RoomId);
+        var sessionAfterFirstConsumption = stateAfterFirstConsumption.Combat!;
+        var targetAfterFirstConsumption = sessionAfterFirstConsumption.Participants.Single(
+            participant => participant.ParticipantId == storedResult.TargetParticipantId);
+
+        var replay = await ResolveCombatDamageAsync(
+            fixture.Coordinator,
+            fixture.Room.RoomId,
+            originalExpectedRevision,
+            exchangeId);
+
+        Assert.True(replay.IsSuccess);
+        Assert.False(replay.Changed);
+        Assert.Same(stateAfterFirstConsumption, replay.State);
+        Assert.Same(storedResult, replay.Damage);
+        Assert.Equal(originalExpectedRevision + 1, replay.State!.Revision);
+        Assert.Equal(replacementsAfterFirstConsumption, fixture.StateStore.ReplacementAttempts);
+        Assert.Equal(1, fixture.DiceRoller.GenericCalls);
+        Assert.Equal(2, fixture.DiceRoller.PercentileCalls);
+        Assert.Equal(0, fixture.HpDamageEngine.Calls);
+        Assert.Equal(1, fixture.Notifier.GameSnapshotCalls);
+        Assert.Equal(pendingState.Combat.History, replay.State.Combat!.History);
+        Assert.Equal(pendingState.Combat.Round, replay.State.Combat.Round);
+        Assert.Equal(pendingState.Combat.TurnIndex, replay.State.Combat.TurnIndex);
+        Assert.Equal(pendingState.Combat.Order, replay.State.Combat.Order);
+        Assert.Equal(pendingState.Combat.ActionCounts, replay.State.Combat.ActionCounts);
+        Assert.Equal(pendingState.Combat.ResponseCounts, replay.State.Combat.ResponseCounts);
+        Assert.Equal(targetAfterFirstConsumption, replay.State.Combat.Participants.Single(
+            participant => participant.ParticipantId == storedResult.TargetParticipantId));
+    }
+
+    [Fact]
+    public async Task ResolveCombatDamage_PendingStaleRevisionFailsBeforeThrowingDice()
+    {
+        var fixture = await CreateCombatDamageGameAsync([]);
+        var pendingState = await CreatePendingDamageDispositionAsync(fixture);
+        var exchangeId = Assert.Single(pendingState.Combat!.DamageDispositions).Key;
+
+        var result = await ResolveCombatDamageAsync(
+            fixture.Coordinator,
+            fixture.Room.RoomId,
+            pendingState.Revision - 1,
+            exchangeId);
+
+        Assert.Equal(GameErrorCode.StateConflict, result.ErrorCode);
+        Assert.False(result.Changed);
+        Assert.Equal(0, fixture.DiceRoller.GenericCalls);
+        Assert.Equal(2, fixture.DiceRoller.PercentileCalls);
+        Assert.Equal(0, fixture.StateStore.ConsumptionReplacementAttempts);
+        Assert.Equal(0, fixture.Notifier.GameSnapshotCalls);
+    }
+
+    [Fact]
+    public async Task ResolveCombatDamage_MissingExchangeFailsBeforeThrowingDice()
+    {
+        var fixture = await CreateCombatDamageGameAsync([]);
+        var pendingState = await CreatePendingDamageDispositionAsync(fixture);
+
+        var result = await ResolveCombatDamageAsync(
+            fixture.Coordinator,
+            fixture.Room.RoomId,
+            pendingState.Revision,
+            "missing-exchange");
+
+        Assert.Equal(GameErrorCode.InvalidExchange, result.ErrorCode);
+        Assert.False(result.Changed);
+        Assert.Equal(0, fixture.DiceRoller.GenericCalls);
+        Assert.Equal(2, fixture.DiceRoller.PercentileCalls);
+        Assert.Equal(0, fixture.StateStore.ConsumptionReplacementAttempts);
+        Assert.Equal(0, fixture.Notifier.GameSnapshotCalls);
+    }
+
+    [Fact]
+    public async Task ResolveCombatDamage_NonBlockingPendingExchangeFailsBeforeThrowingDice()
+    {
+        var fixture = await CreateCombatDamageGameAsync([]);
+        var pendingState = await CreatePendingDamageDispositionAsync(fixture);
+        var current = Assert.Single(pendingState.Combat!.DamageDispositions).Value;
+        var earlier = PendingDisposition(
+            "earlier-blocker",
+            current.Disposition.OwnerParticipantId,
+            current.Disposition.TargetParticipantId,
+            current.Disposition.CreatedGameRevision - 1);
+        ReplaceDamageDispositions(
+            fixture.StateStore,
+            fixture.Room.RoomId,
+            pendingState.Combat.DamageDispositions.Append(
+                new KeyValuePair<string, DamageDispositionState>(earlier.Disposition.ExchangeId, earlier))
+                .ToDictionary(pair => pair.Key, pair => pair.Value));
+        var replaced = GetRequiredState(fixture.StateStore, fixture.Room.RoomId);
+
+        var result = await ResolveCombatDamageAsync(
+            fixture.Coordinator,
+            fixture.Room.RoomId,
+            replaced.Revision,
+            current.Disposition.ExchangeId);
+
+        Assert.Equal(GameErrorCode.PendingConflict, result.ErrorCode);
+        Assert.False(result.Changed);
+        Assert.Equal(0, fixture.DiceRoller.GenericCalls);
+        Assert.Equal(2, fixture.DiceRoller.PercentileCalls);
+        Assert.Equal(0, fixture.StateStore.ConsumptionReplacementAttempts);
+        Assert.Equal(0, fixture.Notifier.GameSnapshotCalls);
+    }
+
+    [Fact]
+    public async Task ResolveCombatDamage_MalformedStatusResultFailsAsInternalInvariantBeforeThrowingDice()
+    {
+        var fixture = await CreateCombatDamageGameAsync([]);
+        var pendingState = await CreatePendingDamageDispositionAsync(fixture);
+        var entry = Assert.Single(pendingState.Combat!.DamageDispositions).Value;
+        ReplaceDamageDispositions(
+            fixture.StateStore,
+            fixture.Room.RoomId,
+            new Dictionary<string, DamageDispositionState>
+            {
+                [entry.Disposition.ExchangeId] = entry with
+                {
+                    Status = DamageDispositionStatus.Consumed,
+                    Result = null
+                }
+            });
+        fixture.StateStore.ResetConsumptionReplacementAttempts();
+
+        var exception = await Record.ExceptionAsync(() => ResolveCombatDamageAsync(
+            fixture.Coordinator,
+            fixture.Room.RoomId,
+            pendingState.Revision,
+            entry.Disposition.ExchangeId));
+
+        Assert.NotNull(exception);
+        Assert.Equal("CombatDamageStateInvariantException", exception.GetType().Name);
+        Assert.Equal(0, fixture.DiceRoller.GenericCalls);
+        Assert.Equal(2, fixture.DiceRoller.PercentileCalls);
+        Assert.Equal(0, fixture.StateStore.ConsumptionReplacementAttempts);
+        Assert.Equal(0, fixture.Notifier.GameSnapshotCalls);
+    }
+
+    [Fact]
+    public async Task ResolveCombatDamage_MalformedCanonicalProfileFailsAsInternalInvariantBeforeThrowingDice()
+    {
+        var fixture = await CreateCombatDamageGameAsync([]);
+        var pendingState = await CreatePendingDamageDispositionAsync(fixture);
+        var entry = Assert.Single(pendingState.Combat!.DamageDispositions).Value;
+        var owner = pendingState.Combat.Participants.Single(
+            participant => participant.ParticipantId == entry.Disposition.OwnerParticipantId);
+        ReplaceCombatParticipant(
+            fixture.StateStore,
+            fixture.Room.RoomId,
+            owner.ParticipantId.Value,
+            owner with { DamageProfile = owner.DamageProfile with { Weapon = null! } });
+
+        var exception = await Record.ExceptionAsync(() => ResolveCombatDamageAsync(
+            fixture.Coordinator,
+            fixture.Room.RoomId,
+            pendingState.Revision,
+            entry.Disposition.ExchangeId));
+
+        Assert.NotNull(exception);
+        Assert.Equal("CombatDamageStateInvariantException", exception.GetType().Name);
+        Assert.Equal(0, fixture.DiceRoller.GenericCalls);
+        Assert.Equal(2, fixture.DiceRoller.PercentileCalls);
+        Assert.Equal(0, fixture.StateStore.ConsumptionReplacementAttempts);
+        Assert.Equal(0, fixture.Notifier.GameSnapshotCalls);
+    }
+
+    [Fact]
+    public async Task ResolveCombatDamage_TargetAlreadyIneligibleConsumesOnceWithoutDiceHpVitalityOrTurnRepair()
+    {
+        var fixture = await CreateCombatDamageGameAsync([]);
+        var pendingState = await CreatePendingDamageDispositionAsync(fixture);
+        var entry = Assert.Single(pendingState.Combat!.DamageDispositions).Value;
+        var target = pendingState.Combat.Participants.Single(
+            participant => participant.ParticipantId == entry.Disposition.TargetParticipantId);
+        ReplaceCombatParticipant(
+            fixture.StateStore,
+            fixture.Room.RoomId,
+            target.ParticipantId.Value,
+            target with { Active = false });
+        var before = GetRequiredState(fixture.StateStore, fixture.Room.RoomId);
+        var replacementsBefore = fixture.StateStore.ReplacementAttempts;
+
+        var result = await ResolveCombatDamageAsync(
+            fixture.Coordinator,
+            fixture.Room.RoomId,
+            before.Revision,
+            entry.Disposition.ExchangeId);
+
+        Assert.True(result.IsSuccess);
+        Assert.True(result.Changed);
+        Assert.Equal(before.Revision + 1, result.State!.Revision);
+        Assert.Equal(CombatDamageOutcome.TargetAlreadyIneligible, result.Damage!.Outcome);
+        Assert.Null(result.Damage.WeaponResult);
+        Assert.Null(result.Damage.DamageBonusResult);
+        Assert.False(result.Damage.HpDamageApplied);
+        Assert.Equal(result.Damage.HpBefore, result.Damage.HpAfter);
+        Assert.True(result.Damage.TargetDefeated);
+        Assert.Equal(replacementsBefore + 1, fixture.StateStore.ReplacementAttempts);
+        Assert.Equal(1, fixture.StateStore.ConsumptionReplacementAttempts);
+        Assert.Equal(0, fixture.DiceRoller.GenericCalls);
+        Assert.Equal(2, fixture.DiceRoller.PercentileCalls);
+        Assert.Equal(0, fixture.HpDamageEngine.Calls);
+        Assert.Equal(1, fixture.Notifier.GameSnapshotCalls);
+        var consumed = result.State.Combat!.DamageDispositions[entry.Disposition.ExchangeId];
+        Assert.Equal(DamageDispositionStatus.Consumed, consumed.Status);
+        Assert.Same(result.Damage, consumed.Result);
+        Assert.Equal(before.Combat!.Round, result.State.Combat.Round);
+        Assert.Equal(before.Combat.TurnIndex, result.State.Combat.TurnIndex);
+        Assert.Equal(before.Combat.Order, result.State.Combat.Order);
+        Assert.Equal(before.Combat.History, result.State.Combat.History);
+        Assert.Equal(target.OpponentVitality, result.State.Combat.Participants.Single(
+            participant => participant.ParticipantId == target.ParticipantId).OpponentVitality);
+
+        var replay = await ResolveCombatDamageAsync(
+            fixture.Coordinator,
+            fixture.Room.RoomId,
+            before.Revision,
+            entry.Disposition.ExchangeId);
+        Assert.True(replay.IsSuccess);
+        Assert.False(replay.Changed);
+        Assert.Same(result.Damage, replay.Damage);
+        Assert.Equal(before.Revision + 1, replay.State!.Revision);
+        Assert.Equal(1, fixture.StateStore.ConsumptionReplacementAttempts);
+        Assert.Equal(0, fixture.DiceRoller.GenericCalls);
+        Assert.Equal(0, fixture.HpDamageEngine.Calls);
+        Assert.Equal(1, fixture.Notifier.GameSnapshotCalls);
+    }
+
+    [Fact]
+    public async Task Projection_ResolveCombatDamage_PostRngStoreFailurePublishesNoSnapshotAndProhibitsReroll()
+    {
+        var fixture = await CreateCombatDamageGameAsync([2]);
+        var pendingState = await CreatePendingDamageDispositionAsync(fixture);
+        var exchangeId = Assert.Single(pendingState.Combat!.DamageDispositions).Key;
+        fixture.StateStore.ArmConsumptionFailure(() => fixture.DiceRoller.GenericCalls > 0);
+
+        var exception = await Record.ExceptionAsync(() => ResolveCombatDamageAsync(
+            fixture.Coordinator,
+            fixture.Room.RoomId,
+            pendingState.Revision,
+            exchangeId));
+
+        Assert.NotNull(exception);
+        Assert.Equal("CombatDamageCommitInvariantException", exception.GetType().Name);
+        Assert.Contains("must not be re-rolled", exception.Message, StringComparison.Ordinal);
+        Assert.Equal(1, fixture.DiceRoller.GenericCalls);
+        Assert.Equal(2, fixture.DiceRoller.PercentileCalls);
+        Assert.Equal(1, fixture.StateStore.ConsumptionReplacementAttempts);
+        Assert.Equal(0, fixture.HpDamageEngine.Calls);
+        Assert.Equal(0, fixture.Notifier.GameSnapshotCalls);
+        var unchanged = GetRequiredState(fixture.StateStore, fixture.Room.RoomId);
+        Assert.Same(pendingState, unchanged);
+        Assert.Equal(DamageDispositionStatus.Pending, unchanged.Combat!.DamageDispositions[exchangeId].Status);
+        Assert.Null(unchanged.Combat.DamageDispositions[exchangeId].Result);
+    }
+
+    [Fact]
+    public async Task ResolveCombatDamage_InvestigatorOrdinaryLossUsesStableEventKeyAndReplayHasNoSecondHpEventOrConRoll()
+    {
+        var fixture = await CreateCombatDamageGameAsync([2]);
+        var pendingState = await CreatePendingInvestigatorDamageDispositionAsync(
+            fixture,
+            Opponent("Cultist", 90));
+        var entry = Assert.Single(pendingState.Combat!.DamageDispositions);
+
+        var result = await ResolveCombatDamageAsync(
+            fixture.Coordinator,
+            fixture.Room.RoomId,
+            pendingState.Revision,
+            entry.Key);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(pendingState.Revision + 1, result.State!.Revision);
+        Assert.Equal(12, result.Damage!.HpBefore);
+        Assert.Equal(10, result.Damage.HpAfter);
+        Assert.True(result.Damage.HpDamageApplied);
+        Assert.False(result.Damage.TargetDefeated);
+        Assert.Equal(1, fixture.HpDamageEngine.Calls);
+        Assert.Equal($"combat:{entry.Key}", fixture.HpDamageEngine.LastInput!.EventKey);
+        Assert.Null(fixture.HpDamageEngine.LastInput.ConRoll);
+        Assert.Equal(2, fixture.DiceRoller.PercentileCalls);
+        var damaged = result.State.Characters.Single(character => character.CharacterId == fixture.HostCharacterId);
+        Assert.Equal(10, damaged.Health.CurrentHp);
+        Assert.Equal($"combat:{entry.Key}", Assert.Single(damaged.Health.History).EventKey);
+
+        var replay = await ResolveCombatDamageAsync(
+            fixture.Coordinator,
+            fixture.Room.RoomId,
+            pendingState.Revision,
+            entry.Key);
+
+        Assert.True(replay.IsSuccess);
+        Assert.False(replay.Changed);
+        Assert.Same(result.Damage, replay.Damage);
+        Assert.Equal(1, fixture.HpDamageEngine.Calls);
+        Assert.Equal(2, fixture.DiceRoller.PercentileCalls);
+        Assert.Single(replay.State!.Characters.Single(
+            character => character.CharacterId == fixture.HostCharacterId).Health.History);
+    }
+
+    [Theory]
+    [InlineData(40, false)]
+    [InlineData(100, true)]
+    public async Task ResolveCombatDamage_InvestigatorMajorWoundUsesOneSecureConRollAndInvalidatesStabilization(
+        int conRoll,
+        bool expectedUnconscious)
+    {
+        var fixture = await CreateCombatDamageGameAsync([6], [40, 100, conRoll]);
+        ReplaceCharacterHealth(
+            fixture.StateStore,
+            fixture.Room.RoomId,
+            fixture.HostCharacterId,
+            new CharacterHealthState(
+                12,
+                12,
+                60,
+                majorWound: false,
+                unconscious: false,
+                dyingEpisode: null,
+                stabilized: new StabilizedConditionState("aid", "prior_stabilization", 60, 1, null),
+                deadCondition: null,
+                treatmentHistory: [],
+                history: [],
+                lastDamageEvent: null));
+        var pendingState = await CreatePendingInvestigatorDamageDispositionAsync(
+            fixture,
+            Opponent("Cultist", 90) with
+            {
+                Weapon = Weapon("club", "木棒", "1d6", addsDamageBonus: false)
+            });
+        var entry = Assert.Single(pendingState.Combat!.DamageDispositions);
+
+        var result = await ResolveCombatDamageAsync(
+            fixture.Coordinator,
+            fixture.Room.RoomId,
+            pendingState.Revision,
+            entry.Key);
+
+        var health = result.State!.Characters.Single(
+            character => character.CharacterId == fixture.HostCharacterId).Health;
+        Assert.True(result.IsSuccess);
+        Assert.Equal(6, health.CurrentHp);
+        Assert.True(health.MajorWound);
+        Assert.Equal(expectedUnconscious, health.Unconscious);
+        Assert.NotNull(health.Stabilized);
+        Assert.Equal(conRoll, health.LastDamageEvent!.ConCheck!.Roll);
+        Assert.Equal(3, fixture.DiceRoller.PercentileCalls);
+        Assert.Equal(conRoll, fixture.HpDamageEngine.LastInput!.ConRoll);
+    }
+
+    [Fact]
+    public async Task ResolveCombatDamage_InvestigatorDyingRemainsActiveAndIsScheduledWithoutImmediateCheck()
+    {
+        var fixture = await CreateCombatDamageGameAsync(
+            [6],
+            [40, 100, 40],
+            hostHealth: new CharacterHealthSetup(6, 12, 60));
+        ReplaceCharacterHealth(
+            fixture.StateStore,
+            fixture.Room.RoomId,
+            fixture.HostCharacterId,
+            new CharacterHealthState(
+                6,
+                12,
+                60,
+                majorWound: false,
+                unconscious: false,
+                dyingEpisode: null,
+                stabilized: new StabilizedConditionState("aid", "stale_stabilization", 60, 1, null),
+                deadCondition: null,
+                treatmentHistory: [],
+                history: [],
+                lastDamageEvent: null));
+        var pendingState = await CreatePendingInvestigatorDamageDispositionAsync(
+            fixture,
+            Opponent("Cultist", 90) with
+            {
+                Weapon = Weapon("club", "木棒", "1d6", addsDamageBonus: false)
+            });
+        var entry = Assert.Single(pendingState.Combat!.DamageDispositions);
+
+        var result = await ResolveCombatDamageAsync(
+            fixture.Coordinator,
+            fixture.Room.RoomId,
+            pendingState.Revision,
+            entry.Key);
+
+        var session = result.State!.Combat!;
+        var character = result.State.Characters.Single(
+            candidate => candidate.CharacterId == fixture.HostCharacterId);
+        var participant = session.Participants.Single(
+            candidate => candidate.CharacterId == fixture.HostCharacterId);
+        Assert.True(result.IsSuccess);
+        Assert.Equal(0, character.Health.CurrentHp);
+        Assert.True(character.Health.Dying);
+        Assert.False(character.Health.Dead);
+        Assert.Null(character.Health.Stabilized);
+        Assert.True(participant.Active);
+        Assert.True(session.Active);
+        Assert.Equal(new DyingScheduleState(session.Round, null), session.DyingSchedule[fixture.HostCharacterId]);
+        Assert.Empty(character.Health.DyingEpisode!.Checks);
+        Assert.Equal(participant.ParticipantId, session.Order[session.TurnIndex]);
+        Assert.False(result.Damage!.TargetDefeated);
+    }
+
+    [Fact]
+    public async Task ResolveCombatDamage_InvestigatorInstantDeathInactivatesAndEndsOnlyWhenNoInvestigatorRemains()
+    {
+        var soleFixture = await CreateCombatDamageGameAsync([12], [40, 100]);
+        var solePending = await CreatePendingInvestigatorDamageDispositionAsync(
+            soleFixture,
+            Opponent("Cultist", 90) with
+            {
+                Weapon = Weapon("great-club", "巨棒", "1d12", addsDamageBonus: false)
+            });
+        var soleEntry = Assert.Single(solePending.Combat!.DamageDispositions);
+
+        var soleResult = await ResolveCombatDamageAsync(
+            soleFixture.Coordinator,
+            soleFixture.Room.RoomId,
+            solePending.Revision,
+            soleEntry.Key);
+
+        var soleSession = soleResult.State!.Combat!;
+        Assert.True(soleResult.State.Characters.Single(
+            character => character.CharacterId == soleFixture.HostCharacterId).Health.Dead);
+        Assert.False(soleSession.Participants.Single(
+            participant => participant.CharacterId == soleFixture.HostCharacterId).Active);
+        Assert.False(soleSession.Active);
+        Assert.Equal("investigators_defeated", soleSession.EndReason);
+        Assert.True(soleResult.Damage!.TargetDefeated);
+        Assert.Equal(2, soleFixture.DiceRoller.PercentileCalls);
+
+        var partyFixture = await CreateCombatDamageGameAsync([12], [40, 100]);
+        var partyPending = await CreatePendingInvestigatorDamageDispositionAsync(
+            partyFixture,
+            Opponent("Cultist", 90) with
+            {
+                Weapon = Weapon("great-club", "巨棒", "1d12", addsDamageBonus: false)
+            },
+            [partyFixture.HostCharacterId, partyFixture.MemberCharacterId]);
+        var partyEntry = Assert.Single(partyPending.Combat!.DamageDispositions);
+
+        var partyResult = await ResolveCombatDamageAsync(
+            partyFixture.Coordinator,
+            partyFixture.Room.RoomId,
+            partyPending.Revision,
+            partyEntry.Key);
+
+        var partySession = partyResult.State!.Combat!;
+        Assert.True(partySession.Active);
+        Assert.Null(partySession.EndReason);
+        Assert.False(partySession.Participants.Single(
+            participant => participant.CharacterId == partyFixture.HostCharacterId).Active);
+        Assert.True(partySession.Participants.Single(
+            participant => participant.CharacterId == partyFixture.MemberCharacterId).Active);
+        Assert.Equal(
+            new CombatParticipantId($"character:{partyFixture.MemberCharacterId}"),
+            partySession.Order[partySession.TurnIndex]);
+    }
+
+    [Fact]
+    public async Task ResolveCombatDamage_ZeroNetConsumesOneRevisionWithoutHpOrConRoll()
+    {
+        var fixture = await CreateCombatDamageGameAsync(
+            [2],
+            [40, 100],
+            hostLoadout: new CharacterCombatLoadout(DefaultLoadout().Weapon, FixedArmor: 2));
+        var pendingState = await CreatePendingInvestigatorDamageDispositionAsync(
+            fixture,
+            Opponent("Cultist", 90));
+        var entry = Assert.Single(pendingState.Combat!.DamageDispositions);
+
+        var result = await ResolveCombatDamageAsync(
+            fixture.Coordinator,
+            fixture.Room.RoomId,
+            pendingState.Revision,
+            entry.Key);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(pendingState.Revision + 1, result.State!.Revision);
+        Assert.Equal(0, result.Damage!.NetDamage);
+        Assert.Equal(12, result.Damage.HpBefore);
+        Assert.Equal(12, result.Damage.HpAfter);
+        Assert.False(result.Damage.HpDamageApplied);
+        Assert.Equal(0, fixture.HpDamageEngine.Calls);
+        Assert.Equal(2, fixture.DiceRoller.PercentileCalls);
+        Assert.Equal(DamageDispositionStatus.Consumed, result.State.Combat!.DamageDispositions[entry.Key].Status);
+    }
+
+    [Fact]
+    public async Task ResolveCombatDamage_OpponentVitalityFloorsAtZeroPreservesProfileAndTerminatesOnlyAfterLastOpponent()
+    {
+        var fixture = await CreateCombatDamageGameAsync([3, 3], [40, 100, 40, 100]);
+        var opponents = new[]
+        {
+            Opponent("First", 70) with { CurrentHp = 2, MaxHp = 2 },
+            Opponent("Second", 60) with { CurrentHp = 2, MaxHp = 2 }
+        };
+        var firstPending = await CreatePendingOpponentDamageDispositionAsync(fixture, opponents, "opponent:0");
+        var firstEntry = Assert.Single(firstPending.Combat!.DamageDispositions);
+        var firstProfile = firstPending.Combat.Participants.Single(
+            participant => participant.ParticipantId == firstEntry.Value.Disposition.TargetParticipantId).DamageProfile;
+
+        var firstResult = await ResolveCombatDamageAsync(
+            fixture.Coordinator,
+            fixture.Room.RoomId,
+            firstPending.Revision,
+            firstEntry.Key);
+
+        var firstSession = firstResult.State!.Combat!;
+        var defeatedFirst = firstSession.Participants.Single(participant => participant.ParticipantId.Value == "opponent:0");
+        Assert.Equal(new OpponentVitalityState(0, 2), defeatedFirst.OpponentVitality);
+        Assert.False(defeatedFirst.Active);
+        Assert.Equal(firstProfile, defeatedFirst.DamageProfile);
+        Assert.True(firstSession.Active);
+        Assert.Equal("opponent:1", firstSession.Order[firstSession.TurnIndex].Value);
+        Assert.Equal(0, fixture.HpDamageEngine.Calls);
+        Assert.Equal(2, fixture.DiceRoller.PercentileCalls);
+
+        var passed = await PassCombatTurnAsync(
+            fixture.Coordinator,
+            fixture.Room.RoomId,
+            fixture.HostId,
+            firstResult.State.Revision);
+        var secondPending = await BeginAndResolveDamageDispositionAsync(
+            fixture,
+            passed.State!,
+            fixture.HostId,
+            $"character:{fixture.HostCharacterId}",
+            "opponent:1");
+        var secondEntry = secondPending.Combat!.DamageDispositions.Single(
+            pair => pair.Value.Status == DamageDispositionStatus.Pending);
+        var secondResult = await ResolveCombatDamageAsync(
+            fixture.Coordinator,
+            fixture.Room.RoomId,
+            secondPending.Revision,
+            secondEntry.Key);
+
+        Assert.False(secondResult.State!.Combat!.Active);
+        Assert.Equal("opposition_defeated", secondResult.State.Combat.EndReason);
+        Assert.Equal(new OpponentVitalityState(0, 2), secondResult.State.Combat.Participants.Single(
+            participant => participant.ParticipantId.Value == "opponent:1").OpponentVitality);
+        Assert.Equal(0, fixture.HpDamageEngine.Calls);
+        Assert.Equal(4, fixture.DiceRoller.PercentileCalls);
+    }
+
+    [Fact]
+    public async Task ResolveCombatDamage_OpponentZeroNetPreservesCombatVitalityWithoutHpOrConRoll()
+    {
+        var fixture = await CreateCombatDamageGameAsync([2], [40, 100]);
+        var opponent = Opponent("Armored", 70) with
+        {
+            CurrentHp = 5,
+            MaxHp = 5,
+            FixedArmor = 2
+        };
+        var pendingState = await CreatePendingOpponentDamageDispositionAsync(
+            fixture,
+            [opponent],
+            "opponent:0");
+        var entry = Assert.Single(pendingState.Combat!.DamageDispositions);
+        var before = pendingState.Combat.Participants.Single(
+            participant => participant.ParticipantId.Value == "opponent:0");
+
+        var result = await ResolveCombatDamageAsync(
+            fixture.Coordinator,
+            fixture.Room.RoomId,
+            pendingState.Revision,
+            entry.Key);
+
+        var after = result.State!.Combat!.Participants.Single(
+            participant => participant.ParticipantId.Value == "opponent:0");
+        Assert.True(result.IsSuccess);
+        Assert.Equal(0, result.Damage!.NetDamage);
+        Assert.False(result.Damage.HpDamageApplied);
+        Assert.False(result.Damage.TargetDefeated);
+        Assert.Equal(before.OpponentVitality, after.OpponentVitality);
+        Assert.Equal(before.DamageProfile, after.DamageProfile);
+        Assert.True(after.Active);
+        Assert.Equal(0, fixture.HpDamageEngine.Calls);
+        Assert.Equal(2, fixture.DiceRoller.PercentileCalls);
+        Assert.Equal(DamageDispositionStatus.Consumed, result.State.Combat.DamageDispositions[entry.Key].Status);
+    }
+
+    [Fact]
+    public async Task CombatDamageOrder_InactiveCurrentSlotScansSameIndexWithoutRoundWrap()
+    {
+        var fixture = await CreateCombatDamageGameAsync([3]);
+        var pendingState = await CreatePendingOpponentDamageDispositionAsync(
+            fixture,
+            [
+                Opponent("Target", 70) with { CurrentHp = 2, MaxHp = 2 },
+                Opponent("Next", 60)
+            ],
+            "opponent:0");
+        Assert.Equal("opponent:0", pendingState.Combat!.Order[pendingState.Combat.TurnIndex].Value);
+        var entry = Assert.Single(pendingState.Combat.DamageDispositions);
+
+        var result = await ResolveCombatDamageAsync(
+            fixture.Coordinator,
+            fixture.Room.RoomId,
+            pendingState.Revision,
+            entry.Key);
+
+        Assert.Equal(pendingState.Combat.Round, result.State!.Combat!.Round);
+        Assert.Equal("opponent:1", result.State.Combat.Order[result.State.Combat.TurnIndex].Value);
+        Assert.Equal(pendingState.Combat.ActionCounts, result.State.Combat.ActionCounts);
+        Assert.Equal(pendingState.Combat.ResponseCounts, result.State.Combat.ResponseCounts);
+    }
+
+    [Fact]
+    public async Task CombatDamageOrder_AlreadyWrappedOpposedResolveDoesNotWrapOrResetAgain()
+    {
+        var fixture = await CreateCombatDamageGameAsync([3], [40, 100]);
+        var opponents = new[]
+        {
+            Opponent("Target", 90) with { CurrentHp = 2, MaxHp = 2 },
+            Opponent("Other", 85)
+        };
+        var started = await StartCombatAsync(
+            fixture.Coordinator,
+            fixture.Room.RoomId,
+            fixture.HostId,
+            1,
+            [fixture.HostCharacterId],
+            opponents);
+        var afterFirstPass = await PassCombatTurnAsync(
+            fixture.Coordinator,
+            fixture.Room.RoomId,
+            fixture.HostId,
+            started.State!.Revision);
+        var afterSecondPass = await PassCombatTurnAsync(
+            fixture.Coordinator,
+            fixture.Room.RoomId,
+            fixture.HostId,
+            afterFirstPass.State!.Revision);
+        var pendingState = await BeginAndResolveDamageDispositionAsync(
+            fixture,
+            afterSecondPass.State!,
+            fixture.HostId,
+            $"character:{fixture.HostCharacterId}",
+            "opponent:0");
+        Assert.Equal(2, pendingState.Combat!.Round);
+        Assert.Equal("opponent:0", pendingState.Combat.Order[pendingState.Combat.TurnIndex].Value);
+        Assert.Empty(pendingState.Combat.ActionCounts);
+        Assert.Empty(pendingState.Combat.ResponseCounts);
+        var entry = Assert.Single(pendingState.Combat.DamageDispositions);
+
+        var result = await ResolveCombatDamageAsync(
+            fixture.Coordinator,
+            fixture.Room.RoomId,
+            pendingState.Revision,
+            entry.Key);
+
+        Assert.Equal(2, result.State!.Combat!.Round);
+        Assert.Equal("opponent:1", result.State.Combat.Order[result.State.Combat.TurnIndex].Value);
+        Assert.Empty(result.State.Combat.ActionCounts);
+        Assert.Empty(result.State.Combat.ResponseCounts);
+        Assert.Equal(2, fixture.DiceRoller.PercentileCalls);
+    }
+
+    [Fact]
+    public async Task CombatDamageOrder_RepairAtEndUsesCanonicalWrapExactlyOnce()
+    {
+        var fixture = await CreateCombatDamageGameAsync([3], [40, 100]);
+        var opponents = new[]
+        {
+            Opponent("Earlier", 90),
+            Opponent("Target", 70) with { CurrentHp = 2, MaxHp = 2 }
+        };
+        var started = await StartCombatAsync(
+            fixture.Coordinator,
+            fixture.Room.RoomId,
+            fixture.HostId,
+            1,
+            [fixture.HostCharacterId],
+            opponents);
+        var afterPass = await PassCombatTurnAsync(
+            fixture.Coordinator,
+            fixture.Room.RoomId,
+            fixture.HostId,
+            started.State!.Revision);
+        var pendingState = await BeginAndResolveDamageDispositionAsync(
+            fixture,
+            afterPass.State!,
+            fixture.HostId,
+            $"character:{fixture.HostCharacterId}",
+            "opponent:1");
+        Assert.Equal(1, pendingState.Combat!.Round);
+        Assert.Equal("opponent:1", pendingState.Combat.Order[pendingState.Combat.TurnIndex].Value);
+        Assert.NotEmpty(pendingState.Combat.ActionCounts);
+        Assert.NotEmpty(pendingState.Combat.ResponseCounts);
+        var entry = Assert.Single(pendingState.Combat.DamageDispositions);
+
+        var result = await ResolveCombatDamageAsync(
+            fixture.Coordinator,
+            fixture.Room.RoomId,
+            pendingState.Revision,
+            entry.Key);
+
+        Assert.Equal(2, result.State!.Combat!.Round);
+        Assert.Equal("opponent:0", result.State.Combat.Order[result.State.Combat.TurnIndex].Value);
+        Assert.Empty(result.State.Combat.ActionCounts);
+        Assert.Empty(result.State.Combat.ResponseCounts);
+        Assert.Equal(2, fixture.DiceRoller.PercentileCalls);
+    }
+
+    [Fact]
+    public async Task ResolveCombatDamage_PostWrapDyingRngStoreFailureAlsoProhibitsReroll()
+    {
+        var fixture = await CreateCombatDamageGameAsync([], [1, 100, 100]);
+        ReplaceCharacterHealth(
+            fixture.StateStore,
+            fixture.Room.RoomId,
+            fixture.HostCharacterId,
+            new CharacterHealthState(
+                0,
+                12,
+                60,
+                majorWound: true,
+                unconscious: true,
+                dyingEpisode: new DyingEpisodeState("prior", [], 1, false),
+                stabilized: null,
+                deadCondition: null,
+                treatmentHistory: [],
+                history: [],
+                lastDamageEvent: null));
+        var started = await StartCombatAsync(
+            fixture.Coordinator,
+            fixture.Room.RoomId,
+            fixture.HostId,
+            1,
+            [fixture.HostCharacterId],
+            [
+                Opponent("Earlier", 90),
+                Opponent("Target", 70) with { CurrentHp = 2, MaxHp = 2 }
+            ]);
+        var state = started.State!;
+        for (var index = 0; index < 4; index++)
+        {
+            var passed = await PassCombatTurnAsync(
+                fixture.Coordinator,
+                fixture.Room.RoomId,
+                fixture.HostId,
+                state.Revision);
+            Assert.True(passed.IsSuccess);
+            state = passed.State!;
+        }
+
+        Assert.Equal(2, state.Combat!.Round);
+        Assert.Equal($"character:{fixture.HostCharacterId}", state.Combat.Order[state.Combat.TurnIndex].Value);
+        var pendingState = await BeginAndResolveDamageDispositionAsync(
+            fixture,
+            state,
+            fixture.HostId,
+            $"character:{fixture.HostCharacterId}",
+            "opponent:1");
+        var entry = Assert.Single(pendingState.Combat!.DamageDispositions);
+        Assert.Equal(CombatDamageMode.InitiatorExtremeEligible, entry.Value.Disposition.Mode);
+        Assert.Equal(0, fixture.DiceRoller.GenericCalls);
+        Assert.Equal(2, fixture.DiceRoller.PercentileCalls);
+        fixture.StateStore.ArmConsumptionFailure(() => true);
+
+        var exception = await Record.ExceptionAsync(() => ResolveCombatDamageAsync(
+            fixture.Coordinator,
+            fixture.Room.RoomId,
+            pendingState.Revision,
+            entry.Key));
+
+        Assert.NotNull(exception);
+        Assert.Equal("CombatDamageCommitInvariantException", exception.GetType().Name);
+        Assert.Contains("must not be re-rolled", exception.Message, StringComparison.Ordinal);
+        Assert.Equal(0, fixture.DiceRoller.GenericCalls);
+        Assert.Equal(3, fixture.DiceRoller.PercentileCalls);
+        Assert.Same(pendingState, GetRequiredState(fixture.StateStore, fixture.Room.RoomId));
     }
 
     [Fact]
@@ -384,14 +1524,28 @@ public sealed class GameStateTests
             var resolved = await ResolvePendingExchangeAsync(fixture.Coordinator, fixture.Room.RoomId, resolveRequester, begin.State.Revision, exchange.ExchangeId, CombatResponse.Dodge);
             Assert.True(resolved.IsSuccess);
             state = resolved.State!;
+            ReplaceDamageDispositions(
+                fixture,
+                state.Combat!.DamageDispositions.ToDictionary(
+                    pair => pair.Key,
+                    pair => pair.Key == exchange.ExchangeId
+                        ? ConsumedDisposition(
+                            pair.Key,
+                            pair.Value.Disposition.OwnerParticipantId,
+                            pair.Value.Disposition.TargetParticipantId,
+                            pair.Value.Disposition.CreatedGameRevision)
+                        : pair.Value));
+            Assert.True(fixture.StateStore.TryGet(fixture.Room.RoomId, out var storedState));
+            state = Assert.IsType<MultiplayerGameState>(storedState);
         }
 
         var finalSession = state.Combat!;
         Assert.Equal(120, finalSession.History.Count);
         Assert.NotEqual(firstExchangeId, finalSession.History[0].ExchangeId);
         Assert.Equal(finalSession.LastExchange!.ExchangeId, finalSession.History[^1].ExchangeId);
-        Assert.True(finalSession.PendingDamageDispositions.ContainsKey(firstExchangeId!));
-        Assert.Equal(121, finalSession.PendingDamageDispositions.Count);
+        Assert.True(finalSession.DamageDispositions.ContainsKey(firstExchangeId!));
+        Assert.Equal(121, finalSession.DamageDispositions.Count);
+        Assert.All(finalSession.DamageDispositions.Values, entry => Assert.Equal(DamageDispositionStatus.Consumed, entry.Status));
         Assert.Equal(242, fixture.DiceRoller.PercentileCalls);
     }
 
@@ -746,7 +1900,7 @@ public sealed class GameStateTests
 
         var combatJson = JsonSerializer.Serialize(resolvedCombat);
         Assert.DoesNotContain("CombatSession", combatJson, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("PendingDamageDispositions", combatJson, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("DamageDispositions", combatJson, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("ResponseAllowance", combatJson, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("ResponsePolicy", combatJson, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("AttackerCheck", combatJson, StringComparison.OrdinalIgnoreCase);
@@ -780,6 +1934,139 @@ public sealed class GameStateTests
         Assert.Equal(startedState.Revision, nonparticipantProjection.Revision);
         Assert.NotNull(ownerProjection.Combat);
         Assert.Null(nonparticipantProjection.Combat);
+    }
+
+    [Fact]
+    public async Task Projection_ConsumedDamageExposesOnlySafeLatestSummaryAndExistingOwnHealth()
+    {
+        var fixture = await CreateCombatDamageGameAsync(
+            [],
+            [1, 100],
+            hostLoadout: new CharacterCombatLoadout(
+                Weapon("private-maul", "秘密巨锤", "1d12", addsDamageBonus: false),
+                0));
+        var opponent = Opponent("Cultist", 70) with
+        {
+            Str = 91,
+            Siz = 82,
+            CurrentHp = 3,
+            MaxHp = 13,
+            FixedArmor = 9,
+            Weapon = Weapon("private-claw", "隐藏利爪", "1d4")
+        };
+        var started = await StartCombatAsync(
+            fixture.Coordinator,
+            fixture.Room.RoomId,
+            fixture.HostId,
+            1,
+            [fixture.HostCharacterId, fixture.MemberCharacterId],
+            [opponent]);
+        var pending = await BeginOpposedExchangeAsync(
+            fixture.Coordinator,
+            fixture.Room.RoomId,
+            fixture.HostId,
+            started.State!.Revision,
+            "character:" + fixture.HostCharacterId,
+            "opponent:0");
+        var resolved = await ResolvePendingExchangeAsync(
+            fixture.Coordinator,
+            fixture.Room.RoomId,
+            null,
+            pending.State!.Revision,
+            pending.State.Combat!.PendingExchange!.ExchangeId,
+            CombatResponse.Dodge);
+        var disposition = Assert.Single(resolved.State!.Combat!.DamageDispositions);
+
+        var consumed = await ResolveCombatDamageAsync(
+            fixture.Coordinator,
+            fixture.Room.RoomId,
+            resolved.State.Revision,
+            disposition.Key);
+
+        Assert.True(consumed.IsSuccess);
+        var committedState = Assert.IsType<MultiplayerGameState>(consumed.State);
+        var committedDamage = Assert.IsType<CombatDamageResult>(consumed.Damage);
+        var olderExchangeId = "older-consumed-damage";
+        var olderResult = committedDamage with
+        {
+            ExchangeId = olderExchangeId,
+            NetDamage = 99,
+            TargetDefeated = false,
+            ResolvedAt = committedDamage.ResolvedAt.AddMinutes(-1)
+        };
+        var olderDisposition = new DamageDispositionState(
+            new DamageDispositionData(
+                olderExchangeId,
+                olderResult.OwnerParticipantId,
+                olderResult.TargetParticipantId,
+                olderResult.DamageMode,
+                committedState.Revision - 1),
+            DamageDispositionStatus.Consumed,
+            olderResult);
+        var consumedState = new MultiplayerGameState(
+            committedState.RoomId,
+            committedState.Revision,
+            committedState.Status,
+            committedState.CreatedAt,
+            committedState.Characters,
+            committedState.LastCheck,
+            committedState.Combat! with
+            {
+                DamageDispositions = committedState.Combat.DamageDispositions
+                    .Append(new KeyValuePair<string, DamageDispositionState>(olderExchangeId, olderDisposition))
+                    .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal)
+            });
+        var hostProjection = GameProjection.Build(consumedState, fixture.HostId);
+        var memberProjection = GameProjection.Build(consumedState, fixture.MemberId);
+        var nonparticipantProjection = GameProjection.Build(consumedState, Guid.NewGuid());
+        var expectedDamage = new CombatDamageSnapshot(
+            disposition.Key,
+            "character:" + fixture.HostCharacterId,
+            "opponent:0",
+            "applied",
+            3,
+            true);
+        Assert.Equal(expectedDamage, hostProjection.Combat!.LastDamage);
+        Assert.Equal(expectedDamage, memberProjection.Combat!.LastDamage);
+        Assert.Null(nonparticipantProjection.Combat);
+        Assert.NotNull(hostProjection.Characters.Single(character => character.CharacterId == fixture.HostCharacterId).Health);
+        Assert.Null(hostProjection.Characters.Single(character => character.CharacterId == fixture.MemberCharacterId).Health);
+        Assert.Null(memberProjection.Characters.Single(character => character.CharacterId == fixture.HostCharacterId).Health);
+        Assert.NotNull(memberProjection.Characters.Single(character => character.CharacterId == fixture.MemberCharacterId).Health);
+
+        var json = JsonSerializer.Serialize(hostProjection);
+        using var document = JsonDocument.Parse(json);
+        var combat = document.RootElement.GetProperty("Combat");
+        var damageProperties = combat.GetProperty("LastDamage")
+            .EnumerateObject()
+            .Select(property => property.Name)
+            .OrderBy(name => name, StringComparer.Ordinal)
+            .ToArray();
+        Assert.Equal(
+            new[] { "ExchangeId", "NetDamage", "Outcome", "OwnerParticipantId", "TargetDefeated", "TargetParticipantId" }
+                .OrderBy(name => name, StringComparer.Ordinal),
+            damageProperties);
+        var opponentProperties = combat.GetProperty("Participants")
+            .EnumerateArray()
+            .Single(participant => participant.GetProperty("ParticipantId").GetString() == "opponent:0")
+            .EnumerateObject()
+            .Select(property => property.Name)
+            .OrderBy(name => name, StringComparer.Ordinal)
+            .ToArray();
+        Assert.Equal(
+            new[] { "Active", "CharacterId", "Current", "Label", "ParticipantId", "Side", "Stats", "ViewerOwned" }
+                .OrderBy(name => name, StringComparer.Ordinal),
+            opponentProperties);
+        foreach (var forbiddenProperty in new[]
+                 {
+                     "WeaponResult", "DamageBonusResult", "RawRolls", "DamageMode", "WeaponId", "WeaponExpression",
+                     "GrossDamage", "Armor", "HpBefore", "HpAfter", "HpDamageApplied", "ResolvedAt", "Str", "Siz",
+                     "DamageBonus", "DamageProfile", "OpponentVitality", "DamageDispositions", "DamageDisposition",
+                     "CombatDamageResult", "EventKey", "History", "SourceId", "Provenance"
+                 })
+        {
+            Assert.DoesNotContain($"\"{forbiddenProperty}\"", json, StringComparison.Ordinal);
+        }
     }
 
     [Fact]
@@ -1199,6 +2486,77 @@ public sealed class GameStateTests
             diceRoller, stateStore);
     }
 
+    private static async Task<CombatDamageGameFixture> CreateCombatDamageGameAsync(
+        IReadOnlyList<int> genericRolls,
+        IReadOnlyList<int>? percentileRolls = null,
+        CharacterHealthSetup? hostHealth = null,
+        CharacterHealthSetup? memberHealth = null,
+        CharacterCombatLoadout? hostLoadout = null)
+    {
+        var roomStore = new InMemoryRoomStore();
+        var stateStore = new ControlledGameStateStore();
+        var hostId = Guid.NewGuid();
+        var memberId = Guid.NewGuid();
+        var room = CreateRoom(roomStore, hostId, "Host");
+        Assert.True((await new RoomCoordinator(roomStore).JoinAsync(
+            new JoinRoomCommand(room.RoomId, memberId, "Member"))).IsSuccess);
+        var diceRoller = new SequenceDiceRoller(percentileRolls ?? [40, 100], genericRolls);
+        var hpDamageEngine = new TrackingHpDamageEngine();
+        var notifier = new TrackingGameRealtimeNotifier();
+        var coordinator = new GameCoordinator(
+            roomStore,
+            stateStore,
+            diceRoller,
+            new CocCheckResolutionEngine(),
+            hpDamageEngine,
+            new CocHealthStabilizationEngine(),
+            notifier);
+        var initialized = await coordinator.InitializeAsync(new InitializeGameCommand(
+            room.RoomId,
+            hostId,
+            [
+                new InitializeCharacterCommand(hostId, "Host", CombatValues(80, 55, 45), hostHealth ?? Health()),
+                new InitializeCharacterCommand(memberId, "Member", CombatValues(70, 65, 50), memberHealth ?? Health())
+            ]));
+
+        Assert.True(initialized.IsSuccess);
+        if (hostLoadout is not null)
+        {
+            var state = GetRequiredState(stateStore, room.RoomId);
+            var hostCharacterId = state.Characters.Single(character => character.OwnerPlayerId == hostId).CharacterId;
+            var replacement = new MultiplayerGameState(
+                state.RoomId,
+                state.Revision,
+                state.Status,
+                state.CreatedAt,
+                state.Characters.Select(character => character.CharacterId == hostCharacterId
+                    ? new CharacterState(
+                        character.CharacterId,
+                        character.OwnerPlayerId,
+                        character.Name,
+                        character.CheckValues,
+                        character.Health,
+                        hostLoadout)
+                    : character),
+                state.LastCheck,
+                state.Combat);
+            Assert.True(stateStore.TryReplace(state, replacement));
+        }
+
+        var initializedState = GetRequiredState(stateStore, room.RoomId);
+        return new CombatDamageGameFixture(
+            coordinator,
+            room,
+            hostId,
+            memberId,
+            initializedState.Characters.Single(character => character.OwnerPlayerId == hostId).CharacterId,
+            initializedState.Characters.Single(character => character.OwnerPlayerId == memberId).CharacterId,
+            diceRoller,
+            stateStore,
+            hpDamageEngine,
+            notifier);
+    }
+
     private sealed record HealthGameFixture(
         GameCoordinator Coordinator,
         RoomSession Room,
@@ -1217,6 +2575,18 @@ public sealed class GameStateTests
         CountingDiceRoller DiceRoller,
         InMemoryGameStateStore StateStore);
 
+    private sealed record CombatDamageGameFixture(
+        GameCoordinator Coordinator,
+        RoomSession Room,
+        Guid HostId,
+        Guid MemberId,
+        Guid HostCharacterId,
+        Guid MemberCharacterId,
+        CountingDiceRoller DiceRoller,
+        ControlledGameStateStore StateStore,
+        TrackingHpDamageEngine HpDamageEngine,
+        TrackingGameRealtimeNotifier Notifier);
+
     private static void ReplaceCharacterOwner(CombatGameFixture fixture, Guid characterId, Guid ownerPlayerId)
     {
         Assert.True(fixture.StateStore.TryGet(fixture.Room.RoomId, out var state));
@@ -1227,6 +2597,32 @@ public sealed class GameStateTests
             state.CreatedAt,
             state.Characters.Select(character => character.CharacterId == characterId
                 ? new CharacterState(character.CharacterId, ownerPlayerId, character.Name, character.CheckValues, character.Health)
+                : character),
+            state.LastCheck,
+            state.Combat);
+        Assert.True(fixture.StateStore.TryReplace(state, replacement));
+    }
+
+    private static void ReplaceCharacterCombatProfile(
+        CombatGameFixture fixture,
+        Guid characterId,
+        IReadOnlyDictionary<string, int> checkValues,
+        CharacterCombatLoadout combatLoadout)
+    {
+        Assert.True(fixture.StateStore.TryGet(fixture.Room.RoomId, out var state));
+        var replacement = new MultiplayerGameState(
+            state!.RoomId,
+            state.Revision,
+            state.Status,
+            state.CreatedAt,
+            state.Characters.Select(character => character.CharacterId == characterId
+                ? new CharacterState(
+                    character.CharacterId,
+                    character.OwnerPlayerId,
+                    character.Name,
+                    checkValues,
+                    character.Health,
+                    combatLoadout)
                 : character),
             state.LastCheck,
             state.Combat);
@@ -1283,6 +2679,88 @@ public sealed class GameStateTests
         Assert.True(fixture.StateStore.TryReplace(state, replacement));
     }
 
+    private static void ReplaceCombatParticipant(
+        IGameStateStore stateStore,
+        Guid roomId,
+        string participantId,
+        CombatParticipantState replacementParticipant)
+    {
+        var state = GetRequiredState(stateStore, roomId);
+        var replacement = new MultiplayerGameState(
+            state.RoomId,
+            state.Revision,
+            state.Status,
+            state.CreatedAt,
+            state.Characters,
+            state.LastCheck,
+            state.Combat! with
+            {
+                Participants = state.Combat.Participants
+                    .Select(participant => participant.ParticipantId.Value == participantId ? replacementParticipant : participant)
+                    .ToArray()
+            });
+        Assert.True(stateStore.TryReplace(state, replacement));
+    }
+
+    private static void ReplaceCharacterHealth(
+        IGameStateStore stateStore,
+        Guid roomId,
+        Guid characterId,
+        CharacterHealthState health)
+    {
+        var state = GetRequiredState(stateStore, roomId);
+        var replacement = new MultiplayerGameState(
+            state.RoomId,
+            state.Revision,
+            state.Status,
+            state.CreatedAt,
+            state.Characters.Select(character => character.CharacterId == characterId
+                ? character.WithHealth(health)
+                : character),
+            state.LastCheck,
+            state.Combat);
+        Assert.True(stateStore.TryReplace(state, replacement));
+    }
+
+    private static void ReplaceDamageDispositions(
+        CombatGameFixture fixture,
+        IReadOnlyDictionary<string, DamageDispositionState> damageDispositions)
+    {
+        Assert.True(fixture.StateStore.TryGet(fixture.Room.RoomId, out var state));
+        var replacement = new MultiplayerGameState(
+            state!.RoomId,
+            state.Revision,
+            state.Status,
+            state.CreatedAt,
+            state.Characters,
+            state.LastCheck,
+            state.Combat! with { DamageDispositions = damageDispositions });
+        Assert.True(fixture.StateStore.TryReplace(state, replacement));
+    }
+
+    private static void ReplaceDamageDispositions(
+        IGameStateStore stateStore,
+        Guid roomId,
+        IReadOnlyDictionary<string, DamageDispositionState> damageDispositions)
+    {
+        var state = GetRequiredState(stateStore, roomId);
+        var replacement = new MultiplayerGameState(
+            state.RoomId,
+            state.Revision,
+            state.Status,
+            state.CreatedAt,
+            state.Characters,
+            state.LastCheck,
+            state.Combat! with { DamageDispositions = damageDispositions });
+        Assert.True(stateStore.TryReplace(state, replacement));
+    }
+
+    private static MultiplayerGameState GetRequiredState(IGameStateStore stateStore, Guid roomId)
+    {
+        Assert.True(stateStore.TryGet(roomId, out var state));
+        return Assert.IsType<MultiplayerGameState>(state);
+    }
+
     private static RoomSession CreateRoom(InMemoryRoomStore store, Guid hostId, string nickname)
     {
         var result = new RoomCoordinator(store).CreateAsync(new CreateRoomCommand(hostId, nickname, 4)).GetAwaiter().GetResult();
@@ -1308,7 +2786,7 @@ public sealed class GameStateTests
         null,
         null,
         [],
-        new Dictionary<string, DamageDisposition>(),
+        new Dictionary<string, DamageDispositionState>(),
         new Dictionary<Guid, DyingScheduleState>(),
         DateTimeOffset.UtcNow,
         null,
@@ -1316,15 +2794,99 @@ public sealed class GameStateTests
 
     private static Dictionary<string, int> Values() => new() { ["spotHidden"] = 60 };
 
-    private static Dictionary<string, int> CombatValues(int dex, int fighting, int dodge) => new()
-    {
-        ["dex"] = dex,
-        ["fighting_brawl"] = fighting,
-        ["dodge"] = dodge
-    };
+    private static Dictionary<string, int> CombatValues(
+        int dex,
+        int fighting,
+        int dodge,
+        int str = 60,
+        int siz = 50) => new()
+        {
+            ["dex"] = dex,
+            ["fighting_brawl"] = fighting,
+            ["dodge"] = dodge,
+            ["str"] = str,
+            ["siz"] = siz
+        };
 
     private static CombatOpponent Opponent(string label, int dex) => new(
-        label, dex, 55, 40, [CombatResponse.Dodge, CombatResponse.FightBack], 1, "player_or_ai");
+        label,
+        dex,
+        55,
+        40,
+        [CombatResponse.Dodge, CombatResponse.FightBack],
+        1,
+        "player_or_ai",
+        60,
+        50,
+        10,
+        10,
+        0,
+        Weapon("unarmed", "徒手/拳脚", "1d3"));
+
+    private static CharacterCombatLoadout DefaultLoadout() => new(
+        Weapon("unarmed", "徒手/拳脚", "1d3"),
+        0);
+
+    private static CombatWeaponProfile Weapon(
+        string weaponId,
+        string label,
+        string expression,
+        bool addsDamageBonus = true) =>
+        CocCombatDamageRules.NormalizeWeapon(
+            weaponId,
+            label,
+            expression,
+            addsDamageBonus,
+            "melee_non_impaling");
+
+    private static DamageDispositionState PendingDisposition(
+        string exchangeId,
+        CombatParticipantId ownerParticipantId,
+        CombatParticipantId targetParticipantId,
+        long createdGameRevision) => new(
+            new DamageDispositionData(
+                exchangeId,
+                ownerParticipantId,
+                targetParticipantId,
+                CombatDamageMode.Regular,
+                createdGameRevision),
+            DamageDispositionStatus.Pending,
+            null);
+
+    private static DamageDispositionState ConsumedDisposition(
+        string exchangeId,
+        CombatParticipantId ownerParticipantId,
+        CombatParticipantId targetParticipantId,
+        long createdGameRevision)
+    {
+        var disposition = new DamageDispositionData(
+            exchangeId,
+            ownerParticipantId,
+            targetParticipantId,
+            CombatDamageMode.Regular,
+            createdGameRevision);
+        return new DamageDispositionState(
+            disposition,
+            DamageDispositionStatus.Consumed,
+            new CombatDamageResult(
+                exchangeId,
+                ownerParticipantId,
+                targetParticipantId,
+                CombatDamageMode.Regular,
+                CombatDamageOutcome.Applied,
+                "test-weapon",
+                "1",
+                null,
+                null,
+                1,
+                0,
+                1,
+                10,
+                9,
+                true,
+                false,
+                DateTimeOffset.UnixEpoch));
+    }
 
     private static async Task<InternalCombatResult> StartCombatAsync(
         GameCoordinator coordinator,
@@ -1370,6 +2932,18 @@ public sealed class GameStateTests
         GameCoordinator coordinator, Guid roomId, Guid authorizedPlayerId, long expectedRevision, string reason) =>
         await InvokeInternalCombatAsync(coordinator, "EndCombatAsync", roomId, authorizedPlayerId, expectedRevision, reason);
 
+    private static async Task<InternalCombatResult> ResolveCombatDamageAsync(
+        GameCoordinator coordinator,
+        Guid roomId,
+        long expectedRevision,
+        string exchangeId) =>
+        await InvokeInternalCombatAsync(
+            coordinator,
+            "ResolveCombatDamageAsync",
+            roomId,
+            expectedRevision,
+            exchangeId);
+
     private static async Task<InternalCombatResult> StartAndBeginAgainstOpponentAsync(CombatGameFixture fixture)
     {
         var started = await StartCombatAsync(fixture.Coordinator, fixture.Room.RoomId, fixture.HostId, 1,
@@ -1386,6 +2960,114 @@ public sealed class GameStateTests
         Assert.True(started.IsSuccess);
         return await BeginOpposedExchangeAsync(fixture.Coordinator, fixture.Room.RoomId, fixture.HostId, started.State!.Revision,
             "opponent:0", "character:" + fixture.HostCharacterId);
+    }
+
+    private static async Task<MultiplayerGameState> CreatePendingDamageDispositionAsync(
+        CombatDamageGameFixture fixture)
+    {
+        var started = await StartCombatAsync(
+            fixture.Coordinator,
+            fixture.Room.RoomId,
+            fixture.HostId,
+            1,
+            [fixture.HostCharacterId],
+            [Opponent("Cultist", 70)]);
+        Assert.True(started.IsSuccess);
+        var pending = await BeginOpposedExchangeAsync(
+            fixture.Coordinator,
+            fixture.Room.RoomId,
+            fixture.HostId,
+            started.State!.Revision,
+            "character:" + fixture.HostCharacterId,
+            "opponent:0");
+        Assert.True(pending.IsSuccess);
+        var exchange = Assert.IsType<PendingCombatExchange>(pending.State!.Combat!.PendingExchange);
+        var resolved = await ResolvePendingExchangeAsync(
+            fixture.Coordinator,
+            fixture.Room.RoomId,
+            null,
+            pending.State.Revision,
+            exchange.ExchangeId,
+            CombatResponse.Dodge);
+        Assert.True(resolved.IsSuccess);
+        Assert.Equal(DamageDispositionStatus.Pending, Assert.Single(resolved.State!.Combat!.DamageDispositions).Value.Status);
+        fixture.Notifier.Reset();
+        return resolved.State;
+    }
+
+    private static async Task<MultiplayerGameState> CreatePendingInvestigatorDamageDispositionAsync(
+        CombatDamageGameFixture fixture,
+        CombatOpponent opponent,
+        IReadOnlyList<Guid>? characterIds = null)
+    {
+        var state = GetRequiredState(fixture.StateStore, fixture.Room.RoomId);
+        var started = await StartCombatAsync(
+            fixture.Coordinator,
+            fixture.Room.RoomId,
+            fixture.HostId,
+            state.Revision,
+            characterIds ?? [fixture.HostCharacterId],
+            [opponent]);
+        Assert.True(started.IsSuccess);
+        return await BeginAndResolveDamageDispositionAsync(
+            fixture,
+            started.State!,
+            fixture.HostId,
+            "opponent:0",
+            $"character:{fixture.HostCharacterId}");
+    }
+
+    private static async Task<MultiplayerGameState> CreatePendingOpponentDamageDispositionAsync(
+        CombatDamageGameFixture fixture,
+        IReadOnlyList<CombatOpponent> opponents,
+        string targetParticipantId)
+    {
+        var state = GetRequiredState(fixture.StateStore, fixture.Room.RoomId);
+        var started = await StartCombatAsync(
+            fixture.Coordinator,
+            fixture.Room.RoomId,
+            fixture.HostId,
+            state.Revision,
+            [fixture.HostCharacterId],
+            opponents);
+        Assert.True(started.IsSuccess);
+        return await BeginAndResolveDamageDispositionAsync(
+            fixture,
+            started.State!,
+            fixture.HostId,
+            $"character:{fixture.HostCharacterId}",
+            targetParticipantId);
+    }
+
+    private static async Task<MultiplayerGameState> BeginAndResolveDamageDispositionAsync(
+        CombatDamageGameFixture fixture,
+        MultiplayerGameState state,
+        Guid requestingPlayerId,
+        string attackerParticipantId,
+        string defenderParticipantId)
+    {
+        var pending = await BeginOpposedExchangeAsync(
+            fixture.Coordinator,
+            fixture.Room.RoomId,
+            requestingPlayerId,
+            state.Revision,
+            attackerParticipantId,
+            defenderParticipantId);
+        Assert.True(pending.IsSuccess);
+        var exchange = Assert.IsType<PendingCombatExchange>(pending.State!.Combat!.PendingExchange);
+        var resolved = await ResolvePendingExchangeAsync(
+            fixture.Coordinator,
+            fixture.Room.RoomId,
+            exchange.DefenderOwnerPlayerId,
+            pending.State.Revision,
+            exchange.ExchangeId,
+            CombatResponse.Dodge);
+        Assert.True(resolved.IsSuccess);
+        Assert.Equal(
+            DamageDispositionStatus.Pending,
+            resolved.State!.Combat!.DamageDispositions[exchange.ExchangeId].Status);
+        fixture.Notifier.Reset();
+        return resolved.State;
     }
 
     private static async Task<CombatSession> GetCombatStateAsync(CombatGameFixture fixture)
@@ -1431,10 +3113,12 @@ public sealed class GameStateTests
         await task;
         var result = task.GetType().GetProperty("Result")!.GetValue(task)!;
         var isSuccess = Assert.IsType<bool>(result.GetType().GetProperty("IsSuccess")!.GetValue(result));
+        var changed = Assert.IsType<bool>(result.GetType().GetProperty("Changed")!.GetValue(result));
         var error = result.GetType().GetProperty("Error")!.GetValue(result) as GameError;
         var value = result.GetType().GetProperty("Value")!.GetValue(result);
         var state = value?.GetType().GetProperty("State")!.GetValue(value) as MultiplayerGameState;
-        return new InternalCombatResult(isSuccess, error?.Code, state);
+        var damage = value?.GetType().GetProperty("Damage")?.GetValue(value) as CombatDamageResult;
+        return new InternalCombatResult(isSuccess, error?.Code, changed, state, damage);
     }
 
     private static Array CreateOpponentDefinitions(GameCoordinator coordinator, IReadOnlyList<CombatOpponent> opponents)
@@ -1451,7 +3135,13 @@ public sealed class GameStateTests
                 opponent.Dodge,
                 opponent.AvailableResponses,
                 opponent.ResponseAllowance,
-                opponent.ResponsePolicy), index);
+                opponent.ResponsePolicy,
+                opponent.Str,
+                opponent.Siz,
+                opponent.CurrentHp,
+                opponent.MaxHp,
+                opponent.FixedArmor,
+                opponent.Weapon), index);
         }
 
         return definitions;
@@ -1481,6 +3171,8 @@ public sealed class GameStateTests
     {
         public int PercentileCalls { get; private set; }
 
+        public int GenericCalls { get; private set; }
+
         public PercentileDiceRoll RollPercentile(int bonusDice, int penaltyDice)
         {
             PercentileCalls++;
@@ -1489,10 +3181,13 @@ public sealed class GameStateTests
 
         public GenericDiceRoll RollDice(DiceRollRequest request)
         {
-            throw new InvalidOperationException("No deterministic generic roll remains.");
+            GenericCalls++;
+            return RollGeneric(request);
         }
 
         protected abstract PercentileDiceRoll Roll(int bonusDice, int penaltyDice);
+
+        protected abstract GenericDiceRoll RollGeneric(DiceRollRequest request);
     }
 
     private sealed class ThrowingDiceRoller : CountingDiceRoller
@@ -1501,11 +3196,19 @@ public sealed class GameStateTests
         {
             throw new InvalidOperationException("Combat Start and Begin must not roll dice.");
         }
+
+        protected override GenericDiceRoll RollGeneric(DiceRollRequest request)
+        {
+            throw new InvalidOperationException("Combat Start and Begin must not roll dice.");
+        }
     }
 
-    private sealed class SequenceDiceRoller(IEnumerable<int> selectedRolls) : CountingDiceRoller
+    private sealed class SequenceDiceRoller(
+        IEnumerable<int> selectedRolls,
+        IEnumerable<int>? genericRolls = null) : CountingDiceRoller
     {
         private readonly Queue<int> selectedRolls = new(selectedRolls);
+        private readonly Queue<int> genericRolls = new(genericRolls ?? []);
 
         protected override PercentileDiceRoll Roll(int bonusDice, int penaltyDice)
         {
@@ -1516,6 +3219,101 @@ public sealed class GameStateTests
 
             return new PercentileDiceRoll(roll, [roll]);
         }
+
+        protected override GenericDiceRoll RollGeneric(DiceRollRequest request)
+        {
+            var rawRolls = new int[request.Count];
+            var total = 0;
+            for (var index = 0; index < rawRolls.Length; index++)
+            {
+                if (!genericRolls.TryDequeue(out var roll))
+                {
+                    throw new InvalidOperationException("No deterministic generic roll remains.");
+                }
+
+                rawRolls[index] = roll;
+                total += roll;
+            }
+
+            return new GenericDiceRoll(request.Count, request.Faces, Array.AsReadOnly(rawRolls), total);
+        }
+    }
+
+    private sealed class TrackingHpDamageEngine : IHpDamageEngine
+    {
+        private readonly CocHpDamageEngine inner = new();
+
+        public int Calls { get; private set; }
+
+        public HpDamageInput? LastInput { get; private set; }
+
+        public HpDamageResolutionResult Apply(CharacterHealthState state, HpDamageInput input)
+        {
+            Calls++;
+            LastInput = input;
+            return inner.Apply(state, input);
+        }
+    }
+
+    private sealed class TrackingGameRealtimeNotifier : IGameRealtimeNotifier
+    {
+        public int GameSnapshotCalls { get; private set; }
+
+        public Task PublishGameSnapshotAsync(Guid roomId)
+        {
+            GameSnapshotCalls++;
+            return Task.CompletedTask;
+        }
+
+        public Task PublishCheckResolvedAsync(Guid roomId, CheckResolvedEvent message) => Task.CompletedTask;
+
+        public Task SendGameSnapshotAsync(string connectionId, Guid roomId, Guid playerId) => Task.CompletedTask;
+
+        public void Reset() => GameSnapshotCalls = 0;
+    }
+
+    private sealed class ControlledGameStateStore : IGameStateStore
+    {
+        private readonly InMemoryGameStateStore inner = new();
+        private Func<bool>? failConsumptionReplacement;
+
+        public int ReplacementAttempts { get; private set; }
+
+        public int ConsumptionReplacementAttempts { get; private set; }
+
+        public bool TryAdd(MultiplayerGameState state) => inner.TryAdd(state);
+
+        public bool TryGet(Guid roomId, out MultiplayerGameState? state) => inner.TryGet(roomId, out state);
+
+        public bool TryReplace(MultiplayerGameState expectedState, MultiplayerGameState replacementState)
+        {
+            ReplacementAttempts++;
+            var isConsumptionReplacement = expectedState.Combat is not null
+                && replacementState.Combat is not null
+                && expectedState.Combat.DamageDispositions.Any(pair =>
+                    pair.Value.Status == DamageDispositionStatus.Pending
+                    && replacementState.Combat.DamageDispositions.TryGetValue(pair.Key, out var replacement)
+                    && replacement.Status == DamageDispositionStatus.Consumed);
+            if (isConsumptionReplacement)
+            {
+                ConsumptionReplacementAttempts++;
+                if (failConsumptionReplacement?.Invoke() is true)
+                {
+                    return false;
+                }
+            }
+
+            return inner.TryReplace(expectedState, replacementState);
+        }
+
+        public bool TryRemove(Guid roomId, out MultiplayerGameState? state) => inner.TryRemove(roomId, out state);
+
+        public bool Exists(Guid roomId) => inner.Exists(roomId);
+
+        public void ArmConsumptionFailure(Func<bool> failureCondition) =>
+            failConsumptionReplacement = failureCondition;
+
+        public void ResetConsumptionReplacementAttempts() => ConsumptionReplacementAttempts = 0;
     }
 
     private sealed record CombatOpponent(
@@ -1525,7 +3323,18 @@ public sealed class GameStateTests
         int Dodge,
         IReadOnlyList<CombatResponse> AvailableResponses,
         int ResponseAllowance,
-        string ResponsePolicy);
+        string ResponsePolicy,
+        int Str,
+        int Siz,
+        int CurrentHp,
+        int MaxHp,
+        int FixedArmor,
+        CombatWeaponProfile? Weapon);
 
-    private sealed record InternalCombatResult(bool IsSuccess, GameErrorCode? ErrorCode, MultiplayerGameState? State);
+    private sealed record InternalCombatResult(
+        bool IsSuccess,
+        GameErrorCode? ErrorCode,
+        bool Changed,
+        MultiplayerGameState? State,
+        CombatDamageResult? Damage);
 }

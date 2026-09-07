@@ -2,6 +2,15 @@ namespace Trpg.Multiplayer.Api.Gameplay;
 
 public sealed record CombatParticipantId(string Value);
 
+public sealed record CombatDamageProfile(
+    int Str,
+    int Siz,
+    DamageBonusProfile DamageBonus,
+    CombatWeaponProfile Weapon,
+    int FixedArmor);
+
+public sealed record OpponentVitalityState(int CurrentHp, int MaxHp);
+
 public sealed record CombatParticipantState(
     CombatParticipantId ParticipantId,
     Guid? CharacterId,
@@ -14,15 +23,56 @@ public sealed record CombatParticipantState(
     int Dodge,
     IReadOnlyList<CombatResponse> AvailableResponses,
     int ResponseAllowance,
-    bool Active);
+    bool Active,
+    CombatDamageProfile DamageProfile,
+    OpponentVitalityState? OpponentVitality);
 
-public sealed record DamageDisposition(
+public enum DamageDispositionStatus
+{
+    Pending,
+    Consumed
+}
+
+public enum CombatDamageOutcome
+{
+    Applied,
+    TargetAlreadyIneligible
+}
+
+public sealed record DamageDispositionData(
     string ExchangeId,
     CombatParticipantId OwnerParticipantId,
     CombatParticipantId TargetParticipantId,
-    string Mode,
-    bool Pending,
-    bool HpCommitted);
+    CombatDamageMode Mode,
+    long CreatedGameRevision);
+
+public sealed record CombatDamageResult(
+    string ExchangeId,
+    CombatParticipantId OwnerParticipantId,
+    CombatParticipantId TargetParticipantId,
+    CombatDamageMode DamageMode,
+    CombatDamageOutcome Outcome,
+    string? WeaponId,
+    string? WeaponExpression,
+    DamageComponentResult? WeaponResult,
+    DamageComponentResult? DamageBonusResult,
+    int GrossDamage,
+    int Armor,
+    int NetDamage,
+    int HpBefore,
+    int HpAfter,
+    bool HpDamageApplied,
+    bool TargetDefeated,
+    DateTimeOffset ResolvedAt);
+
+public sealed record DamageDispositionState(
+    DamageDispositionData Disposition,
+    DamageDispositionStatus Status,
+    CombatDamageResult? Result)
+{
+    // Compatibility projection only; Status remains the sole canonical lifecycle truth.
+    public bool Pending => Status == DamageDispositionStatus.Pending;
+}
 
 public sealed record PendingCombatExchange(
     string ExchangeId,
@@ -50,7 +100,7 @@ public sealed record CombatExchange(
     int ResponseAllowance,
     string Outcome,
     CombatParticipantId? WinnerParticipantId,
-    DamageDisposition? DamageDisposition,
+    DamageDispositionState? DamageDisposition,
     DateTimeOffset CreatedAt);
 
 public sealed record DyingScheduleState(int ObservedRound, int? LastCheckCompletedRound);
@@ -67,7 +117,7 @@ public sealed record CombatSession(
     PendingCombatExchange? PendingExchange,
     CombatExchange? LastExchange,
     IReadOnlyList<CombatExchange> History,
-    IReadOnlyDictionary<string, DamageDisposition> PendingDamageDispositions,
+    IReadOnlyDictionary<string, DamageDispositionState> DamageDispositions,
     IReadOnlyDictionary<Guid, DyingScheduleState> DyingSchedule,
     DateTimeOffset StartedAt,
     DateTimeOffset? EndedAt,
@@ -87,7 +137,9 @@ public static class CombatSessionState
         int dodge,
         IEnumerable<CombatResponse> availableResponses,
         int responseAllowance,
-        bool active) => new(
+        bool active,
+        CombatDamageProfile damageProfile,
+        OpponentVitalityState? opponentVitality) => new(
             participantId,
             characterId,
             ownerPlayerId,
@@ -99,7 +151,9 @@ public static class CombatSessionState
             dodge,
             NormalizeResponses(availableResponses, allowEmpty: true),
             responseAllowance,
-            active);
+            active,
+            damageProfile,
+            opponentVitality);
 
     public static PendingCombatExchange CreatePendingExchange(
         string exchangeId,

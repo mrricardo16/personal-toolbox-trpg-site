@@ -373,6 +373,12 @@ Parity verification
 
 The owner projection adds only the simplified `stabilized` boolean alongside the existing HP/status booleans. Non-owners receive `Health = null`. Dying checks, treatment records, raw rolls/targets, source IDs, event keys, reason fields, and other provenance are never serialized or broadcast. Reconnect uses the existing `GameSnapshot` recovery path, and Vue renders the stabilized field read-only without health actions, API methods, or routes.
 
+## Phase 2G Combat Damage Projection Boundary
+
+`CombatSnapshot.LastDamage` is a nullable, viewer-safe server projection. Its corresponding client `CombatDamageSnapshot` contains only exchange identity, owner/target participant identities, semantic outcome, net damage, and defeated state. It does not expose raw dice, damage profile, weapon, Armor, HP before/after, opponent vitality, internal disposition/result state, histories, source, or provenance.
+
+The Vue client treats this snapshot as display-only: it renders semantic labels using the existing projected participant list and retains the established monotonic GameSnapshot revision acceptance. The browser performs no Combat Damage calculation or mutation and adds no Combat Damage route, API method, action control, input, or handler. Existing own-only Health projection remains the sole HP display boundary.
+
 ### Future Team Status Visibility Policy (Documentation Only)
 
 Future team status visibility is classified as:

@@ -45,6 +45,11 @@ internal sealed record EndCombatCommand(
     long ExpectedGameRevision,
     string Reason);
 
+internal sealed record ResolveCombatDamageCommand(
+    Guid RoomId,
+    long ExpectedGameRevision,
+    string ExchangeId);
+
 internal sealed record OpponentDefinition(
     string Label,
     int Dex,
@@ -52,7 +57,13 @@ internal sealed record OpponentDefinition(
     int Dodge,
     IReadOnlyList<CombatResponse> AvailableResponses,
     int ResponseAllowance,
-    string ResponsePolicy);
+    string ResponsePolicy,
+    int Str,
+    int Siz,
+    int CurrentHp,
+    int MaxHp,
+    int FixedArmor,
+    CombatWeaponProfile Weapon);
 
 internal sealed record StartCombatResult(MultiplayerGameState State);
 
@@ -63,6 +74,14 @@ internal sealed record ResolvePendingExchangeResult(MultiplayerGameState State);
 internal sealed record PassCombatTurnResult(MultiplayerGameState State);
 
 internal sealed record EndCombatResult(MultiplayerGameState State);
+
+internal sealed record ResolveCombatDamageResult(
+    MultiplayerGameState State,
+    CombatDamageResult Damage);
+
+internal sealed class CombatDamageStateInvariantException(string message) : Exception(message);
+
+internal sealed class CombatDamageCommitInvariantException(string message) : Exception(message);
 
 public sealed record ResolveCheckCommand(
     Guid RoomId,
@@ -113,13 +132,22 @@ public sealed record CombatPendingSnapshot(
     string Role,
     string Status);
 
+public sealed record CombatDamageSnapshot(
+    string ExchangeId,
+    string OwnerParticipantId,
+    string TargetParticipantId,
+    string Outcome,
+    int NetDamage,
+    bool TargetDefeated);
+
 public sealed record CombatSnapshot(
     bool Active,
     int Round,
     string? CurrentActorParticipantId,
     IReadOnlyList<CombatParticipantSnapshot> Participants,
     CombatExchangeSnapshot? LastExchange,
-    CombatPendingSnapshot? Pending);
+    CombatPendingSnapshot? Pending,
+    CombatDamageSnapshot? LastDamage = null);
 
 public sealed record ApplyDamageCommand(
     Guid RoomId,
