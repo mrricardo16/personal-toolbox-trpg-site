@@ -1470,6 +1470,11 @@ public sealed class GameStateTests
             PercentileCalls++;
             return new PercentileDiceRoll(selectedRoll, [selectedRoll]);
         }
+
+        public GenericDiceRoll RollDice(DiceRollRequest request)
+        {
+            throw new InvalidOperationException("No deterministic generic roll remains.");
+        }
     }
 
     private abstract class CountingDiceRoller : IDiceRoller
@@ -1480,6 +1485,11 @@ public sealed class GameStateTests
         {
             PercentileCalls++;
             return Roll(bonusDice, penaltyDice);
+        }
+
+        public GenericDiceRoll RollDice(DiceRollRequest request)
+        {
+            throw new InvalidOperationException("No deterministic generic roll remains.");
         }
 
         protected abstract PercentileDiceRoll Roll(int bonusDice, int penaltyDice);

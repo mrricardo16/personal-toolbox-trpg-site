@@ -21,9 +21,15 @@ public sealed record CheckResolutionResult(
 
 public sealed record PercentileDiceRoll(int SelectedRoll, IReadOnlyList<int> RawRolls);
 
+public sealed record DiceRollRequest(int Count, int Faces);
+
+public sealed record GenericDiceRoll(int Count, int Faces, IReadOnlyList<int> RawRolls, int Total);
+
 public interface IDiceRoller
 {
     PercentileDiceRoll RollPercentile(int bonusDice, int penaltyDice);
+
+    GenericDiceRoll RollDice(DiceRollRequest request);
 }
 
 public interface ICheckResolutionEngine
@@ -47,6 +53,31 @@ public sealed class SecureDiceRoller : IDiceRoller
             .ToArray();
         var selected = bonus > 0 ? values.Min() : penalty > 0 ? values.Max() : values[0];
         return new PercentileDiceRoll(selected, values);
+    }
+
+    public GenericDiceRoll RollDice(DiceRollRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        if (request.Count is < 1 or > 100)
+        {
+            throw new ArgumentOutOfRangeException(nameof(request.Count));
+        }
+
+        if (request.Faces is < 2 or > 10000)
+        {
+            throw new ArgumentOutOfRangeException(nameof(request.Faces));
+        }
+
+        var rawRolls = new int[request.Count];
+        var total = 0;
+        for (var index = 0; index < rawRolls.Length; index++)
+        {
+            var roll = RandomNumberGenerator.GetInt32(1, request.Faces + 1);
+            rawRolls[index] = roll;
+            total = checked(total + roll);
+        }
+
+        return new GenericDiceRoll(request.Count, request.Faces, Array.AsReadOnly(rawRolls), total);
     }
 
     private static int ToPercentile(int tens, int ones) => tens == 0 && ones == 0 ? 100 : tens * 10 + ones;

@@ -58,6 +58,72 @@ public sealed class CheckResolutionTests
         }
     }
 
+    [Theory]
+    [InlineData("d3", "d3", 1, 3, 0)]
+    [InlineData("1d3", "1d3", 1, 3, 0)]
+    [InlineData("1d6+2", "1d6+2", 1, 6, 2)]
+    [InlineData("2d4-1", "2d4-1", 2, 4, -1)]
+    [InlineData("  D6+2 ", "d6+2", 1, 6, 2)]
+    [InlineData("1d2-100000", "1d2-100000", 1, 2, -100000)]
+    [InlineData("1d10000+100000", "1d10000+100000", 1, 10000, 100000)]
+    public void DiceExpressionParser_AcceptsExactGrammarAndNormalizesOnlyCaseAndOuterWhitespace(
+        string input,
+        string expectedText,
+        int expectedCount,
+        int expectedFaces,
+        int expectedModifier)
+    {
+        var expression = DiceExpressionParser.Parse(input);
+
+        Assert.Equal(new DiceExpression(expectedText, expectedCount, expectedFaces, expectedModifier), expression);
+    }
+
+    [Theory]
+    [InlineData("", DiceExpressionError.InvalidLength)]
+    [InlineData("                                 ", DiceExpressionError.InvalidLength)]
+    [InlineData("1d2+12345678901234567890123456789", DiceExpressionError.InvalidLength)]
+    [InlineData("1D6 + 2", DiceExpressionError.InvalidFormat)]
+    [InlineData("1d٦", DiceExpressionError.InvalidFormat)]
+    [InlineData("d", DiceExpressionError.InvalidFormat)]
+    [InlineData("0d6", DiceExpressionError.InvalidCount)]
+    [InlineData("101d6", DiceExpressionError.InvalidCount)]
+    [InlineData("1d1", DiceExpressionError.InvalidFaces)]
+    [InlineData("1d10001", DiceExpressionError.InvalidFaces)]
+    [InlineData("1d2-100001", DiceExpressionError.InvalidModifier)]
+    [InlineData("1d2+100001", DiceExpressionError.InvalidModifier)]
+    public void DiceExpressionParser_RejectsInvalidSyntaxAndBounds(
+        string input,
+        DiceExpressionError expectedError)
+    {
+        var exception = Assert.Throws<DiceExpressionRuleException>(() => DiceExpressionParser.Parse(input));
+
+        Assert.Equal(expectedError, exception.Error);
+    }
+
+    [Fact]
+    public void SecureDiceRoller_ReturnsValidatedGenericDiceAndCheckedTotal()
+    {
+        var result = new SecureDiceRoller().RollDice(new DiceRollRequest(100, 10000));
+
+        Assert.Equal(100, result.Count);
+        Assert.Equal(10000, result.Faces);
+        Assert.Equal(100, result.RawRolls.Count);
+        Assert.All(result.RawRolls, roll => Assert.InRange(roll, 1, 10000));
+        Assert.Equal(result.RawRolls.Sum(), result.Total);
+    }
+
+    [Theory]
+    [InlineData(0, 6)]
+    [InlineData(101, 6)]
+    [InlineData(1, 1)]
+    [InlineData(1, 10001)]
+    public void SecureDiceRoller_RejectsInvalidGenericDiceBeforeRolling(int count, int faces)
+    {
+        var roller = new SecureDiceRoller();
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => roller.RollDice(new DiceRollRequest(count, faces)));
+    }
+
     [Fact]
     public void CocEngine_RejectsOutOfRangeForcedRolls()
     {

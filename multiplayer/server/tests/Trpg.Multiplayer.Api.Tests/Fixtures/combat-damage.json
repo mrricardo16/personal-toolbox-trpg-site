@@ -1,0 +1,1620 @@
+{
+  "version": 1,
+  "referenceSources": [
+    "src/check-engine.js",
+    "src/hp-damage-state.js",
+    "src/health-stabilization.js",
+    "src/combat-opposed.js",
+    "src/combat-damage.js"
+  ],
+  "cases": [
+    {
+      "id": "db-64",
+      "scope": "reference_conformance",
+      "input": {
+        "str": 32,
+        "siz": 32
+      },
+      "expected": {
+        "sum": 64,
+        "kind": "flat",
+        "value": -2,
+        "expression": "-2",
+        "max": -2
+      }
+    },
+    {
+      "id": "db-65",
+      "scope": "reference_conformance",
+      "input": {
+        "str": 32,
+        "siz": 33
+      },
+      "expected": {
+        "sum": 65,
+        "kind": "flat",
+        "value": -1,
+        "expression": "-1",
+        "max": -1
+      }
+    },
+    {
+      "id": "db-84",
+      "scope": "reference_conformance",
+      "input": {
+        "str": 42,
+        "siz": 42
+      },
+      "expected": {
+        "sum": 84,
+        "kind": "flat",
+        "value": -1,
+        "expression": "-1",
+        "max": -1
+      }
+    },
+    {
+      "id": "db-85",
+      "scope": "reference_conformance",
+      "input": {
+        "str": 42,
+        "siz": 43
+      },
+      "expected": {
+        "sum": 85,
+        "kind": "flat",
+        "value": 0,
+        "expression": "0",
+        "max": 0
+      }
+    },
+    {
+      "id": "db-124",
+      "scope": "reference_conformance",
+      "input": {
+        "str": 62,
+        "siz": 62
+      },
+      "expected": {
+        "sum": 124,
+        "kind": "flat",
+        "value": 0,
+        "expression": "0",
+        "max": 0
+      }
+    },
+    {
+      "id": "db-125",
+      "scope": "reference_conformance",
+      "input": {
+        "str": 62,
+        "siz": 63
+      },
+      "expected": {
+        "sum": 125,
+        "kind": "dice",
+        "count": 1,
+        "faces": 4,
+        "expression": "1d4",
+        "max": 4
+      }
+    },
+    {
+      "id": "db-164",
+      "scope": "reference_conformance",
+      "input": {
+        "str": 82,
+        "siz": 82
+      },
+      "expected": {
+        "sum": 164,
+        "kind": "dice",
+        "count": 1,
+        "faces": 4,
+        "expression": "1d4",
+        "max": 4
+      }
+    },
+    {
+      "id": "db-165",
+      "scope": "reference_conformance",
+      "input": {
+        "str": 82,
+        "siz": 83
+      },
+      "expected": {
+        "sum": 165,
+        "kind": "dice",
+        "count": 1,
+        "faces": 6,
+        "expression": "1d6",
+        "max": 6
+      }
+    },
+    {
+      "id": "db-204",
+      "scope": "reference_conformance",
+      "input": {
+        "str": 102,
+        "siz": 102
+      },
+      "expected": {
+        "sum": 204,
+        "kind": "dice",
+        "count": 1,
+        "faces": 6,
+        "expression": "1d6",
+        "max": 6
+      }
+    },
+    {
+      "id": "db-205",
+      "scope": "reference_conformance",
+      "input": {
+        "str": 102,
+        "siz": 103
+      },
+      "expected": {
+        "sum": 205,
+        "kind": "dice",
+        "count": 2,
+        "faces": 6,
+        "expression": "2d6",
+        "max": 12
+      }
+    },
+    {
+      "id": "db-284",
+      "scope": "reference_conformance",
+      "input": {
+        "str": 142,
+        "siz": 142
+      },
+      "expected": {
+        "sum": 284,
+        "kind": "dice",
+        "count": 2,
+        "faces": 6,
+        "expression": "2d6",
+        "max": 12
+      }
+    },
+    {
+      "id": "db-285",
+      "scope": "reference_conformance",
+      "input": {
+        "str": 142,
+        "siz": 143
+      },
+      "expected": {
+        "sum": 285,
+        "kind": "dice",
+        "count": 3,
+        "faces": 6,
+        "expression": "3d6",
+        "max": 18
+      }
+    },
+    {
+      "id": "dice-d3",
+      "scope": "reference_conformance",
+      "input": {
+        "expression": "d3"
+      },
+      "expected": {
+        "ok": true,
+        "value": {
+          "text": "d3",
+          "count": 1,
+          "faces": 3,
+          "modifier": 0
+        }
+      }
+    },
+    {
+      "id": "dice-1d3",
+      "scope": "reference_conformance",
+      "input": {
+        "expression": "1d3"
+      },
+      "expected": {
+        "ok": true,
+        "value": {
+          "text": "1d3",
+          "count": 1,
+          "faces": 3,
+          "modifier": 0
+        }
+      }
+    },
+    {
+      "id": "dice-1d6-plus-2",
+      "scope": "reference_conformance",
+      "input": {
+        "expression": "1d6+2"
+      },
+      "expected": {
+        "ok": true,
+        "value": {
+          "text": "1d6+2",
+          "count": 1,
+          "faces": 6,
+          "modifier": 2
+        }
+      }
+    },
+    {
+      "id": "dice-2d4-minus-1",
+      "scope": "reference_conformance",
+      "input": {
+        "expression": "2d4-1"
+      },
+      "expected": {
+        "ok": true,
+        "value": {
+          "text": "2d4-1",
+          "count": 2,
+          "faces": 4,
+          "modifier": -1
+        }
+      }
+    },
+    {
+      "id": "dice-trim-uppercase",
+      "scope": "reference_conformance",
+      "input": {
+        "expression": "  D6+2  "
+      },
+      "expected": {
+        "ok": true,
+        "value": {
+          "text": "d6+2",
+          "count": 1,
+          "faces": 6,
+          "modifier": 2
+        }
+      }
+    },
+    {
+      "id": "dice-empty",
+      "scope": "reference_conformance",
+      "input": {
+        "expression": ""
+      },
+      "expected": {
+        "ok": false,
+        "error": "骰式长度无效"
+      }
+    },
+    {
+      "id": "dice-invalid-format",
+      "scope": "reference_conformance",
+      "input": {
+        "expression": "2d"
+      },
+      "expected": {
+        "ok": false,
+        "error": "仅支持 NdM、dM、NdM+K、NdM-K"
+      }
+    },
+    {
+      "id": "dice-count-zero",
+      "scope": "reference_conformance",
+      "input": {
+        "expression": "0d6"
+      },
+      "expected": {
+        "ok": false,
+        "error": "骰子数量必须为 1 到 100"
+      }
+    },
+    {
+      "id": "dice-count-101",
+      "scope": "reference_conformance",
+      "input": {
+        "expression": "101d6"
+      },
+      "expected": {
+        "ok": false,
+        "error": "骰子数量必须为 1 到 100"
+      }
+    },
+    {
+      "id": "dice-faces-one",
+      "scope": "reference_conformance",
+      "input": {
+        "expression": "1d1"
+      },
+      "expected": {
+        "ok": false,
+        "error": "骰子面数必须为 2 到 10000"
+      }
+    },
+    {
+      "id": "dice-faces-10001",
+      "scope": "reference_conformance",
+      "input": {
+        "expression": "1d10001"
+      },
+      "expected": {
+        "ok": false,
+        "error": "骰子面数必须为 2 到 10000"
+      }
+    },
+    {
+      "id": "dice-modifier-min",
+      "scope": "reference_conformance",
+      "input": {
+        "expression": "1d6-100000"
+      },
+      "expected": {
+        "ok": true,
+        "value": {
+          "text": "1d6-100000",
+          "count": 1,
+          "faces": 6,
+          "modifier": -100000
+        }
+      }
+    },
+    {
+      "id": "dice-modifier-below-min",
+      "scope": "reference_conformance",
+      "input": {
+        "expression": "1d6-100001"
+      },
+      "expected": {
+        "ok": false,
+        "error": "修正值超出范围"
+      }
+    },
+    {
+      "id": "dice-modifier-max",
+      "scope": "reference_conformance",
+      "input": {
+        "expression": "1d6+100000"
+      },
+      "expected": {
+        "ok": true,
+        "value": {
+          "text": "1d6+100000",
+          "count": 1,
+          "faces": 6,
+          "modifier": 100000
+        }
+      }
+    },
+    {
+      "id": "dice-modifier-above-max",
+      "scope": "reference_conformance",
+      "input": {
+        "expression": "1d6+100001"
+      },
+      "expected": {
+        "ok": false,
+        "error": "修正值超出范围"
+      }
+    },
+    {
+      "id": "dice-length-33",
+      "scope": "reference_conformance",
+      "input": {
+        "expression": "111111111111111111111111111111111"
+      },
+      "expected": {
+        "ok": false,
+        "error": "骰式长度无效"
+      }
+    },
+    {
+      "id": "weapon-melee-non-impaling",
+      "scope": "reference_conformance",
+      "input": {
+        "weapon": {
+          "id": "fixture-weapon",
+          "label": "Fixture Weapon",
+          "damage": " 2D4-1 ",
+          "addsDamageBonus": false,
+          "mode": "melee_non_impaling"
+        }
+      },
+      "expected": {
+        "ok": true,
+        "value": {
+          "id": "fixture-weapon",
+          "label": "Fixture Weapon",
+          "damage": "2d4-1",
+          "addsDamageBonus": false,
+          "mode": "melee_non_impaling"
+        }
+      }
+    },
+    {
+      "id": "weapon-unsupported-mode",
+      "scope": "reference_conformance",
+      "input": {
+        "weapon": {
+          "id": "fixture-weapon",
+          "label": "Fixture Weapon",
+          "damage": "1d8",
+          "addsDamageBonus": true,
+          "mode": "impaling"
+        }
+      },
+      "expected": {
+        "ok": false,
+        "error": "v1.6.9 仅支持非穿刺近战伤害；枪械/Impale 尚未启用"
+      }
+    },
+    {
+      "id": "regular-dice-db",
+      "scope": "reference_conformance",
+      "input": {
+        "str": 65,
+        "siz": 60,
+        "weapon": {
+          "id": "fixture-weapon",
+          "label": "Fixture Weapon",
+          "damage": "1d6",
+          "addsDamageBonus": true,
+          "mode": "melee_non_impaling"
+        },
+        "mode": "regular",
+        "weaponRolls": [
+          4
+        ],
+        "bonusRolls": [
+          3
+        ],
+        "armor": 0
+      },
+      "expected": {
+        "mode": "regular",
+        "weapon": {
+          "id": "fixture-weapon",
+          "label": "Fixture Weapon",
+          "damage": "1d6",
+          "addsDamageBonus": true,
+          "mode": "melee_non_impaling"
+        },
+        "weaponResult": {
+          "expression": "1d6",
+          "rawRolls": [
+            4
+          ],
+          "modifier": 0,
+          "total": 4
+        },
+        "damageBonusResult": {
+          "expression": "1d4",
+          "rawRolls": [
+            3
+          ],
+          "modifier": 0,
+          "total": 3
+        },
+        "grossDamage": 7
+      }
+    },
+    {
+      "id": "regular-flat-negative-db",
+      "scope": "reference_conformance",
+      "input": {
+        "str": 32,
+        "siz": 33,
+        "weapon": {
+          "id": "fixture-weapon",
+          "label": "Fixture Weapon",
+          "damage": "1d4",
+          "addsDamageBonus": true,
+          "mode": "melee_non_impaling"
+        },
+        "mode": "regular",
+        "weaponRolls": [
+          3
+        ],
+        "bonusRolls": [],
+        "armor": 0
+      },
+      "expected": {
+        "mode": "regular",
+        "weapon": {
+          "id": "fixture-weapon",
+          "label": "Fixture Weapon",
+          "damage": "1d4",
+          "addsDamageBonus": true,
+          "mode": "melee_non_impaling"
+        },
+        "weaponResult": {
+          "expression": "1d4",
+          "rawRolls": [
+            3
+          ],
+          "modifier": 0,
+          "total": 3
+        },
+        "damageBonusResult": {
+          "expression": "-1",
+          "rawRolls": [],
+          "modifier": -1,
+          "total": -1
+        },
+        "grossDamage": 2
+      }
+    },
+    {
+      "id": "regular-gross-floor-zero",
+      "scope": "reference_conformance",
+      "input": {
+        "str": 0,
+        "siz": 0,
+        "weapon": {
+          "id": "fixture-weapon",
+          "label": "Fixture Weapon",
+          "damage": "1d2-2",
+          "addsDamageBonus": true,
+          "mode": "melee_non_impaling"
+        },
+        "mode": "regular",
+        "weaponRolls": [
+          1
+        ],
+        "bonusRolls": [],
+        "armor": 0
+      },
+      "expected": {
+        "mode": "regular",
+        "weapon": {
+          "id": "fixture-weapon",
+          "label": "Fixture Weapon",
+          "damage": "1d2-2",
+          "addsDamageBonus": true,
+          "mode": "melee_non_impaling"
+        },
+        "weaponResult": {
+          "expression": "1d2-2",
+          "rawRolls": [
+            1
+          ],
+          "modifier": -2,
+          "total": -1
+        },
+        "damageBonusResult": {
+          "expression": "-2",
+          "rawRolls": [],
+          "modifier": -2,
+          "total": -2
+        },
+        "grossDamage": 0
+      }
+    },
+    {
+      "id": "regular-adds-db-false",
+      "scope": "reference_conformance",
+      "input": {
+        "str": 182,
+        "siz": 183,
+        "weapon": {
+          "id": "fixture-weapon",
+          "label": "Fixture Weapon",
+          "damage": "1d6+2",
+          "addsDamageBonus": false,
+          "mode": "melee_non_impaling"
+        },
+        "mode": "regular",
+        "weaponRolls": [
+          4
+        ],
+        "bonusRolls": [],
+        "armor": 0
+      },
+      "expected": {
+        "mode": "regular",
+        "weapon": {
+          "id": "fixture-weapon",
+          "label": "Fixture Weapon",
+          "damage": "1d6+2",
+          "addsDamageBonus": false,
+          "mode": "melee_non_impaling"
+        },
+        "weaponResult": {
+          "expression": "1d6+2",
+          "rawRolls": [
+            4
+          ],
+          "modifier": 2,
+          "total": 6
+        },
+        "damageBonusResult": {
+          "expression": "0",
+          "rawRolls": [],
+          "modifier": 0,
+          "total": 0
+        },
+        "grossDamage": 6
+      }
+    },
+    {
+      "id": "extreme-weapon-modifier-max",
+      "scope": "reference_conformance",
+      "input": {
+        "str": 42,
+        "siz": 43,
+        "weapon": {
+          "id": "fixture-weapon",
+          "label": "Fixture Weapon",
+          "damage": "100d10000+100000",
+          "addsDamageBonus": true,
+          "mode": "melee_non_impaling"
+        },
+        "mode": "initiator_extreme_eligible",
+        "weaponRolls": [],
+        "bonusRolls": [],
+        "armor": 0
+      },
+      "expected": {
+        "mode": "initiator_extreme_eligible",
+        "weapon": {
+          "id": "fixture-weapon",
+          "label": "Fixture Weapon",
+          "damage": "100d10000+100000",
+          "addsDamageBonus": true,
+          "mode": "melee_non_impaling"
+        },
+        "weaponResult": {
+          "expression": "100d10000+100000",
+          "rawRolls": [],
+          "modifier": 0,
+          "total": 1100000,
+          "maximized": true
+        },
+        "damageBonusResult": {
+          "expression": "0",
+          "rawRolls": [],
+          "modifier": 0,
+          "total": 0,
+          "maximized": true
+        },
+        "grossDamage": 1100000
+      }
+    },
+    {
+      "id": "extreme-positive-db-max",
+      "scope": "reference_conformance",
+      "input": {
+        "str": 182,
+        "siz": 183,
+        "weapon": {
+          "id": "fixture-weapon",
+          "label": "Fixture Weapon",
+          "damage": "2d4-1",
+          "addsDamageBonus": true,
+          "mode": "melee_non_impaling"
+        },
+        "mode": "initiator_extreme_eligible",
+        "weaponRolls": [],
+        "bonusRolls": [],
+        "armor": 0
+      },
+      "expected": {
+        "mode": "initiator_extreme_eligible",
+        "weapon": {
+          "id": "fixture-weapon",
+          "label": "Fixture Weapon",
+          "damage": "2d4-1",
+          "addsDamageBonus": true,
+          "mode": "melee_non_impaling"
+        },
+        "weaponResult": {
+          "expression": "2d4-1",
+          "rawRolls": [],
+          "modifier": 0,
+          "total": 7,
+          "maximized": true
+        },
+        "damageBonusResult": {
+          "expression": "4d6",
+          "rawRolls": [],
+          "modifier": 0,
+          "total": 24,
+          "maximized": true
+        },
+        "grossDamage": 31
+      }
+    },
+    {
+      "id": "extreme-zero-db",
+      "scope": "reference_conformance",
+      "input": {
+        "str": 42,
+        "siz": 43,
+        "weapon": {
+          "id": "fixture-weapon",
+          "label": "Fixture Weapon",
+          "damage": "2d4-1",
+          "addsDamageBonus": true,
+          "mode": "melee_non_impaling"
+        },
+        "mode": "initiator_extreme_eligible",
+        "weaponRolls": [],
+        "bonusRolls": [],
+        "armor": 0
+      },
+      "expected": {
+        "mode": "initiator_extreme_eligible",
+        "weapon": {
+          "id": "fixture-weapon",
+          "label": "Fixture Weapon",
+          "damage": "2d4-1",
+          "addsDamageBonus": true,
+          "mode": "melee_non_impaling"
+        },
+        "weaponResult": {
+          "expression": "2d4-1",
+          "rawRolls": [],
+          "modifier": 0,
+          "total": 7,
+          "maximized": true
+        },
+        "damageBonusResult": {
+          "expression": "0",
+          "rawRolls": [],
+          "modifier": 0,
+          "total": 0,
+          "maximized": true
+        },
+        "grossDamage": 7
+      }
+    },
+    {
+      "id": "extreme-negative-db",
+      "scope": "reference_conformance",
+      "input": {
+        "str": 0,
+        "siz": 0,
+        "weapon": {
+          "id": "fixture-weapon",
+          "label": "Fixture Weapon",
+          "damage": "2d4-1",
+          "addsDamageBonus": true,
+          "mode": "melee_non_impaling"
+        },
+        "mode": "initiator_extreme_eligible",
+        "weaponRolls": [],
+        "bonusRolls": [],
+        "armor": 0
+      },
+      "expected": {
+        "mode": "initiator_extreme_eligible",
+        "weapon": {
+          "id": "fixture-weapon",
+          "label": "Fixture Weapon",
+          "damage": "2d4-1",
+          "addsDamageBonus": true,
+          "mode": "melee_non_impaling"
+        },
+        "weaponResult": {
+          "expression": "2d4-1",
+          "rawRolls": [],
+          "modifier": 0,
+          "total": 7,
+          "maximized": true
+        },
+        "damageBonusResult": {
+          "expression": "-2",
+          "rawRolls": [],
+          "modifier": -2,
+          "total": -2,
+          "maximized": true
+        },
+        "grossDamage": 5
+      }
+    },
+    {
+      "id": "fight-back-regular-cap",
+      "scope": "reference_conformance",
+      "input": {
+        "str": 65,
+        "siz": 60,
+        "weapon": {
+          "id": "fixture-weapon",
+          "label": "Fixture Weapon",
+          "damage": "1d6+1",
+          "addsDamageBonus": true,
+          "mode": "melee_non_impaling"
+        },
+        "mode": "fight_back_regular_cap",
+        "weaponRolls": [
+          2
+        ],
+        "bonusRolls": [
+          1
+        ],
+        "armor": 0
+      },
+      "expected": {
+        "mode": "fight_back_regular_cap",
+        "weapon": {
+          "id": "fixture-weapon",
+          "label": "Fixture Weapon",
+          "damage": "1d6+1",
+          "addsDamageBonus": true,
+          "mode": "melee_non_impaling"
+        },
+        "weaponResult": {
+          "expression": "1d6+1",
+          "rawRolls": [
+            2
+          ],
+          "modifier": 1,
+          "total": 3
+        },
+        "damageBonusResult": {
+          "expression": "1d4",
+          "rawRolls": [
+            1
+          ],
+          "modifier": 0,
+          "total": 1
+        },
+        "grossDamage": 4
+      }
+    },
+    {
+      "id": "armor-partial",
+      "scope": "reference_conformance",
+      "input": {
+        "ownerSide": "player",
+        "str": 65,
+        "siz": 60,
+        "weapon": {
+          "id": "fixture-weapon",
+          "label": "Fixture Weapon",
+          "damage": "1d6",
+          "addsDamageBonus": true,
+          "mode": "melee_non_impaling"
+        },
+        "mode": "regular",
+        "weaponRolls": [
+          4
+        ],
+        "bonusRolls": [
+          3
+        ],
+        "armor": 2,
+        "targetHp": 10,
+        "targetMaxHp": 10,
+        "targetAlreadyDefeated": false,
+        "conRoll": 1
+      },
+      "expected": {
+        "applied": true,
+        "reason": null,
+        "revisionBefore": 1,
+        "revisionAfter": 2,
+        "disposition": {
+          "pending": false,
+          "hpCommitted": true
+        },
+        "result": {
+          "weapon": {
+            "id": "fixture-weapon",
+            "label": "Fixture Weapon",
+            "damage": "1d6",
+            "addsDamageBonus": true,
+            "mode": "melee_non_impaling"
+          },
+          "weaponResult": {
+            "expression": "1d6",
+            "rawRolls": [
+              4
+            ],
+            "modifier": 0,
+            "total": 4
+          },
+          "damageBonusResult": {
+            "expression": "1d4",
+            "rawRolls": [
+              3
+            ],
+            "modifier": 0,
+            "total": 3
+          },
+          "grossDamage": 7,
+          "armor": 2,
+          "netDamage": 5,
+          "hpBefore": 10,
+          "hpAfter": 5,
+          "targetDefeated": false,
+          "hpDamageState": null
+        }
+      }
+    },
+    {
+      "id": "armor-equal-gross",
+      "scope": "reference_conformance",
+      "input": {
+        "ownerSide": "player",
+        "str": 65,
+        "siz": 60,
+        "weapon": {
+          "id": "fixture-weapon",
+          "label": "Fixture Weapon",
+          "damage": "1d6",
+          "addsDamageBonus": true,
+          "mode": "melee_non_impaling"
+        },
+        "mode": "regular",
+        "weaponRolls": [
+          4
+        ],
+        "bonusRolls": [
+          3
+        ],
+        "armor": 7,
+        "targetHp": 10,
+        "targetMaxHp": 10,
+        "targetAlreadyDefeated": false,
+        "conRoll": 1
+      },
+      "expected": {
+        "applied": true,
+        "reason": null,
+        "revisionBefore": 1,
+        "revisionAfter": 2,
+        "disposition": {
+          "pending": false,
+          "hpCommitted": true
+        },
+        "result": {
+          "weapon": {
+            "id": "fixture-weapon",
+            "label": "Fixture Weapon",
+            "damage": "1d6",
+            "addsDamageBonus": true,
+            "mode": "melee_non_impaling"
+          },
+          "weaponResult": {
+            "expression": "1d6",
+            "rawRolls": [
+              4
+            ],
+            "modifier": 0,
+            "total": 4
+          },
+          "damageBonusResult": {
+            "expression": "1d4",
+            "rawRolls": [
+              3
+            ],
+            "modifier": 0,
+            "total": 3
+          },
+          "grossDamage": 7,
+          "armor": 7,
+          "netDamage": 0,
+          "hpBefore": 10,
+          "hpAfter": 10,
+          "targetDefeated": false,
+          "hpDamageState": null
+        }
+      }
+    },
+    {
+      "id": "armor-above-gross",
+      "scope": "reference_conformance",
+      "input": {
+        "ownerSide": "player",
+        "str": 65,
+        "siz": 60,
+        "weapon": {
+          "id": "fixture-weapon",
+          "label": "Fixture Weapon",
+          "damage": "1d6",
+          "addsDamageBonus": true,
+          "mode": "melee_non_impaling"
+        },
+        "mode": "regular",
+        "weaponRolls": [
+          4
+        ],
+        "bonusRolls": [
+          3
+        ],
+        "armor": 9,
+        "targetHp": 10,
+        "targetMaxHp": 10,
+        "targetAlreadyDefeated": false,
+        "conRoll": 1
+      },
+      "expected": {
+        "applied": true,
+        "reason": null,
+        "revisionBefore": 1,
+        "revisionAfter": 2,
+        "disposition": {
+          "pending": false,
+          "hpCommitted": true
+        },
+        "result": {
+          "weapon": {
+            "id": "fixture-weapon",
+            "label": "Fixture Weapon",
+            "damage": "1d6",
+            "addsDamageBonus": true,
+            "mode": "melee_non_impaling"
+          },
+          "weaponResult": {
+            "expression": "1d6",
+            "rawRolls": [
+              4
+            ],
+            "modifier": 0,
+            "total": 4
+          },
+          "damageBonusResult": {
+            "expression": "1d4",
+            "rawRolls": [
+              3
+            ],
+            "modifier": 0,
+            "total": 3
+          },
+          "grossDamage": 7,
+          "armor": 9,
+          "netDamage": 0,
+          "hpBefore": 10,
+          "hpAfter": 10,
+          "targetDefeated": false,
+          "hpDamageState": null
+        }
+      }
+    },
+    {
+      "id": "zero-net-no-hp-event",
+      "scope": "deferred",
+      "input": {
+        "ownerSide": "opponent",
+        "str": 65,
+        "siz": 60,
+        "weapon": {
+          "id": "fixture-weapon",
+          "label": "Fixture Weapon",
+          "damage": "1d6",
+          "addsDamageBonus": true,
+          "mode": "melee_non_impaling"
+        },
+        "mode": "regular",
+        "weaponRolls": [
+          1
+        ],
+        "bonusRolls": [
+          1
+        ],
+        "armor": 9,
+        "targetHp": 12,
+        "targetMaxHp": 12,
+        "targetAlreadyDefeated": false,
+        "conRoll": 1
+      },
+      "expected": {
+        "applied": true,
+        "reason": null,
+        "revisionBefore": 1,
+        "revisionAfter": 2,
+        "disposition": {
+          "pending": false,
+          "hpCommitted": true
+        },
+        "result": {
+          "weapon": {
+            "id": "fixture-weapon",
+            "label": "Fixture Weapon",
+            "damage": "1d6",
+            "addsDamageBonus": true,
+            "mode": "melee_non_impaling"
+          },
+          "weaponResult": {
+            "expression": "1d6",
+            "rawRolls": [
+              1
+            ],
+            "modifier": 0,
+            "total": 1
+          },
+          "damageBonusResult": {
+            "expression": "1d4",
+            "rawRolls": [
+              1
+            ],
+            "modifier": 0,
+            "total": 1
+          },
+          "grossDamage": 2,
+          "armor": 9,
+          "netDamage": 0,
+          "hpBefore": 12,
+          "hpAfter": 12,
+          "targetDefeated": false,
+          "hpDamageState": null
+        }
+      }
+    },
+    {
+      "id": "investigator-positive-hp",
+      "scope": "deferred",
+      "input": {
+        "ownerSide": "opponent",
+        "str": 65,
+        "siz": 60,
+        "weapon": {
+          "id": "fixture-weapon",
+          "label": "Fixture Weapon",
+          "damage": "1d6",
+          "addsDamageBonus": true,
+          "mode": "melee_non_impaling"
+        },
+        "mode": "regular",
+        "weaponRolls": [
+          4
+        ],
+        "bonusRolls": [
+          3
+        ],
+        "armor": 2,
+        "targetHp": 12,
+        "targetMaxHp": 12,
+        "targetAlreadyDefeated": false,
+        "conRoll": 1
+      },
+      "expected": {
+        "applied": true,
+        "reason": null,
+        "revisionBefore": 1,
+        "revisionAfter": 2,
+        "disposition": {
+          "pending": false,
+          "hpCommitted": true
+        },
+        "result": {
+          "weapon": {
+            "id": "fixture-weapon",
+            "label": "Fixture Weapon",
+            "damage": "1d6",
+            "addsDamageBonus": true,
+            "mode": "melee_non_impaling"
+          },
+          "weaponResult": {
+            "expression": "1d6",
+            "rawRolls": [
+              4
+            ],
+            "modifier": 0,
+            "total": 4
+          },
+          "damageBonusResult": {
+            "expression": "1d4",
+            "rawRolls": [
+              3
+            ],
+            "modifier": 0,
+            "total": 3
+          },
+          "grossDamage": 7,
+          "armor": 2,
+          "netDamage": 5,
+          "hpBefore": 12,
+          "hpAfter": 7,
+          "targetDefeated": false,
+          "hpDamageState": {
+            "version": "1.0",
+            "authority": "browser_coc_health",
+            "majorWound": null,
+            "unconscious": null,
+            "dying": null,
+            "dead": null,
+            "lastDamageEvent": {
+              "eventKey": "combat:fixture-investigator-positive-hp",
+              "source": "combat_damage",
+              "sourceId": "fixture-investigator-positive-hp",
+              "index": 0,
+              "damage": 5,
+              "hpBefore": 12,
+              "hpAfter": 7,
+              "maxHp": 12,
+              "majorWoundThreshold": 6,
+              "majorWound": false,
+              "instantDeath": false,
+              "conCheck": null,
+              "reason": "Fixture Opponent 的 Fixture Weapon",
+              "at": "2026-09-02T12:00:00.000Z"
+            },
+            "history": [
+              {
+                "eventKey": "combat:fixture-investigator-positive-hp",
+                "source": "combat_damage",
+                "sourceId": "fixture-investigator-positive-hp",
+                "index": 0,
+                "damage": 5,
+                "hpBefore": 12,
+                "hpAfter": 7,
+                "maxHp": 12,
+                "majorWoundThreshold": 6,
+                "majorWound": false,
+                "instantDeath": false,
+                "conCheck": null,
+                "reason": "Fixture Opponent 的 Fixture Weapon",
+                "at": "2026-09-02T12:00:00.000Z"
+              }
+            ],
+            "stabilized": null,
+            "treatmentHistory": []
+          }
+        }
+      }
+    },
+    {
+      "id": "major-wound-after-armor",
+      "scope": "deferred",
+      "input": {
+        "ownerSide": "opponent",
+        "str": 65,
+        "siz": 60,
+        "weapon": {
+          "id": "fixture-weapon",
+          "label": "Fixture Weapon",
+          "damage": "1d6+1",
+          "addsDamageBonus": true,
+          "mode": "melee_non_impaling"
+        },
+        "mode": "regular",
+        "weaponRolls": [
+          3
+        ],
+        "bonusRolls": [
+          4
+        ],
+        "armor": 2,
+        "targetHp": 12,
+        "targetMaxHp": 12,
+        "targetAlreadyDefeated": false,
+        "conRoll": 1
+      },
+      "expected": {
+        "applied": true,
+        "reason": null,
+        "revisionBefore": 1,
+        "revisionAfter": 2,
+        "disposition": {
+          "pending": false,
+          "hpCommitted": true
+        },
+        "result": {
+          "weapon": {
+            "id": "fixture-weapon",
+            "label": "Fixture Weapon",
+            "damage": "1d6+1",
+            "addsDamageBonus": true,
+            "mode": "melee_non_impaling"
+          },
+          "weaponResult": {
+            "expression": "1d6+1",
+            "rawRolls": [
+              3
+            ],
+            "modifier": 1,
+            "total": 4
+          },
+          "damageBonusResult": {
+            "expression": "1d4",
+            "rawRolls": [
+              4
+            ],
+            "modifier": 0,
+            "total": 4
+          },
+          "grossDamage": 8,
+          "armor": 2,
+          "netDamage": 6,
+          "hpBefore": 12,
+          "hpAfter": 6,
+          "targetDefeated": false,
+          "hpDamageState": {
+            "version": "1.0",
+            "authority": "browser_coc_health",
+            "majorWound": {
+              "active": true,
+              "kind": "major_wound",
+              "authority": "browser_coc_health",
+              "sourceEventKey": "combat:fixture-major-wound-after-armor",
+              "at": "2026-09-02T12:00:00.000Z",
+              "reason": "single_damage_at_least_half_max_hp"
+            },
+            "unconscious": null,
+            "dying": null,
+            "dead": null,
+            "lastDamageEvent": {
+              "eventKey": "combat:fixture-major-wound-after-armor",
+              "source": "combat_damage",
+              "sourceId": "fixture-major-wound-after-armor",
+              "index": 0,
+              "damage": 6,
+              "hpBefore": 12,
+              "hpAfter": 6,
+              "maxHp": 12,
+              "majorWoundThreshold": 6,
+              "majorWound": true,
+              "instantDeath": false,
+              "conCheck": {
+                "roll": 1,
+                "target": 60,
+                "success": true
+              },
+              "reason": "Fixture Opponent 的 Fixture Weapon",
+              "at": "2026-09-02T12:00:00.000Z"
+            },
+            "history": [
+              {
+                "eventKey": "combat:fixture-major-wound-after-armor",
+                "source": "combat_damage",
+                "sourceId": "fixture-major-wound-after-armor",
+                "index": 0,
+                "damage": 6,
+                "hpBefore": 12,
+                "hpAfter": 6,
+                "maxHp": 12,
+                "majorWoundThreshold": 6,
+                "majorWound": true,
+                "instantDeath": false,
+                "conCheck": {
+                  "roll": 1,
+                  "target": 60,
+                  "success": true
+                },
+                "reason": "Fixture Opponent 的 Fixture Weapon",
+                "at": "2026-09-02T12:00:00.000Z"
+              }
+            ],
+            "stabilized": null,
+            "treatmentHistory": []
+          }
+        }
+      }
+    },
+    {
+      "id": "instant-death-after-armor",
+      "scope": "deferred",
+      "input": {
+        "ownerSide": "opponent",
+        "str": 205,
+        "siz": 80,
+        "weapon": {
+          "id": "fixture-weapon",
+          "label": "Fixture Weapon",
+          "damage": "2d6+2",
+          "addsDamageBonus": true,
+          "mode": "melee_non_impaling"
+        },
+        "mode": "regular",
+        "weaponRolls": [
+          6,
+          6
+        ],
+        "bonusRolls": [
+          6,
+          6,
+          6
+        ],
+        "armor": 2,
+        "targetHp": 12,
+        "targetMaxHp": 12,
+        "targetAlreadyDefeated": false,
+        "conRoll": 1
+      },
+      "expected": {
+        "applied": true,
+        "reason": null,
+        "revisionBefore": 1,
+        "revisionAfter": 2,
+        "disposition": {
+          "pending": false,
+          "hpCommitted": true
+        },
+        "result": {
+          "weapon": {
+            "id": "fixture-weapon",
+            "label": "Fixture Weapon",
+            "damage": "2d6+2",
+            "addsDamageBonus": true,
+            "mode": "melee_non_impaling"
+          },
+          "weaponResult": {
+            "expression": "2d6+2",
+            "rawRolls": [
+              6,
+              6
+            ],
+            "modifier": 2,
+            "total": 14
+          },
+          "damageBonusResult": {
+            "expression": "3d6",
+            "rawRolls": [
+              6,
+              6,
+              6
+            ],
+            "modifier": 0,
+            "total": 18
+          },
+          "grossDamage": 32,
+          "armor": 2,
+          "netDamage": 30,
+          "hpBefore": 12,
+          "hpAfter": 0,
+          "targetDefeated": true,
+          "hpDamageState": {
+            "version": "1.0",
+            "authority": "browser_coc_health",
+            "majorWound": null,
+            "unconscious": null,
+            "dying": null,
+            "dead": {
+              "active": true,
+              "kind": "dead",
+              "authority": "browser_coc_health",
+              "sourceEventKey": "combat:fixture-instant-death-after-armor",
+              "at": "2026-09-02T12:00:00.000Z",
+              "reason": "single_damage_at_least_max_hp"
+            },
+            "lastDamageEvent": {
+              "eventKey": "combat:fixture-instant-death-after-armor",
+              "source": "combat_damage",
+              "sourceId": "fixture-instant-death-after-armor",
+              "index": 0,
+              "damage": 30,
+              "hpBefore": 12,
+              "hpAfter": 0,
+              "maxHp": 12,
+              "majorWoundThreshold": 6,
+              "majorWound": false,
+              "instantDeath": true,
+              "conCheck": null,
+              "reason": "Fixture Opponent 的 Fixture Weapon",
+              "at": "2026-09-02T12:00:00.000Z"
+            },
+            "history": [
+              {
+                "eventKey": "combat:fixture-instant-death-after-armor",
+                "source": "combat_damage",
+                "sourceId": "fixture-instant-death-after-armor",
+                "index": 0,
+                "damage": 30,
+                "hpBefore": 12,
+                "hpAfter": 0,
+                "maxHp": 12,
+                "majorWoundThreshold": 6,
+                "majorWound": false,
+                "instantDeath": true,
+                "conCheck": null,
+                "reason": "Fixture Opponent 的 Fixture Weapon",
+                "at": "2026-09-02T12:00:00.000Z"
+              }
+            ],
+            "stabilized": null,
+            "treatmentHistory": []
+          }
+        }
+      }
+    },
+    {
+      "id": "opponent-defeat",
+      "scope": "deferred",
+      "input": {
+        "ownerSide": "player",
+        "str": 65,
+        "siz": 60,
+        "weapon": {
+          "id": "fixture-weapon",
+          "label": "Fixture Weapon",
+          "damage": "1d6",
+          "addsDamageBonus": true,
+          "mode": "melee_non_impaling"
+        },
+        "mode": "regular",
+        "weaponRolls": [
+          6
+        ],
+        "bonusRolls": [
+          4
+        ],
+        "armor": 0,
+        "targetHp": 5,
+        "targetMaxHp": 10,
+        "targetAlreadyDefeated": false,
+        "conRoll": 1
+      },
+      "expected": {
+        "applied": true,
+        "reason": null,
+        "revisionBefore": 1,
+        "revisionAfter": 2,
+        "disposition": {
+          "pending": false,
+          "hpCommitted": true
+        },
+        "result": {
+          "weapon": {
+            "id": "fixture-weapon",
+            "label": "Fixture Weapon",
+            "damage": "1d6",
+            "addsDamageBonus": true,
+            "mode": "melee_non_impaling"
+          },
+          "weaponResult": {
+            "expression": "1d6",
+            "rawRolls": [
+              6
+            ],
+            "modifier": 0,
+            "total": 6
+          },
+          "damageBonusResult": {
+            "expression": "1d4",
+            "rawRolls": [
+              4
+            ],
+            "modifier": 0,
+            "total": 4
+          },
+          "grossDamage": 10,
+          "armor": 0,
+          "netDamage": 10,
+          "hpBefore": 5,
+          "hpAfter": 0,
+          "targetDefeated": true,
+          "hpDamageState": null
+        }
+      }
+    },
+    {
+      "id": "target-already-defeated-reference-issue",
+      "scope": "potential_reference_issue",
+      "input": {
+        "ownerSide": "player",
+        "str": 65,
+        "siz": 60,
+        "weapon": {
+          "id": "fixture-weapon",
+          "label": "Fixture Weapon",
+          "damage": "1d6",
+          "addsDamageBonus": true,
+          "mode": "melee_non_impaling"
+        },
+        "mode": "regular",
+        "weaponRolls": [
+          6
+        ],
+        "bonusRolls": [
+          4
+        ],
+        "armor": 0,
+        "targetHp": 5,
+        "targetMaxHp": 10,
+        "targetAlreadyDefeated": true,
+        "conRoll": 1
+      },
+      "expected": {
+        "applied": false,
+        "reason": "target_already_defeated",
+        "revisionBefore": 1,
+        "revisionAfter": 1,
+        "disposition": {
+          "pending": true,
+          "hpCommitted": false
+        },
+        "result": null
+      }
+    }
+  ]
+}
