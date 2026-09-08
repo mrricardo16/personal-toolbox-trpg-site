@@ -645,7 +645,7 @@ Even after this slice, Multiplayer Combat remains deliberately narrow:
 - in-memory locks and state are not a distributed exactly-once guarantee; and
 - no Scenario, persistence, firearms, Impaling, maneuver, movement, or inventory UX is included.
 
-These limitations must remain visible in Current State/Handoff only after implementation is separately approved and completed; this pending design does not change current implementation status.
+These limitations must remain visible in Current State/Handoff only after implementation is separately approved and completed; this approved design and pending implementation do not change current implementation status.
 
 ## 23. Deferred Work
 
