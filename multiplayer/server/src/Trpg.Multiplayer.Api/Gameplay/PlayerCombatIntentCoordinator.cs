@@ -269,8 +269,71 @@ internal sealed class PlayerCombatIntentCoordinator(
         return await GetFinalProjectionAsync(intent.RoomId, intent.PlayerId);
     }
 
-    public Task<PlayerCombatIntentResult> PassAsync(PlayerPassIntent intent) =>
-        Task.FromResult(PlayerCombatIntentResult.Failure(PlayerCombatIntentErrorCode.InvalidIntent));
+    public async Task<PlayerCombatIntentResult> PassAsync(PlayerPassIntent intent)
+    {
+        // 修改时间：2026-09-08 17:31:25
+        // 修改说明：按查看者投影预校验玩家当前调查员的 Pass 意图，并只调用权威 Pass 转换后返回全新投影。
+        // 修改原因：阻止未拥有、非当前、过期或存在待处理战斗事项的请求绕过权威回合、轮次和濒死调度规则。
+        // 业务影响：玩家仅能为其当前调查员提交一次规范 Pass；回合推进、轮次环绕、Dying 和发布仍由 canonical 转换负责。
+        var projection = await games.GetProjectionAsync(intent.RoomId, intent.PlayerId);
+        if (!projection.IsSuccess)
+        {
+            return MapProjectionFailure(projection.Error!.Code);
+        }
+
+        var snapshot = projection.Value!;
+        if (snapshot.Revision != intent.ExpectedGameRevision)
+        {
+            return PlayerCombatIntentResult.Failure(
+                PlayerCombatIntentErrorCode.StaleGameRevision,
+                snapshot.Revision);
+        }
+
+        var combatSnapshot = snapshot.Combat;
+        if (combatSnapshot is null || !combatSnapshot.Active)
+        {
+            return PlayerCombatIntentResult.Failure(
+                PlayerCombatIntentErrorCode.CombatInactive,
+                snapshot.Revision);
+        }
+
+        var actor = combatSnapshot.Participants.SingleOrDefault(
+            participant => participant.CharacterId == intent.ActorCharacterId);
+        if (actor is null || !actor.ViewerOwned)
+        {
+            return PlayerCombatIntentResult.Failure(
+                PlayerCombatIntentErrorCode.ActorNotOwned,
+                snapshot.Revision);
+        }
+
+        if (!actor.Active
+            || !actor.Current
+            || combatSnapshot.CurrentActorParticipantId != actor.ParticipantId)
+        {
+            return PlayerCombatIntentResult.Failure(
+                PlayerCombatIntentErrorCode.NotCurrentActor,
+                snapshot.Revision);
+        }
+
+        var actions = combatSnapshot.ViewerActions;
+        if (actions?.ActorCharacterId != intent.ActorCharacterId || !actions.CanPass)
+        {
+            return PlayerCombatIntentResult.Failure(
+                PlayerCombatIntentErrorCode.ProgressionBlocked,
+                snapshot.Revision);
+        }
+
+        var passed = await combat.PassCombatTurnAsync(new PassCombatTurnCommand(
+            intent.RoomId,
+            intent.PlayerId,
+            intent.ExpectedGameRevision));
+        if (!passed.IsSuccess)
+        {
+            return MapTransitionFailure(passed.Error!.Code, snapshot.Revision);
+        }
+
+        return await GetFinalProjectionAsync(intent.RoomId, intent.PlayerId);
+    }
 
     private async Task<PlayerCombatIntentResult?> ResolveExactPendingDamageAsync(
         Guid roomId,

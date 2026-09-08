@@ -12,6 +12,94 @@ public sealed class PlayerCombatIntentCoordinatorTests(WebApplicationFactory<Pro
     : IClassFixture<WebApplicationFactory<Program>>
 {
     [Fact]
+    public async Task Pass_OwnCurrentInvestigator_CommitsOnePassAndReturnsFreshProjection()
+    {
+        var rig = MeleeAttackRig.Create(finalRevision: 13);
+        var result = await InvokePassAsync(rig.Coordinator, CreatePassIntent(rig));
+
+        Assert.True(GetProperty<bool>(result, "IsSuccess"));
+        var passCommand = Assert.Single(rig.Combat.PassCommands);
+        Assert.Equal(rig.RoomId, GetProperty<Guid>(passCommand, "RoomId"));
+        Assert.Equal(rig.PlayerId, GetProperty<Guid>(passCommand, "RequestingPlayerId"));
+        Assert.Equal(rig.ExpectedRevision, GetProperty<long>(passCommand, "ExpectedGameRevision"));
+        Assert.Equal(rig.ExpectedRevision + 1, GetProperty<GameSnapshot>(result, "Snapshot")!.Revision);
+    }
+
+    [Fact]
+    public async Task Pass_OtherPlayersCharacter_ReturnsActorNotOwnedBeforeMutation()
+    {
+        var rig = MeleeAttackRig.Create(actorViewerOwned: false);
+        var result = await InvokePassAsync(rig.Coordinator, CreatePassIntent(rig));
+        AssertPassFailureWithoutMutation(rig, result, "ActorNotOwned", 12);
+    }
+
+    [Fact]
+    public async Task Pass_OwnButNonCurrentInvestigator_ReturnsNotCurrentActorBeforeMutation()
+    {
+        var rig = MeleeAttackRig.Create(actorCurrent: false);
+        var result = await InvokePassAsync(rig.Coordinator, CreatePassIntent(rig));
+        AssertPassFailureWithoutMutation(rig, result, "NotCurrentActor", 12);
+    }
+
+    [Fact]
+    public async Task Pass_HostCannotPassForUnownedNpc()
+    {
+        var rig = MeleeAttackRig.Create(actorHasCharacter: false);
+        var result = await InvokePassAsync(rig.Coordinator, CreatePassIntent(rig));
+        AssertPassFailureWithoutMutation(rig, result, "ActorNotOwned", 12);
+    }
+
+    [Fact]
+    public async Task Pass_PendingExchangeOrDamageBlocker_IsRejectedWithoutMutation()
+    {
+        var damageDispositionRig = MeleeAttackRig.Create(hasPendingDamage: true);
+        var pendingExchangeRig = MeleeAttackRig.Create(hasPendingExchange: true);
+        var damageDispositionResult = await InvokePassAsync(
+            damageDispositionRig.Coordinator,
+            CreatePassIntent(damageDispositionRig));
+        var pendingExchangeResult = await InvokePassAsync(
+            pendingExchangeRig.Coordinator,
+            CreatePassIntent(pendingExchangeRig));
+
+        Assert.False(damageDispositionRig.InitialProjection.Combat!.ViewerActions!.CanPass);
+        Assert.NotEmpty(damageDispositionRig.InitialCanonicalState.Combat!.DamageDispositions);
+        AssertPassFailureWithoutMutation(
+            damageDispositionRig,
+            damageDispositionResult,
+            "ProgressionBlocked",
+            12);
+        Assert.False(pendingExchangeRig.InitialProjection.Combat!.ViewerActions!.CanPass);
+        Assert.NotNull(pendingExchangeRig.InitialCanonicalState.Combat!.PendingExchange);
+        AssertPassFailureWithoutMutation(
+            pendingExchangeRig,
+            pendingExchangeResult,
+            "ProgressionBlocked",
+            12);
+    }
+
+    [Fact]
+    public async Task Pass_StaleRevisionPerformsNoPassRevisionOrPublish()
+    {
+        var rig = MeleeAttackRig.Create(projectedRevision: 13, expectedRevision: 12);
+        var result = await InvokePassAsync(rig.Coordinator, CreatePassIntent(rig));
+        AssertPassFailureWithoutMutation(rig, result, "StaleGameRevision", 13);
+    }
+
+    [Fact]
+    public async Task Pass_RoundWrapRemainsCanonicalAndSchedulesDyingOnce()
+    {
+        var rig = MeleeAttackRig.Create(finalRevision: 13);
+        var result = await InvokePassAsync(rig.Coordinator, CreatePassIntent(rig));
+
+        Assert.True(GetProperty<bool>(result, "IsSuccess"));
+        Assert.Single(rig.Combat.PassCommands);
+        Assert.Empty(rig.Combat.BeginCommands);
+        Assert.Empty(rig.Combat.ResolveCommands);
+        Assert.Empty(rig.Combat.DamageCommands);
+        Assert.Equal(13, GetProperty<GameSnapshot>(result, "Snapshot")!.Revision);
+    }
+
+    [Fact]
     public async Task MeleeAttack_OwnCurrentInvestigatorAgainstProjectedNpc_BeginsResolvesAndConsumesExactDamage()
     {
         var rig = MeleeAttackRig.Create(hasPendingDamage: true);
@@ -327,6 +415,22 @@ public sealed class PlayerCombatIntentCoordinatorTests(WebApplicationFactory<Pro
         return task.GetType().GetProperty("Result")!.GetValue(task)!;
     }
 
+    private static async Task<object> InvokePassAsync(object coordinator, object intent)
+    {
+        var task = (Task)GetRequiredGameplayType("PlayerCombatIntentCoordinator")
+            .GetMethod("PassAsync")!
+            .Invoke(coordinator, [intent])!;
+        await task;
+        return task.GetType().GetProperty("Result")!.GetValue(task)!;
+    }
+
+    private static object CreatePassIntent(MeleeAttackRig rig) => Activator.CreateInstance(
+        GetRequiredGameplayType("PlayerPassIntent"),
+        rig.RoomId,
+        rig.PlayerId,
+        rig.ExpectedRevision,
+        rig.ActorCharacterId)!;
+
     private static T? GetProperty<T>(object instance, string propertyName) =>
         (T?)instance.GetType().GetProperty(propertyName)!.GetValue(instance);
 
@@ -391,6 +495,31 @@ public sealed class PlayerCombatIntentCoordinatorTests(WebApplicationFactory<Pro
         Assert.Equal(expectedRevision, rig.Combat.CurrentState.Revision);
         Assert.NotNull(rig.Combat.CurrentState.Combat!.PendingExchange);
         Assert.Empty(rig.Combat.CurrentState.Combat.History);
+    }
+
+    private static void AssertPassFailureWithoutMutation(
+        MeleeAttackRig rig,
+        object result,
+        string expectedCode,
+        long expectedRevision)
+    {
+        Assert.False(GetProperty<bool>(result, "IsSuccess"));
+        var error = GetProperty<object>(result, "Error")!;
+        Assert.Equal(expectedCode, GetProperty<object>(error, "Code")!.ToString());
+        Assert.Equal(expectedRevision, GetProperty<long?>(error, "CurrentGameRevision"));
+        Assert.Empty(rig.Combat.PassCommands);
+        Assert.Empty(rig.Combat.BeginCommands);
+        Assert.Empty(rig.Combat.ResolveCommands);
+        Assert.Empty(rig.Combat.DamageCommands);
+        Assert.Equal(0, rig.Combat.GeneratedExchangeIds);
+        Assert.Equal(0, rig.Combat.DiceRolls);
+        Assert.Equal(0, rig.Combat.Publications);
+        Assert.Same(rig.InitialCanonicalState, rig.Combat.CurrentState);
+        Assert.Equal(expectedRevision, rig.Combat.CurrentState.Revision);
+        var combat = rig.Combat.CurrentState.Combat!;
+        Assert.Equal(0, combat.TurnIndex);
+        Assert.Equal(1, combat.Round);
+        Assert.Empty(combat.History);
     }
 
     private sealed class RespondRig
@@ -670,6 +799,7 @@ public sealed class PlayerCombatIntentCoordinatorTests(WebApplicationFactory<Pro
             RecordingGameCoordinator games,
             RecordingCombatProxy combat,
             MultiplayerGameState initialCanonicalState,
+            GameSnapshot initialProjection,
             GameSnapshot finalProjection,
             object coordinator)
         {
@@ -679,16 +809,21 @@ public sealed class PlayerCombatIntentCoordinatorTests(WebApplicationFactory<Pro
             Games = games;
             Combat = combat;
             InitialCanonicalState = initialCanonicalState;
+            InitialProjection = initialProjection;
             FinalProjection = finalProjection;
             Coordinator = coordinator;
         }
 
         public Guid ActorCharacterId { get; }
+        public Guid RoomId { get; private init; }
+        public Guid PlayerId { get; private init; }
+        public long ExpectedRevision { get; private init; }
         public string ExchangeId { get; }
         public object Intent { get; }
         public RecordingGameCoordinator Games { get; }
         public RecordingCombatProxy Combat { get; }
         public MultiplayerGameState InitialCanonicalState { get; }
+        public GameSnapshot InitialProjection { get; }
         public GameSnapshot FinalProjection { get; }
         public object Coordinator { get; }
 
@@ -701,6 +836,8 @@ public sealed class PlayerCombatIntentCoordinatorTests(WebApplicationFactory<Pro
             bool actorViewerOwned = true,
             bool actorCurrent = true,
             bool actorHasCharacter = true,
+            bool canPass = true,
+            bool hasPendingExchange = false,
             IReadOnlyList<string>? eligibleTargets = null,
             Guid? defenderOwnerPlayerId = null,
             CombatResponse? npcResponsePolicy = CombatResponse.Dodge,
@@ -715,7 +852,11 @@ public sealed class PlayerCombatIntentCoordinatorTests(WebApplicationFactory<Pro
             const string exchangeId = "exchange-exact";
             const string targetParticipantId = "opponent:0";
             var actions = new CombatViewerActionsSnapshot(
-                actorCharacterId, true, true, eligibleTargets ?? [targetParticipantId], null);
+                actorCharacterId,
+                true,
+                canPass && !hasPendingExchange && !hasPendingDamage,
+                eligibleTargets ?? [targetParticipantId],
+                null);
             var initialProjection = CreateProjection(
                 roomId, projectedRevision, actorCharacterId, projectedActorCharacterId,
                 actorViewerOwned, actorCurrent, actions);
@@ -725,7 +866,8 @@ public sealed class PlayerCombatIntentCoordinatorTests(WebApplicationFactory<Pro
             var responses = pendingResponses ?? [CombatResponse.Dodge, CombatResponse.FightBack];
             var initialCanonicalState = CreateCanonicalState(
                 roomId, projectedRevision, playerId, actorCharacterId, exchangeId,
-                defenderOwnerPlayerId, npcResponsePolicy, responses, [], false);
+                defenderOwnerPlayerId, npcResponsePolicy, responses,
+                hasPendingDamage ? [exchangeId] : [], hasPendingExchange);
             var beginState = CreateCanonicalState(
                 roomId, beginRevision, playerId, actorCharacterId, exchangeId,
                 defenderOwnerPlayerId, npcResponsePolicy, responses, [], true);
@@ -741,6 +883,9 @@ public sealed class PlayerCombatIntentCoordinatorTests(WebApplicationFactory<Pro
             var resolvedState = CreateCanonicalState(
                 roomId, resolveRevision, playerId, actorCharacterId, exchangeId,
                 defenderOwnerPlayerId, npcResponsePolicy, responses, damageExchangeIds, false);
+            var passState = CreateCanonicalState(
+                roomId, finalRevision, playerId, actorCharacterId, exchangeId,
+                defenderOwnerPlayerId, npcResponsePolicy, responses, [], false);
             var games = new RecordingGameCoordinator(initialProjection, finalProjection);
             var combatObject = DispatchProxy.Create(
                 GetRequiredGameplayType("IInternalCombatResolutionCoordinator"),
@@ -749,6 +894,7 @@ public sealed class PlayerCombatIntentCoordinatorTests(WebApplicationFactory<Pro
             combat.CurrentState = initialCanonicalState;
             combat.BeginState = beginState;
             combat.ResolvedState = resolvedState;
+            combat.PassState = passState;
             var coordinator = Activator.CreateInstance(
                 GetRequiredGameplayType("PlayerCombatIntentCoordinator"),
                 BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
@@ -765,8 +911,14 @@ public sealed class PlayerCombatIntentCoordinatorTests(WebApplicationFactory<Pro
                 games,
                 combat,
                 initialCanonicalState,
+                initialProjection,
                 finalProjection,
-                coordinator);
+                coordinator)
+            {
+                RoomId = roomId,
+                PlayerId = playerId,
+                ExpectedRevision = expectedRevision
+            };
         }
 
         private static GameSnapshot CreateProjection(
@@ -896,10 +1048,12 @@ public sealed class PlayerCombatIntentCoordinatorTests(WebApplicationFactory<Pro
     {
         public MultiplayerGameState BeginState { get; set; } = null!;
         public MultiplayerGameState ResolvedState { get; set; } = null!;
+        public MultiplayerGameState PassState { get; set; } = null!;
         public MultiplayerGameState CurrentState { get; set; } = null!;
         public List<object> BeginCommands { get; } = [];
         public List<object> ResolveCommands { get; } = [];
         public List<object> DamageCommands { get; } = [];
+        public List<object> PassCommands { get; } = [];
         public int GeneratedExchangeIds { get; private set; }
         public int DiceRolls { get; private set; }
         public int Publications { get; private set; }
@@ -915,6 +1069,8 @@ public sealed class PlayerCombatIntentCoordinatorTests(WebApplicationFactory<Pro
                     ResolveCommands, command, "ResolvePendingExchangeResult", ResolvedState, 0, 2),
                 "ResolveCombatDamageAsync" => RecordSuccess(
                     DamageCommands, command, "ResolveCombatDamageResult", ResolvedState, 0, 1),
+                "PassCombatTurnAsync" => RecordSuccess(
+                    PassCommands, command, "PassCombatTurnResult", PassState, 0, 0),
                 _ => throw new NotSupportedException(targetMethod.Name)
             };
         }
@@ -931,7 +1087,12 @@ public sealed class PlayerCombatIntentCoordinatorTests(WebApplicationFactory<Pro
             GeneratedExchangeIds += generatedExchangeIds;
             DiceRolls += diceRolls;
             Publications++;
-            CurrentState = resultTypeName == "BeginOpposedExchangeResult" ? BeginState : ResolvedState;
+            CurrentState = resultTypeName switch
+            {
+                "BeginOpposedExchangeResult" => BeginState,
+                "PassCombatTurnResult" => PassState,
+                _ => ResolvedState
+            };
             var valueType = GetRequiredGameplayType(resultTypeName);
             var value = resultTypeName == "ResolveCombatDamageResult"
                 ? Activator.CreateInstance(valueType, state, null)!
