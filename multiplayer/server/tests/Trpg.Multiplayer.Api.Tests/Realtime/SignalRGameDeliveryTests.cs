@@ -617,7 +617,7 @@ public sealed class SignalRGameDeliveryTests(WebApplicationFactory<Program> fact
                 40,
                 new[] { CombatResponse.Dodge },
                 1,
-                "trusted",
+                CombatResponse.Dodge,
                 90,
                 90,
                 12,

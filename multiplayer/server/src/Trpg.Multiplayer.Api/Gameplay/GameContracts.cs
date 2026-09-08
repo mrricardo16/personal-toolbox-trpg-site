@@ -57,7 +57,7 @@ internal sealed record OpponentDefinition(
     int Dodge,
     IReadOnlyList<CombatResponse> AvailableResponses,
     int ResponseAllowance,
-    string ResponsePolicy,
+    CombatResponse NpcResponsePolicy,
     int Str,
     int Siz,
     int CurrentHp,

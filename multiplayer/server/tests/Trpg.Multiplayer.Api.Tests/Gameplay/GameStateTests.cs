@@ -143,6 +143,45 @@ public sealed class GameStateTests
         Assert.Equal(0, fixture.DiceRoller.PercentileCalls);
     }
 
+    [Fact]
+    public async Task InternalCombat_StartSnapshotsTypedPrivateNpcPolicy()
+    {
+        var fixture = await CreateCombatGameAsync();
+        var started = await StartCombatAsync(
+            fixture.Coordinator,
+            fixture.Room.RoomId,
+            fixture.HostId,
+            1,
+            [fixture.HostCharacterId],
+            [Opponent("Cultist", 90) with { NpcResponsePolicy = CombatResponse.FightBack }]);
+
+        Assert.True(started.IsSuccess);
+        var opponent = Assert.Single(started.State!.Combat!.Participants, participant => participant.Kind == "opponent");
+        Assert.Equal(CombatResponse.FightBack, opponent.NpcResponsePolicy);
+        Assert.Contains(opponent.NpcResponsePolicy!.Value, opponent.AvailableResponses);
+    }
+
+    [Fact]
+    public async Task InternalCombat_StartRejectsNpcPolicyOutsideSnapshottedResponses()
+    {
+        var fixture = await CreateCombatGameAsync();
+        var result = await StartCombatAsync(
+            fixture.Coordinator,
+            fixture.Room.RoomId,
+            fixture.HostId,
+            1,
+            [fixture.HostCharacterId],
+            [Opponent("Cultist", 90) with
+            {
+                NpcResponsePolicy = CombatResponse.FightBack,
+                AvailableResponses = [CombatResponse.Dodge]
+            }]);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(GameErrorCode.InvalidCombat, result.ErrorCode);
+        Assert.Equal(1, (await fixture.Coordinator.GetProjectionAsync(fixture.Room.RoomId, fixture.HostId)).Value!.Revision);
+    }
+
     [Theory]
     [InlineData("str", null)]
     [InlineData("str", 0)]
@@ -1920,6 +1959,7 @@ public sealed class GameStateTests
         Assert.DoesNotContain("DamageDispositions", combatJson, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("ResponseAllowance", combatJson, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("ResponsePolicy", combatJson, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("NpcResponsePolicy", combatJson, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("AttackerCheck", combatJson, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("DefenderCheck", combatJson, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Target", combatJson, StringComparison.OrdinalIgnoreCase);
@@ -2832,7 +2872,7 @@ public sealed class GameStateTests
         40,
         [CombatResponse.Dodge, CombatResponse.FightBack],
         1,
-        "player_or_ai",
+        CombatResponse.Dodge,
         60,
         50,
         10,
@@ -3152,7 +3192,7 @@ public sealed class GameStateTests
                 opponent.Dodge,
                 opponent.AvailableResponses,
                 opponent.ResponseAllowance,
-                opponent.ResponsePolicy,
+                opponent.NpcResponsePolicy,
                 opponent.Str,
                 opponent.Siz,
                 opponent.CurrentHp,
@@ -3340,7 +3380,7 @@ public sealed class GameStateTests
         int Dodge,
         IReadOnlyList<CombatResponse> AvailableResponses,
         int ResponseAllowance,
-        string ResponsePolicy,
+        CombatResponse NpcResponsePolicy,
         int Str,
         int Siz,
         int CurrentHp,

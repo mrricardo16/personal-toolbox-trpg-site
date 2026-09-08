@@ -354,6 +354,7 @@ public sealed class GameCoordinator : IGameCoordinator, IInternalCombatResolutio
                 1,
                 true,
                 damageProfile,
+                null,
                 null), index));
         }
 
@@ -379,7 +380,8 @@ public sealed class GameCoordinator : IGameCoordinator, IInternalCombatResolutio
                 opponent.ResponseAllowance,
                 true,
                 damageProfile,
-                vitality), command.CharacterIds.Count + index));
+                vitality,
+                opponent.NpcResponsePolicy), command.CharacterIds.Count + index));
         }
 
         var orderedParticipants = participants
@@ -1352,7 +1354,8 @@ public sealed class GameCoordinator : IGameCoordinator, IInternalCombatResolutio
             || opponent.AvailableResponses is not { Count: > 0 }
             || opponent.AvailableResponses.Any(response => !Enum.IsDefined(response))
             || opponent.ResponseAllowance < 0
-            || string.IsNullOrWhiteSpace(opponent.ResponsePolicy)
+            || !Enum.IsDefined(opponent.NpcResponsePolicy)
+            || !opponent.AvailableResponses.Contains(opponent.NpcResponsePolicy)
             || opponent.CurrentHp <= 0
             || opponent.MaxHp < opponent.CurrentHp
             || !TryCreateCombatDamageProfile(

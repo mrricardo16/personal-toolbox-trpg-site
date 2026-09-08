@@ -25,7 +25,8 @@ public sealed record CombatParticipantState(
     int ResponseAllowance,
     bool Active,
     CombatDamageProfile DamageProfile,
-    OpponentVitalityState? OpponentVitality);
+    OpponentVitalityState? OpponentVitality,
+    CombatResponse? NpcResponsePolicy);
 
 public enum DamageDispositionStatus
 {
@@ -139,7 +140,8 @@ public static class CombatSessionState
         int responseAllowance,
         bool active,
         CombatDamageProfile damageProfile,
-        OpponentVitalityState? opponentVitality) => new(
+        OpponentVitalityState? opponentVitality,
+        CombatResponse? npcResponsePolicy) => new(
             participantId,
             characterId,
             ownerPlayerId,
@@ -153,7 +155,8 @@ public static class CombatSessionState
             responseAllowance,
             active,
             damageProfile,
-            opponentVitality);
+            opponentVitality,
+            npcResponsePolicy);
 
     public static PendingCombatExchange CreatePendingExchange(
         string exchangeId,
