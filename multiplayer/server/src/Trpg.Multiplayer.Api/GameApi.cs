@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text.Json.Serialization;
 using Trpg.Multiplayer.Api.Gameplay;
 using Trpg.Multiplayer.Api.Realtime;
 using Trpg.Multiplayer.Api.Rooms;
@@ -12,6 +13,150 @@ public static class GameApi
         app.MapPost("/api/rooms/{roomId:guid}/game/initialize", InitializeAsync);
         app.MapGet("/api/rooms/{roomId:guid}/game", GetProjectionAsync);
         app.MapPost("/api/rooms/{roomId:guid}/game/check", ResolveCheckAsync);
+        app.MapPost("/api/rooms/{roomId:guid}/game/combat/melee-attack", MeleeAttackAsync);
+        app.MapPost("/api/rooms/{roomId:guid}/game/combat/respond", RespondAsync);
+        app.MapPost("/api/rooms/{roomId:guid}/game/combat/pass", PassCombatAsync);
+    }
+
+    private static async Task<IResult> MeleeAttackAsync(
+        Guid roomId,
+        MeleeAttackRequest? request,
+        HttpRequest httpRequest,
+        IPlayerSessionStore sessions,
+        RoomMutationDeliveryGate mutationGate,
+        IPlayerCombatIntentCoordinator intents,
+        ILoggerFactory loggerFactory)
+    {
+        if (!TryGetSession(httpRequest, sessions, out var session))
+        {
+            return Results.Unauthorized();
+        }
+
+        if (session!.RoomId != roomId)
+        {
+            return Results.StatusCode((int)HttpStatusCode.Forbidden);
+        }
+
+        if (request is null
+            || request.ExpectedGameRevision <= 0
+            || request.ActorCharacterId == Guid.Empty
+            || string.IsNullOrWhiteSpace(request.TargetParticipantId))
+        {
+            return Results.BadRequest();
+        }
+
+        return await RunCombatIntentAsync(
+            roomId,
+            mutationGate,
+            loggerFactory,
+            () => intents.MeleeAttackAsync(new PlayerMeleeAttackIntent(
+                roomId,
+                session.PlayerId,
+                request.ExpectedGameRevision,
+                request.ActorCharacterId,
+                request.TargetParticipantId.Trim())));
+    }
+
+    private static async Task<IResult> RespondAsync(
+        Guid roomId,
+        CombatRespondRequest? request,
+        HttpRequest httpRequest,
+        IPlayerSessionStore sessions,
+        RoomMutationDeliveryGate mutationGate,
+        IPlayerCombatIntentCoordinator intents,
+        ILoggerFactory loggerFactory)
+    {
+        if (!TryGetSession(httpRequest, sessions, out var session))
+        {
+            return Results.Unauthorized();
+        }
+
+        if (session!.RoomId != roomId)
+        {
+            return Results.StatusCode((int)HttpStatusCode.Forbidden);
+        }
+
+        if (request is null
+            || request.ExpectedGameRevision <= 0
+            || string.IsNullOrWhiteSpace(request.ExchangeId)
+            || !TryParseCombatResponse(request.Response, out var response))
+        {
+            return Results.BadRequest();
+        }
+
+        return await RunCombatIntentAsync(
+            roomId,
+            mutationGate,
+            loggerFactory,
+            () => intents.RespondAsync(new PlayerRespondIntent(
+                roomId,
+                session.PlayerId,
+                request.ExpectedGameRevision,
+                request.ExchangeId.Trim(),
+                response)));
+    }
+
+    private static async Task<IResult> PassCombatAsync(
+        Guid roomId,
+        CombatPassRequest? request,
+        HttpRequest httpRequest,
+        IPlayerSessionStore sessions,
+        RoomMutationDeliveryGate mutationGate,
+        IPlayerCombatIntentCoordinator intents,
+        ILoggerFactory loggerFactory)
+    {
+        if (!TryGetSession(httpRequest, sessions, out var session))
+        {
+            return Results.Unauthorized();
+        }
+
+        if (session!.RoomId != roomId)
+        {
+            return Results.StatusCode((int)HttpStatusCode.Forbidden);
+        }
+
+        if (request is null || request.ExpectedGameRevision <= 0 || request.ActorCharacterId == Guid.Empty)
+        {
+            return Results.BadRequest();
+        }
+
+        return await RunCombatIntentAsync(
+            roomId,
+            mutationGate,
+            loggerFactory,
+            () => intents.PassAsync(new PlayerPassIntent(
+                roomId,
+                session.PlayerId,
+                request.ExpectedGameRevision,
+                request.ActorCharacterId)));
+    }
+
+    private static async Task<IResult> RunCombatIntentAsync(
+        Guid roomId,
+        RoomMutationDeliveryGate mutationGate,
+        ILoggerFactory loggerFactory,
+        Func<Task<PlayerCombatIntentResult>> invokeIntent)
+    {
+        return await mutationGate.RunAsync(roomId, async () =>
+        {
+            try
+            {
+                var result = await invokeIntent();
+                return result.IsSuccess
+                    ? Results.Ok(result.Snapshot)
+                    : ToCombatIntentError(result.Error!);
+            }
+            catch (CombatDamageCommitInvariantException exception)
+            {
+                loggerFactory.CreateLogger(typeof(GameApi).FullName ?? nameof(GameApi)).LogError(
+                    exception,
+                    "Combat intent invariant failure. RoomId: {RoomId}",
+                    roomId);
+                return Results.Json(
+                    new CombatIntentErrorResponse("combat_consistency_failure"),
+                    statusCode: StatusCodes.Status500InternalServerError);
+            }
+        });
     }
 
     private static async Task<IResult> InitializeAsync(
@@ -160,6 +305,44 @@ public static class GameApi
         return !string.IsNullOrWhiteSpace(token) && sessions.TryGet(token, out session);
     }
 
+    private static bool TryParseCombatResponse(string? value, out CombatResponse response)
+    {
+        response = value switch
+        {
+            "dodge" => CombatResponse.Dodge,
+            "fight_back" => CombatResponse.FightBack,
+            _ => default
+        };
+        return value is "dodge" or "fight_back";
+    }
+
+    private static IResult ToCombatIntentError(PlayerCombatIntentError error)
+    {
+        var (statusCode, wireCode) = error.Code switch
+        {
+            PlayerCombatIntentErrorCode.InvalidIntent => (StatusCodes.Status400BadRequest, "invalid_intent"),
+            PlayerCombatIntentErrorCode.InvalidResponse => (StatusCodes.Status400BadRequest, "invalid_response"),
+            PlayerCombatIntentErrorCode.InvalidSession => (StatusCodes.Status401Unauthorized, "invalid_session"),
+            PlayerCombatIntentErrorCode.NotMember => (StatusCodes.Status403Forbidden, "not_member"),
+            PlayerCombatIntentErrorCode.ActorNotOwned => (StatusCodes.Status403Forbidden, "actor_not_owned"),
+            PlayerCombatIntentErrorCode.DefenderNotOwned => (StatusCodes.Status403Forbidden, "defender_not_owned"),
+            PlayerCombatIntentErrorCode.RoomNotFound => (StatusCodes.Status404NotFound, "room_not_found"),
+            PlayerCombatIntentErrorCode.GameNotFound => (StatusCodes.Status404NotFound, "game_not_found"),
+            PlayerCombatIntentErrorCode.StaleGameRevision => (StatusCodes.Status409Conflict, "stale_game_revision"),
+            PlayerCombatIntentErrorCode.CombatInactive => (StatusCodes.Status409Conflict, "combat_inactive"),
+            PlayerCombatIntentErrorCode.NotCurrentActor => (StatusCodes.Status409Conflict, "not_current_actor"),
+            PlayerCombatIntentErrorCode.TargetNotEligible => (StatusCodes.Status409Conflict, "target_not_eligible"),
+            PlayerCombatIntentErrorCode.ExchangeNotPending => (StatusCodes.Status409Conflict, "exchange_not_pending"),
+            PlayerCombatIntentErrorCode.ProgressionBlocked => (StatusCodes.Status409Conflict, "progression_blocked"),
+            PlayerCombatIntentErrorCode.CombatConsistencyFailure => (StatusCodes.Status500InternalServerError, "combat_consistency_failure"),
+            _ => (StatusCodes.Status500InternalServerError, "combat_consistency_failure")
+        };
+
+        return Results.Json(
+            new CombatIntentErrorResponse(wireCode, error.CurrentGameRevision),
+            statusCode: statusCode);
+    }
+
     private static IResult ToError(GameErrorCode code) => code switch
     {
         GameErrorCode.RoomNotFound or GameErrorCode.GameNotFound or GameErrorCode.CharacterNotFound => Results.NotFound(),
@@ -208,3 +391,21 @@ public sealed class ResolveCheckRequest
 
     public int PenaltyDice { get; init; }
 }
+
+public sealed record MeleeAttackRequest(
+    long ExpectedGameRevision,
+    Guid ActorCharacterId,
+    string? TargetParticipantId);
+
+public sealed record CombatRespondRequest(
+    long ExpectedGameRevision,
+    string? ExchangeId,
+    string? Response);
+
+public sealed record CombatPassRequest(
+    long ExpectedGameRevision,
+    Guid ActorCharacterId);
+
+public sealed record CombatIntentErrorResponse(
+    string Code,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] long? CurrentGameRevision = null);
