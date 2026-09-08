@@ -187,8 +187,87 @@ internal sealed class PlayerCombatIntentCoordinator(
         return await GetFinalProjectionAsync(intent.RoomId, intent.PlayerId);
     }
 
-    public Task<PlayerCombatIntentResult> RespondAsync(PlayerRespondIntent intent) =>
-        Task.FromResult(PlayerCombatIntentResult.Failure(PlayerCombatIntentErrorCode.InvalidIntent));
+    public async Task<PlayerCombatIntentResult> RespondAsync(PlayerRespondIntent intent)
+    {
+        // 修改时间：2026-09-08 13:20:43
+        // 修改说明：按当前查看者投影预校验人类防御者响应，并以 Resolve 返回状态决定是否消费该交换的精确待处理伤害。
+        // 修改原因：确保只有收到精确 PendingResponse 的防御者能发起响应，同时让权威 Resolve 继续校验所有真实状态约束。
+        // 业务影响：实现玩家战斗响应编排；拒绝路径不掷骰、不转换状态，成功路径返回转换后的全新查看者投影。
+        var projection = await games.GetProjectionAsync(intent.RoomId, intent.PlayerId);
+        if (!projection.IsSuccess)
+        {
+            return MapProjectionFailure(projection.Error!.Code);
+        }
+
+        var snapshot = projection.Value!;
+        if (snapshot.Revision != intent.ExpectedGameRevision)
+        {
+            return PlayerCombatIntentResult.Failure(
+                PlayerCombatIntentErrorCode.StaleGameRevision,
+                snapshot.Revision);
+        }
+
+        var combatSnapshot = snapshot.Combat;
+        if (combatSnapshot is null || !combatSnapshot.Active)
+        {
+            return PlayerCombatIntentResult.Failure(
+                PlayerCombatIntentErrorCode.CombatInactive,
+                snapshot.Revision);
+        }
+
+        if (combatSnapshot.Pending is null)
+        {
+            return PlayerCombatIntentResult.Failure(
+                PlayerCombatIntentErrorCode.ExchangeNotPending,
+                snapshot.Revision);
+        }
+
+        var pending = combatSnapshot.ViewerActions?.PendingResponse;
+        if (pending is null)
+        {
+            return PlayerCombatIntentResult.Failure(
+                PlayerCombatIntentErrorCode.DefenderNotOwned,
+                snapshot.Revision);
+        }
+
+        if (!string.Equals(pending.ExchangeId, intent.ExchangeId, StringComparison.Ordinal))
+        {
+            return PlayerCombatIntentResult.Failure(
+                PlayerCombatIntentErrorCode.ExchangeNotPending,
+                snapshot.Revision);
+        }
+
+        var wireResponse = ToCombatResponseWireValue(intent.Response);
+        if (wireResponse is null
+            || !pending.AvailableResponses.Contains(wireResponse, StringComparer.Ordinal))
+        {
+            return PlayerCombatIntentResult.Failure(
+                PlayerCombatIntentErrorCode.InvalidResponse,
+                snapshot.Revision);
+        }
+
+        var resolved = await combat.ResolvePendingExchangeAsync(new ResolvePendingExchangeCommand(
+            intent.RoomId,
+            intent.PlayerId,
+            intent.ExpectedGameRevision,
+            pending.ExchangeId,
+            intent.Response));
+        if (!resolved.IsSuccess)
+        {
+            return MapTransitionFailure(resolved.Error!.Code, snapshot.Revision);
+        }
+
+        var damageFailure = await ResolveExactPendingDamageAsync(
+            intent.RoomId,
+            pending.ExchangeId,
+            resolved.Value!.State);
+        if (damageFailure is not null)
+        {
+            return damageFailure;
+        }
+
+        return await GetFinalProjectionAsync(intent.RoomId, intent.PlayerId);
+    }
 
     public Task<PlayerCombatIntentResult> PassAsync(PlayerPassIntent intent) =>
         Task.FromResult(PlayerCombatIntentResult.Failure(PlayerCombatIntentErrorCode.InvalidIntent));
@@ -222,6 +301,13 @@ internal sealed class PlayerCombatIntentCoordinator(
             ? PlayerCombatIntentResult.Success(projection.Value!)
             : MapProjectionFailure(projection.Error!.Code);
     }
+
+    private static string? ToCombatResponseWireValue(CombatResponse response) => response switch
+    {
+        CombatResponse.Dodge => "dodge",
+        CombatResponse.FightBack => "fight_back",
+        _ => null
+    };
 
     private static PlayerCombatIntentResult MapProjectionFailure(GameErrorCode code) => code switch
     {

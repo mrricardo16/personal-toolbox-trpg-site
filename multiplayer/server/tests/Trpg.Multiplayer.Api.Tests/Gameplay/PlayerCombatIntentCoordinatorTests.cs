@@ -154,6 +154,118 @@ public sealed class PlayerCombatIntentCoordinatorTests(WebApplicationFactory<Pro
     }
 
     [Fact]
+    public async Task Respond_ExactHumanDefenderOwner_ResolvesAndConsumesExactPendingDamage()
+    {
+        var rig = RespondRig.Create(hasPendingDamage: true);
+        var result = await InvokeRespondAsync(rig.Coordinator, rig.Intent);
+
+        Assert.True(GetProperty<bool>(result, "IsSuccess"));
+        var resolveCommand = Assert.Single(rig.Combat.ResolveCommands);
+        Assert.Equal(rig.DefenderPlayerId, GetProperty<Guid?>(resolveCommand, "RequestingPlayerId"));
+        Assert.Equal(12, GetProperty<long>(resolveCommand, "ExpectedGameRevision"));
+        Assert.Equal(rig.ExchangeId, GetProperty<string>(resolveCommand, "ExchangeId"));
+        Assert.Equal(CombatResponse.FightBack, GetProperty<CombatResponse>(resolveCommand, "Response"));
+        var damageCommand = Assert.Single(rig.Combat.DamageCommands);
+        Assert.Equal(14, GetProperty<long>(damageCommand, "ExpectedGameRevision"));
+        Assert.Equal(rig.ExchangeId, GetProperty<string>(damageCommand, "ExchangeId"));
+    }
+
+    [Fact]
+    public async Task Respond_ExactHumanDefenderOwner_NoHitDoesNotCallDamage()
+    {
+        var rig = RespondRig.Create(hasPendingDamage: false);
+        var result = await InvokeRespondAsync(rig.Coordinator, rig.Intent);
+
+        Assert.True(GetProperty<bool>(result, "IsSuccess"));
+        Assert.Single(rig.Combat.ResolveCommands);
+        Assert.Empty(rig.Combat.DamageCommands);
+    }
+
+    [Fact]
+    public async Task Respond_WrongPlayerReturnsDefenderNotOwnedBeforeDiceOrMutation()
+    {
+        var rig = RespondRig.Create(includeOwnedPendingResponse: false);
+        var result = await InvokeRespondAsync(rig.Coordinator, rig.Intent);
+
+        AssertRespondFailureWithoutMutation(rig, result, "DefenderNotOwned", 12);
+        Assert.NotNull(rig.InitialProjection.Combat!.Pending);
+        Assert.Null(rig.InitialProjection.Combat.ViewerActions);
+        Assert.Null(GetProperty<GameSnapshot>(result, "Snapshot"));
+    }
+
+    [Fact]
+    public async Task Respond_WrongExchangeReturnsExchangeNotPendingBeforeDiceOrMutation()
+    {
+        var rig = RespondRig.Create(requestedExchangeId: "exchange-other");
+        var result = await InvokeRespondAsync(rig.Coordinator, rig.Intent);
+
+        AssertRespondFailureWithoutMutation(rig, result, "ExchangeNotPending", 12);
+    }
+
+    [Fact]
+    public async Task Respond_UnavailableResponseReturnsInvalidResponseBeforeDiceOrMutation()
+    {
+        var rig = RespondRig.Create(availableResponses: ["dodge"]);
+        var result = await InvokeRespondAsync(rig.Coordinator, rig.Intent);
+
+        AssertRespondFailureWithoutMutation(rig, result, "InvalidResponse", 12);
+    }
+
+    [Fact]
+    public async Task Respond_StaleRevisionPerformsNoResolveDamageDiceRevisionOrPublish()
+    {
+        var rig = RespondRig.Create(expectedRevision: 11);
+        var result = await InvokeRespondAsync(rig.Coordinator, rig.Intent);
+
+        AssertRespondFailureWithoutMutation(rig, result, "StaleGameRevision", 12);
+    }
+
+    [Fact]
+    public async Task Respond_UsesResolveReturnedStateAndLatestRevisionForExactDamage()
+    {
+        var rig = RespondRig.Create(
+            resolveRevision: 41,
+            finalRevision: 42,
+            hasPendingDamage: true,
+            unrelatedPendingExchangeId: "other-exchange");
+        await InvokeRespondAsync(rig.Coordinator, rig.Intent);
+
+        var damageCommand = Assert.Single(rig.Combat.DamageCommands);
+        Assert.Equal(41, GetProperty<long>(damageCommand, "ExpectedGameRevision"));
+        Assert.Equal(rig.ExchangeId, GetProperty<string>(damageCommand, "ExchangeId"));
+    }
+
+    [Fact]
+    public async Task Respond_ReturnsFreshFinalViewerProjection()
+    {
+        var rig = RespondRig.Create(finalRevision: 99);
+        var result = await InvokeRespondAsync(rig.Coordinator, rig.Intent);
+
+        Assert.Same(rig.FinalProjection, GetProperty<GameSnapshot>(result, "Snapshot"));
+        Assert.Equal(2, rig.Games.ProjectionCalls);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Respond_CombatAbsentOrInactiveReturnsCombatInactiveBeforeDiceOrMutation(bool includeInactiveCombat)
+    {
+        var rig = RespondRig.Create(includeCombat: includeInactiveCombat, combatActive: false);
+        var result = await InvokeRespondAsync(rig.Coordinator, rig.Intent);
+
+        AssertRespondFailureWithoutMutation(rig, result, "CombatInactive", 12);
+    }
+
+    [Fact]
+    public async Task Respond_NoGenericPendingReturnsExchangeNotPendingBeforeDiceOrMutation()
+    {
+        var rig = RespondRig.Create(includeGenericPending: false, includeOwnedPendingResponse: false);
+        var result = await InvokeRespondAsync(rig.Coordinator, rig.Intent);
+
+        AssertRespondFailureWithoutMutation(rig, result, "ExchangeNotPending", 12);
+    }
+
+    [Fact]
     public void PlayerCombatIntentCoordinator_HasOnlyApprovedStateAndTransitionDependencies()
     {
         var coordinatorType = GetRequiredGameplayType("PlayerCombatIntentCoordinator");
@@ -206,6 +318,15 @@ public sealed class PlayerCombatIntentCoordinatorTests(WebApplicationFactory<Pro
         return task.GetType().GetProperty("Result")!.GetValue(task)!;
     }
 
+    private static async Task<object> InvokeRespondAsync(object coordinator, object intent)
+    {
+        var task = (Task)GetRequiredGameplayType("PlayerCombatIntentCoordinator")
+            .GetMethod("RespondAsync")!
+            .Invoke(coordinator, [intent])!;
+        await task;
+        return task.GetType().GetProperty("Result")!.GetValue(task)!;
+    }
+
     private static T? GetProperty<T>(object instance, string propertyName) =>
         (T?)instance.GetType().GetProperty(propertyName)!.GetValue(instance);
 
@@ -248,6 +369,296 @@ public sealed class PlayerCombatIntentCoordinatorTests(WebApplicationFactory<Pro
         Assert.Equal(expectedRevision, rig.Combat.CurrentState.Revision);
         Assert.Null(rig.Combat.CurrentState.Combat!.PendingExchange);
         Assert.Empty(rig.Combat.CurrentState.Combat.History);
+    }
+
+    private static void AssertRespondFailureWithoutMutation(
+        RespondRig rig,
+        object result,
+        string expectedCode,
+        long expectedRevision)
+    {
+        Assert.False(GetProperty<bool>(result, "IsSuccess"));
+        var error = GetProperty<object>(result, "Error")!;
+        Assert.Equal(expectedCode, GetProperty<object>(error, "Code")!.ToString());
+        Assert.Equal(expectedRevision, GetProperty<long?>(error, "CurrentGameRevision"));
+        Assert.Empty(rig.Combat.BeginCommands);
+        Assert.Empty(rig.Combat.ResolveCommands);
+        Assert.Empty(rig.Combat.DamageCommands);
+        Assert.Equal(0, rig.Combat.GeneratedExchangeIds);
+        Assert.Equal(0, rig.Combat.DiceRolls);
+        Assert.Equal(0, rig.Combat.Publications);
+        Assert.Same(rig.InitialCanonicalState, rig.Combat.CurrentState);
+        Assert.Equal(expectedRevision, rig.Combat.CurrentState.Revision);
+        Assert.NotNull(rig.Combat.CurrentState.Combat!.PendingExchange);
+        Assert.Empty(rig.Combat.CurrentState.Combat.History);
+    }
+
+    private sealed class RespondRig
+    {
+        private RespondRig(
+            Guid defenderPlayerId,
+            string exchangeId,
+            object intent,
+            RecordingGameCoordinator games,
+            RecordingCombatProxy combat,
+            MultiplayerGameState initialCanonicalState,
+            GameSnapshot initialProjection,
+            GameSnapshot finalProjection,
+            object coordinator)
+        {
+            DefenderPlayerId = defenderPlayerId;
+            ExchangeId = exchangeId;
+            Intent = intent;
+            Games = games;
+            Combat = combat;
+            InitialCanonicalState = initialCanonicalState;
+            InitialProjection = initialProjection;
+            FinalProjection = finalProjection;
+            Coordinator = coordinator;
+        }
+
+        public Guid DefenderPlayerId { get; }
+        public string ExchangeId { get; }
+        public object Intent { get; }
+        public RecordingGameCoordinator Games { get; }
+        public RecordingCombatProxy Combat { get; }
+        public MultiplayerGameState InitialCanonicalState { get; }
+        public GameSnapshot InitialProjection { get; }
+        public GameSnapshot FinalProjection { get; }
+        public object Coordinator { get; }
+
+        public static RespondRig Create(
+            long projectedRevision = 12,
+            long expectedRevision = 12,
+            long resolveRevision = 14,
+            long finalRevision = 15,
+            bool includeCombat = true,
+            bool combatActive = true,
+            bool includeGenericPending = true,
+            bool includeOwnedPendingResponse = true,
+            IReadOnlyList<string>? availableResponses = null,
+            string? requestedExchangeId = null,
+            bool hasPendingDamage = false,
+            string? unrelatedPendingExchangeId = null)
+        {
+            var roomId = Guid.NewGuid();
+            var attackerPlayerId = Guid.NewGuid();
+            var defenderPlayerId = Guid.NewGuid();
+            var attackerCharacterId = Guid.NewGuid();
+            var defenderCharacterId = Guid.NewGuid();
+            const string exchangeId = "exchange-exact";
+            var responses = availableResponses ?? ["dodge", "fight_back"];
+            CombatSnapshot? initialCombat = includeCombat
+                ? CreateProjectionCombat(
+                    combatActive,
+                    includeGenericPending,
+                    includeOwnedPendingResponse,
+                    exchangeId,
+                    attackerCharacterId,
+                    defenderCharacterId,
+                    responses)
+                : null;
+            var initialProjection = new GameSnapshot(
+                roomId,
+                projectedRevision,
+                MultiplayerGameStatus.Active.ToString(),
+                DateTimeOffset.UnixEpoch,
+                [],
+                Combat: initialCombat);
+            var finalProjection = new GameSnapshot(
+                roomId,
+                finalRevision,
+                MultiplayerGameStatus.Active.ToString(),
+                DateTimeOffset.UnixEpoch,
+                [],
+                Combat: CreateProjectionCombat(
+                    true,
+                    false,
+                    false,
+                    exchangeId,
+                    attackerCharacterId,
+                    defenderCharacterId,
+                    responses));
+            var initialCanonicalState = CreateCanonicalState(
+                roomId,
+                projectedRevision,
+                attackerPlayerId,
+                defenderPlayerId,
+                attackerCharacterId,
+                defenderCharacterId,
+                exchangeId,
+                [],
+                true);
+            var damageExchangeIds = new List<string>();
+            if (hasPendingDamage)
+            {
+                damageExchangeIds.Add(exchangeId);
+            }
+            if (unrelatedPendingExchangeId is not null)
+            {
+                damageExchangeIds.Add(unrelatedPendingExchangeId);
+            }
+            var resolvedState = CreateCanonicalState(
+                roomId,
+                resolveRevision,
+                attackerPlayerId,
+                defenderPlayerId,
+                attackerCharacterId,
+                defenderCharacterId,
+                exchangeId,
+                damageExchangeIds,
+                false);
+            var games = new RecordingGameCoordinator(initialProjection, finalProjection);
+            var combatObject = DispatchProxy.Create(
+                GetRequiredGameplayType("IInternalCombatResolutionCoordinator"),
+                typeof(RecordingCombatProxy));
+            var combat = (RecordingCombatProxy)combatObject;
+            combat.CurrentState = initialCanonicalState;
+            combat.BeginState = initialCanonicalState;
+            combat.ResolvedState = resolvedState;
+            var coordinator = Activator.CreateInstance(
+                GetRequiredGameplayType("PlayerCombatIntentCoordinator"),
+                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+                null,
+                [games, combatObject],
+                null)!;
+            var intent = Activator.CreateInstance(
+                GetRequiredGameplayType("PlayerRespondIntent"),
+                roomId,
+                defenderPlayerId,
+                expectedRevision,
+                requestedExchangeId ?? exchangeId,
+                CombatResponse.FightBack)!;
+            return new RespondRig(
+                defenderPlayerId,
+                exchangeId,
+                intent,
+                games,
+                combat,
+                initialCanonicalState,
+                initialProjection,
+                finalProjection,
+                coordinator);
+        }
+
+        private static CombatSnapshot CreateProjectionCombat(
+            bool active,
+            bool includeGenericPending,
+            bool includeOwnedPendingResponse,
+            string exchangeId,
+            Guid attackerCharacterId,
+            Guid defenderCharacterId,
+            IReadOnlyList<string> availableResponses) => new(
+                active,
+                1,
+                $"character:{attackerCharacterId}",
+                [
+                    new CombatParticipantSnapshot(
+                        $"character:{attackerCharacterId}", attackerCharacterId, "Attacker", "investigator",
+                        true, true, false, null),
+                    new CombatParticipantSnapshot(
+                        $"character:{defenderCharacterId}", defenderCharacterId, "Defender", "investigator",
+                        true, false, true, null)
+                ],
+                null,
+                includeGenericPending ? new CombatPendingSnapshot("defender", "awaiting_response") : null,
+                ViewerActions: includeOwnedPendingResponse
+                    ? new CombatViewerActionsSnapshot(
+                        null,
+                        false,
+                        false,
+                        [],
+                        new CombatPendingResponseSnapshot(exchangeId, availableResponses))
+                    : null);
+
+        private static MultiplayerGameState CreateCanonicalState(
+            Guid roomId,
+            long revision,
+            Guid attackerPlayerId,
+            Guid defenderPlayerId,
+            Guid attackerCharacterId,
+            Guid defenderCharacterId,
+            string exchangeId,
+            IReadOnlyList<string> damageExchangeIds,
+            bool includePendingExchange)
+        {
+            var attackerId = new CombatParticipantId($"character:{attackerCharacterId}");
+            var defenderId = new CombatParticipantId($"character:{defenderCharacterId}");
+            var participants = new[]
+            {
+                CreateParticipant(attackerId, attackerCharacterId, attackerPlayerId),
+                CreateParticipant(defenderId, defenderCharacterId, defenderPlayerId)
+            };
+            var pending = includePendingExchange
+                ? CombatSessionState.CreatePendingExchange(
+                    exchangeId,
+                    1,
+                    0,
+                    attackerId,
+                    defenderId,
+                    defenderPlayerId,
+                    [CombatResponse.Dodge, CombatResponse.FightBack],
+                    0,
+                    revision - 1,
+                    DateTimeOffset.UnixEpoch)
+                : null;
+            var dispositions = damageExchangeIds.ToDictionary(
+                id => id,
+                id => new DamageDispositionState(
+                    new DamageDispositionData(id, attackerId, defenderId, CombatDamageMode.Regular, revision),
+                    DamageDispositionStatus.Pending,
+                    null),
+                StringComparer.Ordinal);
+            var session = new CombatSession(
+                Guid.NewGuid(),
+                true,
+                1,
+                0,
+                [attackerId, defenderId],
+                participants,
+                new Dictionary<string, int>(),
+                new Dictionary<string, int>(),
+                pending,
+                null,
+                [],
+                dispositions,
+                new Dictionary<Guid, DyingScheduleState>(),
+                DateTimeOffset.UnixEpoch,
+                null,
+                null);
+            return new MultiplayerGameState(
+                roomId,
+                revision,
+                MultiplayerGameStatus.Active,
+                DateTimeOffset.UnixEpoch,
+                [],
+                combat: session);
+        }
+
+        private static CombatParticipantState CreateParticipant(
+            CombatParticipantId participantId,
+            Guid characterId,
+            Guid ownerPlayerId) => new(
+                participantId,
+                characterId,
+                ownerPlayerId,
+                participantId.Value,
+                "investigator",
+                "investigator",
+                50,
+                50,
+                50,
+                [CombatResponse.Dodge, CombatResponse.FightBack],
+                1,
+                true,
+                new CombatDamageProfile(
+                    50,
+                    50,
+                    CocCombatDamageRules.DeriveDamageBonus(50, 50),
+                    CocCombatDamageRules.NormalizeWeapon("unarmed", "Unarmed", "1d3", true, "melee_non_impaling"),
+                    0),
+                null,
+                null);
     }
 
     private sealed class MeleeAttackRig
