@@ -72,12 +72,192 @@ internal sealed class PlayerCombatIntentCoordinator(
     private readonly IGameCoordinator games = games;
     private readonly IInternalCombatResolutionCoordinator combat = combat;
 
-    public Task<PlayerCombatIntentResult> MeleeAttackAsync(PlayerMeleeAttackIntent intent) =>
-        Task.FromResult(PlayerCombatIntentResult.Failure(PlayerCombatIntentErrorCode.InvalidIntent));
+    public async Task<PlayerCombatIntentResult> MeleeAttackAsync(PlayerMeleeAttackIntent intent)
+    {
+        // 修改时间：2026-09-08 13:01:58
+        // 修改说明：按查看者投影预校验玩家近战意图，并只沿 Begin/Resolve 返回的权威状态继续 NPC 响应与精确伤害处理。
+        // 修改原因：避免应用层读取存储、推断伤害结果或让客户端/房主选择 NPC 响应，同时保留每个内部转换的独立提交修订。
+        // 业务影响：新增玩家当前调查员对投影合格目标的近战编排；人类防御者仅提交 Begin，NPC 防御者由私有快照策略继续处理。
+        var projection = await games.GetProjectionAsync(intent.RoomId, intent.PlayerId);
+        if (!projection.IsSuccess)
+        {
+            return MapProjectionFailure(projection.Error!.Code);
+        }
+
+        var snapshot = projection.Value!;
+        if (snapshot.Revision != intent.ExpectedGameRevision)
+        {
+            return PlayerCombatIntentResult.Failure(
+                PlayerCombatIntentErrorCode.StaleGameRevision,
+                snapshot.Revision);
+        }
+
+        var combatSnapshot = snapshot.Combat;
+        if (combatSnapshot is null || !combatSnapshot.Active)
+        {
+            return PlayerCombatIntentResult.Failure(
+                PlayerCombatIntentErrorCode.CombatInactive,
+                snapshot.Revision);
+        }
+
+        var actor = combatSnapshot.Participants.SingleOrDefault(
+            participant => participant.CharacterId == intent.ActorCharacterId);
+        if (actor is null || !actor.ViewerOwned)
+        {
+            return PlayerCombatIntentResult.Failure(
+                PlayerCombatIntentErrorCode.ActorNotOwned,
+                snapshot.Revision);
+        }
+
+        if (!actor.Active
+            || !actor.Current
+            || combatSnapshot.CurrentActorParticipantId != actor.ParticipantId)
+        {
+            return PlayerCombatIntentResult.Failure(
+                PlayerCombatIntentErrorCode.NotCurrentActor,
+                snapshot.Revision);
+        }
+
+        var actions = combatSnapshot.ViewerActions;
+        if (actions?.ActorCharacterId != intent.ActorCharacterId || !actions.CanMeleeAttack)
+        {
+            return PlayerCombatIntentResult.Failure(
+                PlayerCombatIntentErrorCode.ProgressionBlocked,
+                snapshot.Revision);
+        }
+
+        if (!actions.EligibleTargetParticipantIds.Contains(intent.TargetParticipantId, StringComparer.Ordinal))
+        {
+            return PlayerCombatIntentResult.Failure(
+                PlayerCombatIntentErrorCode.TargetNotEligible,
+                snapshot.Revision);
+        }
+
+        var begin = await combat.BeginOpposedExchangeAsync(new BeginOpposedExchangeCommand(
+            intent.RoomId,
+            intent.PlayerId,
+            intent.ExpectedGameRevision,
+            $"character:{intent.ActorCharacterId}",
+            intent.TargetParticipantId));
+        if (!begin.IsSuccess)
+        {
+            return MapTransitionFailure(begin.Error!.Code, snapshot.Revision);
+        }
+
+        var beginState = begin.Value!.State;
+        var beginCombat = beginState.Combat
+            ?? throw new InvalidOperationException("Committed Begin result omitted its combat session.");
+        var pending = beginCombat.PendingExchange
+            ?? throw new InvalidOperationException("Committed Begin result omitted its pending exchange.");
+        var defender = beginCombat.Participants.Single(
+            participant => participant.ParticipantId == pending.DefenderParticipantId);
+
+        if (defender.OwnerPlayerId is null)
+        {
+            var policy = defender.NpcResponsePolicy
+                ?? throw new InvalidOperationException("Committed NPC defender omitted its response policy.");
+            if (!pending.AvailableResponses.Contains(policy))
+            {
+                return PlayerCombatIntentResult.Failure(
+                    PlayerCombatIntentErrorCode.CombatConsistencyFailure,
+                    beginState.Revision);
+            }
+
+            var resolved = await combat.ResolvePendingExchangeAsync(new ResolvePendingExchangeCommand(
+                intent.RoomId,
+                null,
+                beginState.Revision,
+                pending.ExchangeId,
+                policy));
+            if (!resolved.IsSuccess)
+            {
+                return MapTransitionFailure(resolved.Error!.Code, beginState.Revision);
+            }
+
+            var damageFailure = await ResolveExactPendingDamageAsync(
+                intent.RoomId,
+                pending.ExchangeId,
+                resolved.Value!.State);
+            if (damageFailure is not null)
+            {
+                return damageFailure;
+            }
+        }
+
+        return await GetFinalProjectionAsync(intent.RoomId, intent.PlayerId);
+    }
 
     public Task<PlayerCombatIntentResult> RespondAsync(PlayerRespondIntent intent) =>
         Task.FromResult(PlayerCombatIntentResult.Failure(PlayerCombatIntentErrorCode.InvalidIntent));
 
     public Task<PlayerCombatIntentResult> PassAsync(PlayerPassIntent intent) =>
         Task.FromResult(PlayerCombatIntentResult.Failure(PlayerCombatIntentErrorCode.InvalidIntent));
+
+    private async Task<PlayerCombatIntentResult?> ResolveExactPendingDamageAsync(
+        Guid roomId,
+        string exchangeId,
+        MultiplayerGameState resolvedState)
+    {
+        var resolvedCombat = resolvedState.Combat
+            ?? throw new InvalidOperationException("Committed Resolve result omitted its combat session.");
+        if (!resolvedCombat.DamageDispositions.TryGetValue(exchangeId, out var disposition)
+            || disposition.Status != DamageDispositionStatus.Pending)
+        {
+            return null;
+        }
+
+        var damage = await combat.ResolveCombatDamageAsync(new ResolveCombatDamageCommand(
+            roomId,
+            resolvedState.Revision,
+            exchangeId));
+        return damage.IsSuccess
+            ? null
+            : MapTransitionFailure(damage.Error!.Code, resolvedState.Revision);
+    }
+
+    private async Task<PlayerCombatIntentResult> GetFinalProjectionAsync(Guid roomId, Guid playerId)
+    {
+        var projection = await games.GetProjectionAsync(roomId, playerId);
+        return projection.IsSuccess
+            ? PlayerCombatIntentResult.Success(projection.Value!)
+            : MapProjectionFailure(projection.Error!.Code);
+    }
+
+    private static PlayerCombatIntentResult MapProjectionFailure(GameErrorCode code) => code switch
+    {
+        GameErrorCode.RoomNotFound => PlayerCombatIntentResult.Failure(PlayerCombatIntentErrorCode.RoomNotFound),
+        GameErrorCode.RoomClosed => PlayerCombatIntentResult.Failure(PlayerCombatIntentErrorCode.InvalidSession),
+        GameErrorCode.NotMember => PlayerCombatIntentResult.Failure(PlayerCombatIntentErrorCode.NotMember),
+        GameErrorCode.GameNotFound => PlayerCombatIntentResult.Failure(PlayerCombatIntentErrorCode.GameNotFound),
+        _ => PlayerCombatIntentResult.Failure(PlayerCombatIntentErrorCode.InvalidIntent)
+    };
+
+    private static PlayerCombatIntentResult MapTransitionFailure(GameErrorCode code, long currentRevision) => code switch
+    {
+        GameErrorCode.RoomNotFound => PlayerCombatIntentResult.Failure(PlayerCombatIntentErrorCode.RoomNotFound),
+        GameErrorCode.RoomClosed => PlayerCombatIntentResult.Failure(PlayerCombatIntentErrorCode.InvalidSession),
+        GameErrorCode.NotMember => PlayerCombatIntentResult.Failure(PlayerCombatIntentErrorCode.NotMember),
+        GameErrorCode.GameNotFound => PlayerCombatIntentResult.Failure(PlayerCombatIntentErrorCode.GameNotFound),
+        GameErrorCode.StateConflict => PlayerCombatIntentResult.Failure(
+            PlayerCombatIntentErrorCode.StaleGameRevision,
+            currentRevision),
+        GameErrorCode.InvalidCombat or GameErrorCode.EndedCombat => PlayerCombatIntentResult.Failure(
+            PlayerCombatIntentErrorCode.CombatInactive,
+            currentRevision),
+        GameErrorCode.InvalidExchange => PlayerCombatIntentResult.Failure(
+            PlayerCombatIntentErrorCode.ExchangeNotPending,
+            currentRevision),
+        GameErrorCode.InvalidResponse => PlayerCombatIntentResult.Failure(
+            PlayerCombatIntentErrorCode.InvalidResponse,
+            currentRevision),
+        GameErrorCode.PendingConflict => PlayerCombatIntentResult.Failure(
+            PlayerCombatIntentErrorCode.ProgressionBlocked,
+            currentRevision),
+        GameErrorCode.InvalidParticipant => PlayerCombatIntentResult.Failure(
+            PlayerCombatIntentErrorCode.TargetNotEligible,
+            currentRevision),
+        _ => PlayerCombatIntentResult.Failure(
+            PlayerCombatIntentErrorCode.CombatConsistencyFailure,
+            currentRevision)
+    };
 }
