@@ -1,6 +1,6 @@
 # Multiplayer Phase 2H — Player Combat Intent Protocol Design
 
-**Status:** Pending review
+**Status:** Approved after application-state-access review. Implementation plan pending.
 
 **Date:** 2026-09-08
 
@@ -245,6 +245,36 @@ Introduce an application seam such as `IPlayerCombatIntentCoordinator`. It valid
 This mixes player/session policy with trusted internal transitions and risks making internal host/NPC authority publicly reachable.
 
 **Decision:** Use a dedicated application coordinator, called once inside the existing public delivery gate.
+
+### 8.1 Canonical-state access seam
+
+`IPlayerCombatIntentCoordinator` is an application orchestration boundary, not a second canonical state reader. It must not inject or directly depend on `IGameStateStore`.
+
+Before the first mutation, it obtains the authenticated viewer's authoritative `GameSnapshot` through:
+
+```csharp
+IGameCoordinator.GetProjectionAsync(roomId, authenticatedPlayerId)
+```
+
+The future `CombatViewerActionsSnapshot` is the safe prevalidation source for `ActorCharacterId`, `CanMeleeAttack`, `CanPass`, `EligibleTargetParticipantIds`, `PendingResponse.ExchangeId`, `PendingResponse.AvailableResponses`, and the current Game revision. These affordances may reject an obviously invalid public request, but they are not final mutation authority. The invoked internal Combat transition must still revalidate canonical revision, current actor, ownership, target, exact pending exchange, response membership, and the causal damage gate before any mutation or dice.
+
+After Begin, the application coordinator must use `BeginOpposedExchangeResult.State` rather than re-reading storage. That returned canonical committed state supplies the exact `PendingExchange`, exact defender participant, human-or-NPC ownership, private snapshotted `NpcResponsePolicy`, and latest revision. NPC defender orchestration is therefore:
+
+```text
+BeginOpposedExchangeResult.State
+→ exact PendingExchange
+→ exact defender
+→ private canonical NpcResponsePolicy
+→ ResolvePendingExchange
+```
+
+After Resolve, the application coordinator must use `ResolvePendingExchangeResult.State`. It inspects only `DamageDispositions[ExchangeId]` for the exact resolved exchange. Only when that exact disposition is `Pending` does it call `ResolveCombatDamageAsync` with the exact `ExchangeId` and `ResolvePendingExchangeResult.State.Revision`. It must not infer damage from outcome text or `LastExchange`, use the original HTTP expected revision, or expose damage resolution publicly.
+
+After Pass or the complete Begin/Resolve/Damage sequence, the HTTP/application boundary obtains a fresh viewer-specific projection through `IGameCoordinator.GetProjectionAsync(roomId, authenticatedPlayerId)` and returns that `GameSnapshot`. It never serializes `MultiplayerGameState`, `CombatSession`, `PendingCombatExchange`, `DamageDispositionState`, or an internal transition result.
+
+The preferred application dependencies remain narrow: `IGameCoordinator` for viewer projection and `IInternalCombatResolutionCoordinator` (or the approved narrow internal Combat seam) for transitions, plus only mechanically required application dependencies. It must not directly depend on `IGameStateStore`, `IDiceRoller`, `ICombatDamageEngine`, `IHpDamageEngine`, `IGameRealtimeNotifier`, a SignalR hub context, persistence, or AI.
+
+If implementation discovers that a required canonical fact is unavailable from the viewer projection before the first mutation or from the internal transition result `State` after a mutation, stop and identify that missing fact. Prefer a narrow internal query/result contract if truly necessary; never add a general `IGameStateStore` dependency to the player-intent application layer as a shortcut.
 
 ## 9. Identity and Target Validation
 
