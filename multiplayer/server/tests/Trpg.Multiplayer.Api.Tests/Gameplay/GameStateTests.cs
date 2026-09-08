@@ -1807,6 +1807,193 @@ public sealed class GameStateTests
     }
 
     [Fact]
+    public async Task Projection_CombatViewerActions_OwnCurrentInvestigatorGetsAttackPassAndActiveOpponents()
+    {
+        var fixture = await CreateCombatGameAsync();
+        var started = await StartCombatAsync(
+            fixture.Coordinator,
+            fixture.Room.RoomId,
+            fixture.HostId,
+            1,
+            [fixture.HostCharacterId, fixture.MemberCharacterId],
+            [Opponent("Cultist", 70)]);
+        Assert.True(started.IsSuccess);
+
+        var currentCharacterId = fixture.HostCharacterId;
+        var actions = Assert.IsType<CombatViewerActionsSnapshot>(
+            GameProjection.Build(started.State!, fixture.HostId).Combat!.ViewerActions);
+
+        Assert.Equal(currentCharacterId, actions.ActorCharacterId);
+        Assert.True(actions.CanMeleeAttack);
+        Assert.True(actions.CanPass);
+        Assert.Equal(["opponent:0"], actions.EligibleTargetParticipantIds);
+        Assert.Null(actions.PendingResponse);
+    }
+
+    [Fact]
+    public async Task Projection_CombatViewerActions_InactiveCombatHasNoActionableAffordance()
+    {
+        var fixture = await CreateCombatGameAsync();
+        var started = await StartCombatAsync(
+            fixture.Coordinator,
+            fixture.Room.RoomId,
+            fixture.HostId,
+            1,
+            [fixture.HostCharacterId],
+            [Opponent("Cultist", 70)]);
+        Assert.True(started.IsSuccess);
+        var startedState = started.State!;
+        var endedState = new MultiplayerGameState(
+            startedState.RoomId,
+            startedState.Revision,
+            startedState.Status,
+            startedState.CreatedAt,
+            startedState.Characters,
+            startedState.LastCheck,
+            startedState.Combat! with { Active = false });
+
+        var combat = Assert.IsType<CombatSnapshot>(GameProjection.Build(endedState, fixture.HostId).Combat);
+
+        Assert.Null(combat.ViewerActions);
+    }
+
+    [Fact]
+    public async Task Projection_CombatViewerActions_NonCurrentOwnerGetsNoActorActions()
+    {
+        var fixture = await CreateCombatGameAsync();
+        var started = await StartCombatAsync(
+            fixture.Coordinator,
+            fixture.Room.RoomId,
+            fixture.HostId,
+            1,
+            [fixture.HostCharacterId, fixture.MemberCharacterId],
+            [Opponent("Cultist", 70)]);
+        Assert.True(started.IsSuccess);
+
+        var combat = Assert.IsType<CombatSnapshot>(GameProjection.Build(started.State!, fixture.MemberId).Combat);
+
+        Assert.Null(combat.ViewerActions);
+    }
+
+    [Fact]
+    public async Task Projection_CombatViewerActions_ExactHumanDefenderAloneGetsPendingResponse()
+    {
+        var fixture = await CreateResolvableCombatGameAsync([1, 100]);
+        var pending = await StartAndBeginAgainstPlayerAsync(fixture);
+        Assert.True(pending.IsSuccess);
+
+        var defenderActions = Assert.IsType<CombatViewerActionsSnapshot>(
+            GameProjection.Build(pending.State!, fixture.HostId).Combat!.ViewerActions);
+        var expectedPending = Assert.IsType<PendingCombatExchange>(pending.State!.Combat!.PendingExchange);
+
+        Assert.Equal(expectedPending.ExchangeId, defenderActions.PendingResponse!.ExchangeId);
+        Assert.Equal(["dodge", "fight_back"], defenderActions.PendingResponse.AvailableResponses);
+    }
+
+    [Fact]
+    public async Task Projection_CombatViewerActions_AttackerAndOtherParticipantDoNotGetExchangeOrResponses()
+    {
+        var fixture = await CreateCombatGameAsync();
+        var started = await StartCombatAsync(
+            fixture.Coordinator,
+            fixture.Room.RoomId,
+            fixture.HostId,
+            1,
+            [fixture.HostCharacterId, fixture.MemberCharacterId],
+            [Opponent("Cultist", 70)]);
+        var pending = await BeginOpposedExchangeAsync(
+            fixture.Coordinator,
+            fixture.Room.RoomId,
+            fixture.HostId,
+            started.State!.Revision,
+            "character:" + fixture.HostCharacterId,
+            "opponent:0");
+        Assert.True(pending.IsSuccess);
+
+        var attackerActions = GameProjection.Build(pending.State!, fixture.HostId).Combat!.ViewerActions;
+        var otherParticipantActions = GameProjection.Build(pending.State!, fixture.MemberId).Combat!.ViewerActions;
+
+        Assert.Null(attackerActions);
+        Assert.Null(otherParticipantActions);
+    }
+
+    [Fact]
+    public async Task Projection_CombatViewerActions_PendingDamageSuppressesAttackAndPass()
+    {
+        var fixture = await CreateCombatGameAsync();
+        var started = await StartCombatAsync(
+            fixture.Coordinator,
+            fixture.Room.RoomId,
+            fixture.HostId,
+            1,
+            [fixture.HostCharacterId],
+            [Opponent("Cultist", 70)]);
+        Assert.True(started.IsSuccess);
+        ReplaceDamageDispositions(
+            fixture,
+            new Dictionary<string, DamageDispositionState>
+            {
+                ["pending-damage"] = PendingDisposition(
+                    "pending-damage",
+                    new CombatParticipantId("character:" + fixture.HostCharacterId),
+                    new CombatParticipantId("opponent:0"),
+                    started.State!.Revision)
+            });
+
+        var state = GetRequiredState(fixture.StateStore, fixture.Room.RoomId);
+
+        Assert.Null(GameProjection.Build(state, fixture.HostId).Combat!.ViewerActions);
+    }
+
+    [Fact]
+    public async Task Projection_CombatViewerActions_NonparticipantStillGetsNullCombat()
+    {
+        var fixture = await CreateCombatGameAsync();
+        var started = await StartCombatAsync(
+            fixture.Coordinator,
+            fixture.Room.RoomId,
+            fixture.HostId,
+            1,
+            [fixture.HostCharacterId],
+            [Opponent("Cultist", 70)]);
+        Assert.True(started.IsSuccess);
+
+        Assert.Null(GameProjection.Build(started.State!, fixture.MemberId).Combat);
+    }
+
+    [Fact]
+    public async Task Projection_CombatViewerActions_JsonHasExactSafePropertySetAndNoInternalFields()
+    {
+        var fixture = await CreateResolvableCombatGameAsync([1, 100]);
+        var pending = await StartAndBeginAgainstPlayerAsync(fixture);
+        Assert.True(pending.IsSuccess);
+
+        var actions = Assert.IsType<CombatViewerActionsSnapshot>(
+            GameProjection.Build(pending.State!, fixture.HostId).Combat!.ViewerActions);
+        using var actionDocument = JsonDocument.Parse(JsonSerializer.Serialize(
+            actions,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+        using var pendingDocument = JsonDocument.Parse(JsonSerializer.Serialize(
+            actions.PendingResponse,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+
+        Assert.Equal(
+            ["actorCharacterId", "canMeleeAttack", "canPass", "eligibleTargetParticipantIds", "pendingResponse"],
+            actionDocument.RootElement.EnumerateObject().Select(property => property.Name).OrderBy(name => name));
+        Assert.Equal(
+            ["availableResponses", "exchangeId"],
+            pendingDocument.RootElement.EnumerateObject().Select(property => property.Name).OrderBy(name => name));
+        var json = actionDocument.RootElement.GetRawText();
+        foreach (var forbidden in new[]
+                 {
+                      "policy", "allowance", "roll", "rawTarget", "stat", "registry", "schedule", "history", "source", "provenance"
+                 })
+        {
+            Assert.DoesNotContain(forbidden, json, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
     public async Task Projection_IsSeparatePlayerSafeDtoAndOwnershipIsEnforced()
     {
         var roomStore = new InMemoryRoomStore();

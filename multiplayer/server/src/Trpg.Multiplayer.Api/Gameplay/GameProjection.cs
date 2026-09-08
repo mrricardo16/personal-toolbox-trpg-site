@@ -106,8 +106,82 @@ public static class GameProjection
                 : new CombatPendingSnapshot(
                     GetPendingRole(session.PendingExchange, viewerParticipantIds),
                     "awaiting_response"),
-            BuildLastDamage(session.DamageDispositions));
+            BuildLastDamage(session.DamageDispositions),
+            BuildViewerActions(session, viewerPlayerId, currentActorParticipantId));
     }
+
+    private static CombatViewerActionsSnapshot? BuildViewerActions(
+        CombatSession session,
+        Guid viewerPlayerId,
+        string? currentActorParticipantId)
+    {
+        if (!session.Active)
+        {
+            return null;
+        }
+
+        var hasProgressionBlocker = session.PendingExchange is not null
+            || session.DamageDispositions.Values.Any(disposition => disposition.Status == DamageDispositionStatus.Pending);
+        var currentActor = session.Participants.SingleOrDefault(
+            participant => participant.ParticipantId.Value == currentActorParticipantId);
+        var ownsCurrentInvestigator = currentActor is
+        {
+            Active: true,
+            Kind: "investigator",
+            CharacterId: Guid,
+            OwnerPlayerId: Guid owner
+        } && owner == viewerPlayerId;
+
+        if (ownsCurrentInvestigator && !hasProgressionBlocker)
+        {
+            var eligibleTargets = session.Participants
+                .Where(participant => participant.Active && participant.Side != currentActor!.Side)
+                .Select(participant => participant.ParticipantId.Value)
+                .ToArray();
+            return new CombatViewerActionsSnapshot(
+                currentActor!.CharacterId,
+                eligibleTargets.Length > 0,
+                true,
+                eligibleTargets,
+                null);
+        }
+
+        var pending = session.PendingExchange;
+        var defender = pending is null
+            ? null
+            : session.Participants.SingleOrDefault(
+                participant => participant.ParticipantId.Value == pending.DefenderParticipantId.Value);
+        var ownsExactHumanDefender = pending is not null
+            && defender is
+            {
+                Active: true,
+                Kind: "investigator",
+                CharacterId: Guid,
+                OwnerPlayerId: Guid defenderOwner
+            }
+            && defenderOwner == viewerPlayerId
+            && pending.DefenderOwnerPlayerId == viewerPlayerId;
+        if (!ownsExactHumanDefender)
+        {
+            return null;
+        }
+
+        return new CombatViewerActionsSnapshot(
+            null,
+            false,
+            false,
+            [],
+            new CombatPendingResponseSnapshot(
+                pending!.ExchangeId,
+                pending.AvailableResponses.Select(ToCombatResponseWireValue).ToArray()));
+    }
+
+    private static string ToCombatResponseWireValue(CombatResponse response) => response switch
+    {
+        CombatResponse.Dodge => "dodge",
+        CombatResponse.FightBack => "fight_back",
+        _ => throw new CombatDamageStateInvariantException("Unsupported canonical Combat response.")
+    };
 
     private static CombatDamageSnapshot? BuildLastDamage(
         IReadOnlyDictionary<string, DamageDispositionState> damageDispositions)

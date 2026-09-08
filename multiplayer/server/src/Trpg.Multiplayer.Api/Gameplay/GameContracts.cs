@@ -140,6 +140,17 @@ public sealed record CombatDamageSnapshot(
     int NetDamage,
     bool TargetDefeated);
 
+public sealed record CombatPendingResponseSnapshot(
+    string ExchangeId,
+    IReadOnlyList<string> AvailableResponses);
+
+public sealed record CombatViewerActionsSnapshot(
+    Guid? ActorCharacterId,
+    bool CanMeleeAttack,
+    bool CanPass,
+    IReadOnlyList<string> EligibleTargetParticipantIds,
+    CombatPendingResponseSnapshot? PendingResponse);
+
 public sealed record CombatSnapshot(
     bool Active,
     int Round,
@@ -147,7 +158,8 @@ public sealed record CombatSnapshot(
     IReadOnlyList<CombatParticipantSnapshot> Participants,
     CombatExchangeSnapshot? LastExchange,
     CombatPendingSnapshot? Pending,
-    CombatDamageSnapshot? LastDamage = null);
+    CombatDamageSnapshot? LastDamage = null,
+    CombatViewerActionsSnapshot? ViewerActions = null);
 
 public sealed record ApplyDamageCommand(
     Guid RoomId,
