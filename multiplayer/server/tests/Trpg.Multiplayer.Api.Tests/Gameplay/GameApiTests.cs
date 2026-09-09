@@ -311,8 +311,15 @@ public sealed class GameApiTests(WebApplicationFactory<Program> factory)
                 expectedGameRevision = 7,
                 actorCharacterId,
                 targetParticipantId = "opponent:0",
-                playerId = Guid.NewGuid(), ownerPlayerId = Guid.NewGuid(), requestingPlayerId = Guid.NewGuid(),
-                roll = 1, target = 99, responsePolicy = "fight_back", damage = 99, nextActor = "spoof", round = 99
+                playerId = Guid.NewGuid(),
+                ownerPlayerId = Guid.NewGuid(),
+                requestingPlayerId = Guid.NewGuid(),
+                roll = 1,
+                target = 99,
+                responsePolicy = "fight_back",
+                damage = 99,
+                nextActor = "spoof",
+                round = 99
             });
         var respond = await SendAuthorizedAsync(client, HttpMethod.Post,
             $"/api/rooms/{created.RoomId}/game/combat/respond", created.PlayerSessionToken,
@@ -321,8 +328,15 @@ public sealed class GameApiTests(WebApplicationFactory<Program> factory)
                 expectedGameRevision = 8,
                 exchangeId = "exchange-1",
                 response = "dodge",
-                playerId = Guid.NewGuid(), ownerPlayerId = Guid.NewGuid(), requestingPlayerId = Guid.NewGuid(),
-                roll = 1, target = 99, responsePolicy = "fight_back", damage = 99, nextActor = "spoof", round = 99
+                playerId = Guid.NewGuid(),
+                ownerPlayerId = Guid.NewGuid(),
+                requestingPlayerId = Guid.NewGuid(),
+                roll = 1,
+                target = 99,
+                responsePolicy = "fight_back",
+                damage = 99,
+                nextActor = "spoof",
+                round = 99
             });
         var pass = await SendAuthorizedAsync(client, HttpMethod.Post,
             $"/api/rooms/{created.RoomId}/game/combat/pass", created.PlayerSessionToken,
@@ -330,8 +344,15 @@ public sealed class GameApiTests(WebApplicationFactory<Program> factory)
             {
                 expectedGameRevision = 9,
                 actorCharacterId,
-                playerId = Guid.NewGuid(), ownerPlayerId = Guid.NewGuid(), requestingPlayerId = Guid.NewGuid(),
-                roll = 1, target = 99, responsePolicy = "fight_back", damage = 99, nextActor = "spoof", round = 99
+                playerId = Guid.NewGuid(),
+                ownerPlayerId = Guid.NewGuid(),
+                requestingPlayerId = Guid.NewGuid(),
+                roll = 1,
+                target = 99,
+                responsePolicy = "fight_back",
+                damage = 99,
+                nextActor = "spoof",
+                round = 99
             });
 
         Assert.All([melee, respond, pass], response => Assert.Equal(HttpStatusCode.OK, response.StatusCode));
