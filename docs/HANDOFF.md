@@ -8,7 +8,7 @@
 
 ## Current Phase
 
-Current verified phase (2026-09-08): Phase 2H Player Combat Intent Protocol implementation and aggregate validation complete.
+Current verified phase (2026-09-09): Phase 2H Player Combat Intent Protocol implementation and post-fix aggregate validation complete at `827cd33c93c07cb39bd5df31dde867db5e26451b`.
 
 Completed:
 
@@ -193,9 +193,11 @@ Phase 2G 已由 Phase 2H aggregate gate 覆盖：`CombatSnapshot.lastDamage` 仍
 
 Phase 2H 已完成：公开 Combat 路由严格为 melee attack、respond、pass 三条。玩家身份只来自 bearer session；Host 无 NPC gameplay bypass。`PlayerCombatIntentCoordinator` 只依赖 `IGameCoordinator` 与 `IInternalCombatResolutionCoordinator`，从 viewer projection 做安全预检，并把 canonical Begin/Resolve/Damage/Pass transition 作为最终权威。NPC policy 保持 server-private；最终成功响应是 fresh viewer-specific projection。
 
+最终协议修复 `827cd33c93c07cb39bd5df31dde867db5e26451b` 保证三条 route 都先校验 bearer session 与 room membership，再检查 JSON media type/解析 body。早期拒绝只返回固定结构化 `code`；专用 combat invariant 只向客户端返回无 revision、无异常细节的 `combat_consistency_failure`，服务端仍保留错误日志。该修复没有新增 route、retry、rollback、dice、state transition 或 publication。
+
 Task 8 delivery evidence confirms committed revision-ordered SignalR snapshots, viewer privacy, canonical partial-commit recovery, no whole-intent replay/reroll, and disconnect/reconnect revision neutrality. Vue 仅消费 projected actions/targets；stale 409 只刷新一次并要求重新选择，不自动重放 intent。
 
-最终 aggregate gates：server `396/396`、client `39/39`、format PASS、conformance `19/10/21/19/48`、Single Player authoritative `37/37` + legacy alias、JS syntax `69/69`、formal SHA unchanged、strict UTF-8 PASS。real API credentialed scripts 未运行且本阶段不要求。
+`827cd33c93c07cb39bd5df31dde867db5e26451b` post-fix aggregate gates：server `409/409`（0 failed/skipped，build 0 warnings/errors）、client `39/39` + build、focused server `30/30`、expanded protocol `63/63`、focused client `31/31`、format PASS、conformance `19/10/21/19/48`、Combat Damage double-export SHA `0036133BF2BF1F37CBEF7DC7707832C258DE869870B46C17ADCA748FE905CEE7`、Single Player authoritative `37/37` + legacy alias、JS syntax `69/69`、39 个 Phase 2H 文件 strict UTF-8 PASS、formal double-build SHA `0A635D94CDD7284B35433092C834D92BCAD44961C14E30DBD565AB48B7E14D4D` 且 inventory/diff 不变。协议修复未改 client dependency/lock file，因此本轮未重复 `npm ci`，沿用此前 Task 10 immutable clean install 证据；real API credentialed scripts 未运行且本阶段不要求。
 
 下一步必须从新的明确授权开始。仍 deferred：public Start/End/Damage/ResolveDamage、NPC attacker/pass、PvP、IntentId registry、Firearms/Impaling、weapon switching、movement/range、timeout/forfeit、AI gameplay、Scenario、persistence、DB、Redis、matchmaking 与 Azure SignalR。
 

@@ -19,8 +19,9 @@ No protected Single Player fixture semantics or formal HTML baseline changed. Cr
 - `b32f685ff6138c66df09f7388f8fcf1043b8ef0b` — `feat: add player combat intent controls`
 - `3755ddd093638b368a5b5ab2c491dce20562e05e` — `test: align player combat intent aggregate guards`
 - `6d458e2e424c905f5a930e8d7c00f505eba1b5f7` — `test: format combat intent API tests`
+- `827cd33c93c07cb39bd5df31dde867db5e26451b` — `fix: enforce safe combat intent errors`
 
-The final factual documentation is committed separately as `docs: record player combat intent validation`; its SHA is verified after commit rather than self-embedded in this report.
+The original Task 10 factual documentation was committed separately as `docs: record player combat intent validation`; its SHA was verified after commit rather than self-embedded in this report. The post-fix documentation refresh below is intentionally left uncommitted for its caller to review.
 
 ## Task 1–9 RED/GREEN and review evidence
 
@@ -76,7 +77,9 @@ The initial format verification then reported only six Task 7 anonymous-object p
 
 Vue renders only `CombatViewerActionsSnapshot` actor, eligible target IDs, response choices, and safe projected summaries. It submits exact melee/respond/pass intents. It contains no dice parsing/rolling, target-legality or defender-ownership calculation, opposed resolution, damage/HP mutation, or turn/round advancement. A stale conflict fetches one authoritative snapshot, displays `Combat changed; choose again`, and never automatically replays the intent.
 
-## Aggregate validation
+## Original Task 10 aggregate validation
+
+The evidence below records the original Task 10 aggregate run before the final protocol safety correction. It remains valid historical evidence for that reviewed commit state and is not presented as the post-fix result.
 
 Commands were run from `E:\personal-toolbox-trpg-site` unless a client working directory is shown.
 
@@ -99,6 +102,22 @@ Commands were run from `E:\personal-toolbox-trpg-site` unless a client working d
 - `git diff --check` passed.
 - Raw broad forbidden searches self-match only the aggregate test regexes in `HomeView.test.ts`; production-filtered searches return zero coordinator forbidden dependencies, zero forbidden public surfaces, and zero client canonical calculation symbols.
 - Public route source and endpoint tests confirm exactly three Combat routes: melee attack, respond, and pass. Start/End/Damage/ResolveDamage remain absent/404.
+
+## Post-fix validation at `827cd33c93c07cb39bd5df31dde867db5e26451b`
+
+The final protocol correction makes bearer-session and room-membership authorization precede JSON media-type/body validation on all three public intents. Early failures return fixed structured codes, and dedicated coordinator/state/commit invariant failures map inside the single outer mutation gate to logged, fixed 500 `combat_consistency_failure` responses without revision or internal exception detail. It adds no route, retry, rollback, dice, state transition, or publication behavior.
+
+Fresh validation on 2026-09-09 produced the following evidence:
+
+- Server restore passed. Build passed with 0 warnings and 0 errors. Full server tests passed 409/409, 0 failed, 0 skipped. Format verification passed.
+- Full client tests passed 39/39 across six files and the client production build passed with 50 modules transformed. `npm ci` was not repeated because `827cd33` changes no client dependency or lock file; the original Task 10 clean immutable install above remains the install evidence.
+- Task 10 focused aggregate server selection passed 30/30; the expanded route/API/coordinator protocol selection passed 63/63; focused client selection passed 31/31 across three files.
+- Source audit found exactly three public Combat routes: melee attack, respond, and pass. The coordinator constructor remains exactly `IGameCoordinator` plus `IInternalCombatResolutionCoordinator`. Production-filtered searches found zero forbidden coordinator dependencies, zero forbidden public server surfaces, and zero client canonical authority symbols.
+- Conformance counts remained Check 19, HP 10, Stabilization 21, Combat Opposed 19, and Combat Damage 48. Two Combat Damage exporter runs produced identical SHA-256 `0036133BF2BF1F37CBEF7DC7707832C258DE869870B46C17ADCA748FE905CEE7`; the fixture diff remained empty.
+- The explicit 37-script order matched `.github/workflows/trpg-ci.yml`; all 37/37 authoritative offline regressions and the separate legacy alias passed. Credentialed real-API scripts were not run and remain outside this gate.
+- JavaScript syntax passed 69/69.
+- Formal verification reported `VERIFY_SINGLE_HTML:PASS`; both builds were 662681 bytes. The before/first/second SHA-256 remained exactly `0A635D94CDD7284B35433092C834D92BCAD44961C14E30DBD565AB48B7E14D4D`, the HTML inventory remained one, and the artifact diff was empty.
+- Strict UTF-8 decoding passed for 39 Phase 2H implementation, test, plan/brief, factual-doc, and evidence files including `phase-2h-final-protocol-fix-report.md`. `git diff --check` passed before this documentation update.
 
 ## Remaining risks and non-goals
 

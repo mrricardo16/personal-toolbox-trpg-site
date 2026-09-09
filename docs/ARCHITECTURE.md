@@ -383,6 +383,8 @@ The Vue client treats this snapshot as display-only: it renders semantic labels 
 
 The public Multiplayer Combat surface contains exactly three authenticated `POST` intents: melee attack, respond, and pass. There is no public Start, End, Damage, ResolveDamage, NPC actor/pass, firearm, or weapon-authority route. Player identity comes from the bearer session and cannot be supplied by the request body; Host identity grants no gameplay superuser capability.
 
+Each public intent authenticates the bearer session and verifies room membership before validating the JSON media type or reading the request body. Early failures use fixed structured JSON codes. Dedicated coordinator/state/commit invariant exceptions remain inside the single outer room mutation gate, are logged server-side, and map to a fixed 500 `combat_consistency_failure` response without revision, exception text, stack, or internal type; returned consistency failures use the same non-retryable boundary. Generic exceptions are not broadly swallowed.
+
 `PlayerCombatIntentCoordinator` is a thin application coordinator with exactly two dependencies: `IGameCoordinator` for viewer-specific projections and `IInternalCombatResolutionCoordinator` for canonical transitions. It does not read `IGameStateStore`, roll dice, calculate legality/damage/turn order, publish realtime events, or access persistence/AI services.
 
 The orchestration boundary is:
