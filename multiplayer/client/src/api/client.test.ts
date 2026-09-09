@@ -75,4 +75,120 @@ describe('RoomsApi', () => {
     expect(body).not.toHaveProperty('roll');
     expect(body).not.toHaveProperty('target');
   });
+
+  it('sends only expectedGameRevision actorCharacterId and projected target for melee attack', async () => {
+    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ revision: 2 }), { status: 200 }));
+    const api = new RoomsApi(new ApiClient(fetcher));
+
+    await api.meleeAttack('room-1', 'session-token', {
+      expectedGameRevision: 1,
+      actorCharacterId: 'character-guid',
+      targetParticipantId: 'opponent:0',
+    });
+
+    expect(fetcher).toHaveBeenCalledWith('/api/rooms/room-1/game/combat/melee-attack', expect.objectContaining({
+      method: 'POST', headers: expect.objectContaining({ Authorization: 'Bearer session-token' }),
+    }));
+    const body = JSON.parse(String(fetcher.mock.calls[0][1]?.body));
+    expect(body).toEqual({ expectedGameRevision: 1, actorCharacterId: 'character-guid', targetParticipantId: 'opponent:0' });
+    expect(body).not.toMatchObject({ playerId: expect.anything(), roll: expect.anything(), targetStats: expect.anything(), policy: expect.anything(), damage: expect.anything(), hp: expect.anything(), nextActor: expect.anything(), round: expect.anything() });
+  });
+
+  it('sends only expectedGameRevision exchangeId and projected response for respond', async () => {
+    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ revision: 2 }), { status: 200 }));
+    const api = new RoomsApi(new ApiClient(fetcher));
+
+    await api.respondToCombat('room-1', 'session-token', { expectedGameRevision: 1, exchangeId: 'exchange-1', response: 'dodge' });
+
+    expect(fetcher.mock.calls[0][0]).toBe('/api/rooms/room-1/game/combat/respond');
+    expect(JSON.parse(String(fetcher.mock.calls[0][1]?.body))).toEqual({ expectedGameRevision: 1, exchangeId: 'exchange-1', response: 'dodge' });
+  });
+
+  it('sends only expectedGameRevision and actorCharacterId for pass', async () => {
+    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ revision: 2 }), { status: 200 }));
+    const api = new RoomsApi(new ApiClient(fetcher));
+
+    await api.passCombatTurn('room-1', 'session-token', { expectedGameRevision: 1, actorCharacterId: 'character-guid' });
+
+    expect(fetcher.mock.calls[0][0]).toBe('/api/rooms/room-1/game/combat/pass');
+    expect(JSON.parse(String(fetcher.mock.calls[0][1]?.body))).toEqual({ expectedGameRevision: 1, actorCharacterId: 'character-guid' });
+  });
+
+  it('keeps bearer token out of URL and JSON bodies for all combat intents', async () => {
+    const fetcher = vi.fn().mockImplementation(() => new Response(JSON.stringify({ revision: 2 }), { status: 200 }));
+    const api = new RoomsApi(new ApiClient(fetcher));
+
+    await api.meleeAttack('room-1', 'session-token', { expectedGameRevision: 1, actorCharacterId: 'character-guid', targetParticipantId: 'opponent:0' });
+    await api.respondToCombat('room-1', 'session-token', { expectedGameRevision: 1, exchangeId: 'exchange-1', response: 'fight_back' });
+    await api.passCombatTurn('room-1', 'session-token', { expectedGameRevision: 1, actorCharacterId: 'character-guid' });
+
+    for (const [url, init] of fetcher.mock.calls) {
+      expect(String(url)).not.toContain('session-token');
+      expect(String(init?.body)).not.toContain('session-token');
+      expect(init?.headers).toMatchObject({ Authorization: 'Bearer session-token' });
+    }
+  });
+
+  it('preserves sanitized structured stale code and current revision without response text', async () => {
+    const fetcher = vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ code: 'stale_game_revision', currentGameRevision: 9, detail: 'provider secret body' }),
+      { status: 409 },
+    ));
+    const api = new ApiClient(fetcher);
+
+    let error: unknown;
+    try {
+      await api.request('/api/rooms/room-1');
+    } catch (caught) {
+      error = caught;
+    }
+
+    expect(error).toMatchObject({ status: 409, safeCode: 'Room unavailable', serverCode: 'stale_game_revision', currentGameRevision: 9 });
+    expect(Object.keys(error as ApiRequestError).sort()).toEqual(['currentGameRevision', 'name', 'safeCode', 'serverCode', 'status']);
+    expect((error as ApiRequestError).message).toBe('Room unavailable');
+    expect(error).not.toHaveProperty('detail');
+    expect(error).not.toHaveProperty('rawBody');
+    expect(JSON.stringify(error)).not.toContain('provider secret body');
+  });
+
+  it('drops unapproved structured error values and malformed current revisions', async () => {
+    const fetcher = vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ code: 'provider_error', currentGameRevision: '9', detail: 'provider secret body' }),
+      { status: 409 },
+    ));
+    const api = new ApiClient(fetcher);
+
+    let error: unknown;
+    try {
+      await api.request('/api/rooms/room-1');
+    } catch (caught) {
+      error = caught;
+    }
+
+    expect(error).toMatchObject({ status: 409, safeCode: 'Room unavailable' });
+    expect(Object.keys(error as ApiRequestError).sort()).toEqual(['name', 'safeCode', 'status']);
+    expect(error).not.toHaveProperty('serverCode');
+    expect(error).not.toHaveProperty('currentGameRevision');
+    expect(JSON.stringify(error)).not.toContain('provider_error');
+    expect(JSON.stringify(error)).not.toContain('provider secret body');
+  });
+
+  it('keeps the safe stale code but drops an infinite current revision', async () => {
+    const fetcher = vi.fn().mockResolvedValue(new Response(
+      '{"code":"stale_game_revision","currentGameRevision":1e999}',
+      { status: 409 },
+    ));
+    const api = new ApiClient(fetcher);
+
+    let error: unknown;
+    try {
+      await api.request('/api/rooms/room-1');
+    } catch (caught) {
+      error = caught;
+    }
+
+    expect(error).toMatchObject({ status: 409, safeCode: 'Room unavailable', serverCode: 'stale_game_revision' });
+    expect(error).not.toHaveProperty('currentGameRevision');
+    expect(Object.keys(error as ApiRequestError).sort()).toEqual(['name', 'safeCode', 'serverCode', 'status']);
+  });
 });

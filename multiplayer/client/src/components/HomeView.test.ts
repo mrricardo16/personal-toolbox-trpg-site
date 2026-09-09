@@ -6,6 +6,7 @@ import type { GameSnapshot } from '../contracts/rooms';
 import HomeView from './HomeView.vue';
 import LobbyView from './LobbyView.vue';
 import { RoomsApi } from '../api/rooms';
+import { ApiRequestError } from '../api/client';
 
 describe('lobby views', () => {
   it('validates create and join forms before emitting requests', async () => {
@@ -162,7 +163,7 @@ describe('lobby views', () => {
     expect(resolveCheck).not.toHaveBeenCalled();
   });
 
-  it('renders server-projected combat as read-only status without combat actions', () => {
+  it('renders Attack and Pass only from projected actor affordances and targets', () => {
     const api = {} as RoomsApi;
     const wrapper = mount(LobbyView, {
       props: {
@@ -178,6 +179,7 @@ describe('lobby views', () => {
             ],
             lastExchange: { outcome: 'attacker_hits', winnerParticipantId: 'character-1', dispositionPending: true },
             pending: { role: 'attacker', status: 'awaiting_response' },
+            viewerActions: { actorCharacterId: 'character-1', canMeleeAttack: true, canPass: true, eligibleTargetParticipantIds: ['opponent-1'], pendingResponse: null },
           },
         },
       },
@@ -189,8 +191,112 @@ describe('lobby views', () => {
     expect(wrapper.text()).toContain('ORDER Host → Cultist');
     expect(wrapper.text()).toContain('LAST attacker_hits · Host · PENDING');
     expect(wrapper.text()).toContain('WAITING attacker · awaiting_response');
-    expect(wrapper.findAll('button').map((button) => button.text()).join(' ')).not.toMatch(/Attack|Dodge|Fight Back|Pass|Start|End|Resolve|timeout/i);
-    expect(Object.keys(api).join(' ')).not.toMatch(/combat|attack|dodge|fight|pass|start|end|resolve/i);
+    expect(wrapper.get('[data-testid="combat-target"]').text()).toContain('Cultist');
+    expect(wrapper.get('[data-testid="combat-attack"]').text()).toBe('Attack');
+    expect(wrapper.get('[data-testid="combat-pass"]').text()).toBe('Pass');
+    expect(wrapper.findAll('[data-testid^="combat-response-"]')).toHaveLength(0);
+  });
+
+  it('renders Dodge and Fight Back only from projected pending response values', () => {
+    const wrapper = mount(LobbyView, {
+      props: {
+        currentPlayerId: 'player-1', busy: false, errorMessage: '', connectionStatus: 'connected', api: {} as RoomsApi, token: 'session-token',
+        room: { roomId: 'room-1', inviteCode: 'NIGHT-42', hostPlayerId: 'player-1', maxPlayers: 2, status: 'Open', revision: 1, players: [], aiConfiguration: null },
+        gameSnapshot: {
+          roomId: 'room-1', revision: 4, status: 'Active', createdAt: '2026-08-17T00:00:00Z', characters: [], lastCheck: null,
+          combat: { active: true, round: 2, currentActorParticipantId: 'opponent-1', participants: [], lastExchange: null, pending: null, viewerActions: { actorCharacterId: null, canMeleeAttack: false, canPass: false, eligibleTargetParticipantIds: [], pendingResponse: { exchangeId: 'exchange-1', availableResponses: ['dodge', 'fight_back'] } } },
+        },
+      },
+    });
+
+    expect(wrapper.get('[data-testid="combat-response-dodge"]').text()).toBe('Dodge');
+    expect(wrapper.get('[data-testid="combat-response-fight_back"]').text()).toBe('Fight Back');
+    expect(wrapper.find('[data-testid="combat-attack"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="combat-pass"]').exists()).toBe(false);
+  });
+
+  it('never renders another viewer response choices or unprojected targets', () => {
+    const wrapper = mount(LobbyView, {
+      props: {
+        currentPlayerId: 'player-1', busy: false, errorMessage: '', connectionStatus: 'connected', api: {} as RoomsApi, token: 'session-token',
+        room: { roomId: 'room-1', inviteCode: 'NIGHT-42', hostPlayerId: 'player-1', maxPlayers: 2, status: 'Open', revision: 1, players: [], aiConfiguration: null },
+        gameSnapshot: {
+          roomId: 'room-1', revision: 4, status: 'Active', createdAt: '2026-08-17T00:00:00Z', characters: [], lastCheck: null,
+          combat: { active: true, round: 2, currentActorParticipantId: 'opponent-1', participants: [{ participantId: 'opponent-1', characterId: null, label: 'Cultist', side: 'opponent', active: true, current: true, viewerOwned: false, stats: null }], lastExchange: null, pending: null, viewerActions: { actorCharacterId: null, canMeleeAttack: false, canPass: false, eligibleTargetParticipantIds: [], pendingResponse: null } },
+        },
+      },
+    });
+
+    expect(wrapper.find('[data-testid="combat-target"]').exists()).toBe(false);
+    expect(wrapper.findAll('[data-testid^="combat-response-"]')).toHaveLength(0);
+  });
+
+  it('submits one intent then waits for authoritative snapshot without optimistic combat changes', async () => {
+    let resolveAttack: (snapshot: GameSnapshot) => void = () => undefined;
+    const meleeAttack = vi.fn().mockImplementation(() => new Promise<GameSnapshot>((resolve) => { resolveAttack = resolve; }));
+    const api = Object.assign({ meleeAttack }, {} as RoomsApi) as RoomsApi;
+    const gameSnapshot: GameSnapshot = {
+      roomId: 'room-1', revision: 4, status: 'Active', createdAt: '2026-08-17T00:00:00Z', characters: [], lastCheck: null,
+      combat: { active: true, round: 2, currentActorParticipantId: 'character-1', participants: [{ participantId: 'opponent-1', characterId: null, label: 'Cultist', side: 'opponent', active: true, current: false, viewerOwned: false, stats: null }], lastExchange: null, pending: null, viewerActions: { actorCharacterId: 'character-guid', canMeleeAttack: true, canPass: false, eligibleTargetParticipantIds: ['opponent-1'], pendingResponse: null } },
+    };
+    const wrapper = mount(LobbyView, { props: { currentPlayerId: 'player-1', gameSnapshot, busy: false, errorMessage: '', connectionStatus: 'connected', api, token: 'session-token', room: { roomId: 'room-1', inviteCode: 'NIGHT-42', hostPlayerId: 'player-1', maxPlayers: 2, status: 'Open', revision: 1, players: [], aiConfiguration: null } } });
+
+    await wrapper.get('[data-testid="combat-target"]').setValue('opponent-1');
+    await wrapper.get('[data-testid="combat-attack"]').trigger('click');
+    expect(meleeAttack).toHaveBeenCalledWith('room-1', 'session-token', { expectedGameRevision: 4, actorCharacterId: 'character-guid', targetParticipantId: 'opponent-1' });
+    expect(wrapper.emitted('gameSnapshot')).toBeUndefined();
+    resolveAttack({ ...gameSnapshot, revision: 5 });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(wrapper.emitted('gameSnapshot')?.[0]).toEqual([{ ...gameSnapshot, revision: 5 }]);
+  });
+
+  it('refreshes on stale conflict and never automatically replays the intent', async () => {
+    const meleeAttack = vi.fn().mockRejectedValue(new ApiRequestError(409, 'Room unavailable', 'stale_game_revision', 5));
+    const getGame = vi.fn().mockResolvedValue({ roomId: 'room-1', revision: 5, status: 'Active', createdAt: '2026-08-17T00:00:00Z', characters: [], lastCheck: null });
+    const api = Object.assign({ meleeAttack, getGame }, {} as RoomsApi) as RoomsApi;
+    const wrapper = mount(LobbyView, { props: { currentPlayerId: 'player-1', gameSnapshot: { roomId: 'room-1', revision: 4, status: 'Active', createdAt: '2026-08-17T00:00:00Z', characters: [], lastCheck: null, combat: { active: true, round: 1, currentActorParticipantId: 'character-guid', participants: [], lastExchange: null, pending: null, viewerActions: { actorCharacterId: 'character-guid', canMeleeAttack: true, canPass: false, eligibleTargetParticipantIds: ['opponent-1'], pendingResponse: null } } }, busy: false, errorMessage: '', connectionStatus: 'connected', api, token: 'session-token', room: { roomId: 'room-1', inviteCode: 'NIGHT-42', hostPlayerId: 'player-1', maxPlayers: 2, status: 'Open', revision: 1, players: [], aiConfiguration: null } } });
+
+    await wrapper.get('[data-testid="combat-target"]').setValue('opponent-1');
+    await wrapper.get('[data-testid="combat-attack"]').trigger('click');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(getGame).toHaveBeenCalledTimes(1);
+    expect(meleeAttack).toHaveBeenCalledTimes(1);
+    expect(wrapper.emitted('gameSnapshot')).toEqual([[{ roomId: 'room-1', revision: 5, status: 'Active', createdAt: '2026-08-17T00:00:00Z', characters: [], lastCheck: null }]]);
+    expect(wrapper.text()).toContain('Combat changed; choose again');
+  });
+
+  it('does not submit a locally selected target after a newer snapshot removes it from projected eligibility', async () => {
+    const meleeAttack = vi.fn().mockResolvedValue({ roomId: 'room-1', revision: 6, status: 'Active', createdAt: '2026-08-17T00:00:00Z', characters: [], lastCheck: null });
+    const api = Object.assign({ meleeAttack }, {} as RoomsApi) as RoomsApi;
+    const initial: GameSnapshot = {
+      roomId: 'room-1', revision: 4, status: 'Active', createdAt: '2026-08-17T00:00:00Z', characters: [], lastCheck: null,
+      combat: { active: true, round: 1, currentActorParticipantId: 'character-guid', participants: [], lastExchange: null, pending: null, viewerActions: { actorCharacterId: 'character-guid', canMeleeAttack: true, canPass: false, eligibleTargetParticipantIds: ['opponent-1'], pendingResponse: null } },
+    };
+    const wrapper = mount(LobbyView, { props: { currentPlayerId: 'player-1', gameSnapshot: initial, busy: false, errorMessage: '', connectionStatus: 'connected', api, token: 'session-token', room: { roomId: 'room-1', inviteCode: 'NIGHT-42', hostPlayerId: 'player-1', maxPlayers: 2, status: 'Open', revision: 1, players: [], aiConfiguration: null } } });
+
+    await wrapper.get('[data-testid="combat-target"]').setValue('opponent-1');
+    const updated: GameSnapshot = {
+      ...initial,
+      revision: 5,
+      combat: {
+        ...initial.combat!,
+        viewerActions: { ...initial.combat!.viewerActions!, eligibleTargetParticipantIds: [] },
+      },
+    };
+    await wrapper.setProps({ gameSnapshot: updated });
+    expect(wrapper.get('[data-testid="combat-attack"]').attributes('disabled')).toBeDefined();
+    await wrapper.get('[data-testid="combat-attack"]').trigger('click');
+    expect(meleeAttack).not.toHaveBeenCalled();
+  });
+
+  it('contains no Start End Damage or NPC actor controls', () => {
+    const source = readFileSync(resolve(process.cwd(), 'src/components/LobbyView.vue'), 'utf8');
+    expect(source).not.toMatch(/combat-(?:start|end|damage|npc)|Start Combat|End Combat|Apply Damage|NPC/i);
+  });
+
+  it('contains no client combat legality dice opposed damage turn or round calculation', () => {
+    const source = readFileSync(resolve(process.cwd(), 'src/components/LobbyView.vue'), 'utf8');
+    expect(source).not.toMatch(/(?:calculate|rollDice|parseDice|opposed|combatLegality|nextActor|advanceRound)/i);
   });
 
   it('renders only safe combat damage facts without damage authority controls', () => {

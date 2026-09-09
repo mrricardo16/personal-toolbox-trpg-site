@@ -4,7 +4,7 @@ import type { GameSnapshot, PlayerSnapshot, RoomSnapshot } from '../contracts/ro
 import type { RoomConnectionStatus } from '../realtime/roomConnection';
 import { RoomsApi } from '../api/rooms';
 import HostAiConfigPanel from './HostAiConfigPanel.vue';
-import { safeApiMessage } from '../api/client';
+import { ApiRequestError, safeApiMessage } from '../api/client';
 
 defineProps<{
   room: RoomSnapshot;
@@ -26,6 +26,7 @@ const emit = defineEmits<{
 
 const gameBusy = ref(false);
 const gameError = ref('');
+const selectedTargetParticipantId = ref('');
 
 function playerLabel(player: PlayerSnapshot): string {
   return player.isHost ? `${player.nickname} · HOST` : player.nickname;
@@ -74,6 +75,52 @@ async function resolveCheck(
   } finally {
     gameBusy.value = false;
   }
+}
+
+async function submitCombatIntent(
+  props: { room: RoomSnapshot; api: RoomsApi; token: string },
+  submit: () => Promise<GameSnapshot>,
+): Promise<void> {
+  gameBusy.value = true;
+  gameError.value = '';
+  try {
+    emit('gameSnapshot', await submit());
+  } catch (error) {
+    if (error instanceof ApiRequestError && error.status === 409 && error.serverCode === 'stale_game_revision') {
+      try {
+        emit('gameSnapshot', await props.api.getGame(props.room.roomId, props.token));
+        gameError.value = 'Combat changed; choose again';
+      } catch (refreshError) {
+        gameError.value = safeApiMessage(refreshError);
+      }
+    } else {
+      gameError.value = safeApiMessage(error);
+    }
+  } finally {
+    gameBusy.value = false;
+  }
+}
+
+function meleeAttack(props: { room: RoomSnapshot; api: RoomsApi; token: string }, snapshot: GameSnapshot): Promise<void> {
+  const actions = snapshot.combat?.viewerActions;
+  if (!actions?.actorCharacterId || !actions.eligibleTargetParticipantIds.includes(selectedTargetParticipantId.value)) return Promise.resolve();
+  return submitCombatIntent(props, () => props.api.meleeAttack(props.room.roomId, props.token, {
+    expectedGameRevision: snapshot.revision,
+    actorCharacterId: actions.actorCharacterId as string,
+    targetParticipantId: selectedTargetParticipantId.value,
+  }));
+}
+
+function passCombatTurn(props: { room: RoomSnapshot; api: RoomsApi; token: string }, snapshot: GameSnapshot): Promise<void> {
+  const actorCharacterId = snapshot.combat?.viewerActions?.actorCharacterId;
+  if (!actorCharacterId) return Promise.resolve();
+  return submitCombatIntent(props, () => props.api.passCombatTurn(props.room.roomId, props.token, { expectedGameRevision: snapshot.revision, actorCharacterId }));
+}
+
+function respondToCombat(props: { room: RoomSnapshot; api: RoomsApi; token: string }, snapshot: GameSnapshot, response: 'dodge' | 'fight_back'): Promise<void> {
+  const exchangeId = snapshot.combat?.viewerActions?.pendingResponse?.exchangeId;
+  if (!exchangeId) return Promise.resolve();
+  return submitCombatIntent(props, () => props.api.respondToCombat(props.room.roomId, props.token, { expectedGameRevision: snapshot.revision, exchangeId, response }));
 }
 </script>
 
@@ -139,6 +186,13 @@ async function resolveCheck(
           <p v-if="gameSnapshot.combat.lastExchange">LAST {{ gameSnapshot.combat.lastExchange.outcome }} · {{ combatParticipantLabel(gameSnapshot, gameSnapshot.combat.lastExchange.winnerParticipantId) }} · {{ gameSnapshot.combat.lastExchange.dispositionPending ? 'PENDING' : 'COMPLETE' }}</p>
           <p v-if="gameSnapshot.combat.pending">WAITING {{ gameSnapshot.combat.pending.role }} · {{ gameSnapshot.combat.pending.status }}</p>
           <p v-if="gameSnapshot.combat.lastDamage" data-testid="last-damage">LAST DAMAGE {{ combatParticipantLabel(gameSnapshot, gameSnapshot.combat.lastDamage.ownerParticipantId) }} → {{ combatParticipantLabel(gameSnapshot, gameSnapshot.combat.lastDamage.targetParticipantId) }} · {{ gameSnapshot.combat.lastDamage.outcome }} · NET {{ gameSnapshot.combat.lastDamage.netDamage }} · {{ gameSnapshot.combat.lastDamage.targetDefeated ? 'DEFEATED' : 'ACTIVE' }}</p>
+          <select v-if="gameSnapshot.combat.viewerActions?.canMeleeAttack" v-model="selectedTargetParticipantId" data-testid="combat-target" :disabled="gameBusy">
+            <option disabled value="">Choose target</option>
+            <option v-for="participantId in gameSnapshot.combat.viewerActions.eligibleTargetParticipantIds" :key="participantId" :value="participantId">{{ combatParticipantLabel(gameSnapshot, participantId) }}</option>
+          </select>
+          <button v-if="gameSnapshot.combat.viewerActions?.canMeleeAttack" class="secondary-button" data-testid="combat-attack" :disabled="gameBusy || !gameSnapshot.combat.viewerActions.eligibleTargetParticipantIds.includes(selectedTargetParticipantId)" type="button" @click="meleeAttack({ room, api, token }, gameSnapshot)">Attack</button>
+          <button v-if="gameSnapshot.combat.viewerActions?.canPass" class="secondary-button" data-testid="combat-pass" :disabled="gameBusy" type="button" @click="passCombatTurn({ room, api, token }, gameSnapshot)">Pass</button>
+          <button v-for="response in gameSnapshot.combat.viewerActions?.pendingResponse?.availableResponses ?? []" :key="response" class="secondary-button" :data-testid="`combat-response-${response}`" :disabled="gameBusy" type="button" @click="respondToCombat({ room, api, token }, gameSnapshot, response)">{{ response === 'dodge' ? 'Dodge' : 'Fight Back' }}</button>
         </section>
       </template>
       <template v-else>

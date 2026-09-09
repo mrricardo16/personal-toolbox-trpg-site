@@ -149,6 +149,36 @@ export interface CombatDamageSnapshot {
   targetDefeated: boolean;
 }
 
+export interface CombatPendingResponseSnapshot {
+  exchangeId: string;
+  availableResponses: Array<'dodge' | 'fight_back'>;
+}
+
+export interface CombatViewerActionsSnapshot {
+  actorCharacterId: string | null;
+  canMeleeAttack: boolean;
+  canPass: boolean;
+  eligibleTargetParticipantIds: string[];
+  pendingResponse: CombatPendingResponseSnapshot | null;
+}
+
+export interface PlayerMeleeAttackRequest {
+  expectedGameRevision: number;
+  actorCharacterId: string;
+  targetParticipantId: string;
+}
+
+export interface PlayerCombatRespondRequest {
+  expectedGameRevision: number;
+  exchangeId: string;
+  response: 'dodge' | 'fight_back';
+}
+
+export interface PlayerCombatPassRequest {
+  expectedGameRevision: number;
+  actorCharacterId: string;
+}
+
 export interface CombatSnapshot {
   active: boolean;
   round: number;
@@ -157,6 +187,7 @@ export interface CombatSnapshot {
   lastExchange: CombatExchangeSnapshot | null;
   pending: CombatPendingSnapshot | null;
   lastDamage?: CombatDamageSnapshot | null;
+  viewerActions?: CombatViewerActionsSnapshot | null;
 }
 
 export interface CheckResolvedEvent {

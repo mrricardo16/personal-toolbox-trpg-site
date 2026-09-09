@@ -5,6 +5,9 @@ import type {
   GameSnapshot,
   InitializeGameRequest,
   JoinRoomRequest,
+  PlayerCombatPassRequest,
+  PlayerCombatRespondRequest,
+  PlayerMeleeAttackRequest,
   RoomClosedResponse,
   RoomCreatedResponse,
   RoomJoinedResponse,
@@ -108,6 +111,30 @@ export class RoomsApi {
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
+      body: JSON.stringify(request),
+    });
+  }
+
+  meleeAttack(roomId: string, token: string, request: PlayerMeleeAttackRequest): Promise<GameSnapshot> {
+    return this.client.request(`/api/rooms/${roomId}/game/combat/melee-attack`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(request),
+    });
+  }
+
+  respondToCombat(roomId: string, token: string, request: PlayerCombatRespondRequest): Promise<GameSnapshot> {
+    return this.client.request(`/api/rooms/${roomId}/game/combat/respond`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(request),
+    });
+  }
+
+  passCombatTurn(roomId: string, token: string, request: PlayerCombatPassRequest): Promise<GameSnapshot> {
+    return this.client.request(`/api/rooms/${roomId}/game/combat/pass`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(request),
     });
   }

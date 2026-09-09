@@ -4,9 +4,34 @@ export class ApiRequestError extends Error {
   constructor(
     public readonly status: number,
     public readonly safeCode: string,
+    serverCode?: string,
+    currentGameRevision?: number,
   ) {
     super(safeCode);
     this.name = 'ApiRequestError';
+    if (serverCode === 'stale_game_revision') {
+      this.serverCode = serverCode;
+    }
+    if (typeof currentGameRevision === 'number' && Number.isFinite(currentGameRevision)) {
+      this.currentGameRevision = currentGameRevision;
+    }
+  }
+
+  declare public readonly serverCode?: 'stale_game_revision';
+  declare public readonly currentGameRevision?: number;
+}
+
+async function readStructuredError(response: Response): Promise<Pick<ApiRequestError, 'serverCode' | 'currentGameRevision'>> {
+  try {
+    const body: unknown = await response.json();
+    if (typeof body !== 'object' || body === null) return {};
+    const record = body as Record<string, unknown>;
+    return {
+      ...(record.code === 'stale_game_revision' ? { serverCode: record.code } : {}),
+      ...(typeof record.currentGameRevision === 'number' && Number.isFinite(record.currentGameRevision) ? { currentGameRevision: record.currentGameRevision } : {}),
+    };
+  } catch {
+    return {};
   }
 }
 
@@ -61,7 +86,8 @@ export class ApiClient {
     }
 
     if (!response.ok && !acceptedStatuses.includes(response.status)) {
-      throw new ApiRequestError(response.status, statusToSafeCode(response.status));
+      const structured = await readStructuredError(response);
+      throw new ApiRequestError(response.status, statusToSafeCode(response.status), structured.serverCode, structured.currentGameRevision);
     }
 
     if (response.status === 204) {
