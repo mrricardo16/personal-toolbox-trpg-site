@@ -772,10 +772,14 @@ public sealed class PlayerCombatIntentCoordinatorTests(WebApplicationFactory<Pro
         Assert.Equal(0, rig.Combat.Publications);
         Assert.Same(rig.InitialCanonicalState, rig.Combat.CurrentState);
         Assert.Equal(expectedRevision, rig.Combat.CurrentState.Revision);
+        var initialCombat = rig.InitialCanonicalState.Combat!;
         var combat = rig.Combat.CurrentState.Combat!;
-        Assert.Equal(0, combat.TurnIndex);
-        Assert.Equal(1, combat.Round);
-        Assert.Empty(combat.History);
+        Assert.Equal(initialCombat.TurnIndex, combat.TurnIndex);
+        Assert.Equal(initialCombat.Round, combat.Round);
+        Assert.Equal(initialCombat.PendingExchange, combat.PendingExchange);
+        Assert.Equal(initialCombat.DamageDispositions, combat.DamageDispositions);
+        Assert.Equal(initialCombat.History, combat.History);
+        Assert.Equal(initialCombat.LastExchange, combat.LastExchange);
     }
 
     private sealed class RespondRig

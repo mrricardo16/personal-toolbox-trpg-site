@@ -1,10 +1,22 @@
 import { describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { GameSnapshot } from '../contracts/rooms';
 import HomeView from './HomeView.vue';
 import LobbyView from './LobbyView.vue';
+
+function readClientProductionSource(directory: string): string {
+  return readdirSync(directory, { withFileTypes: true })
+    .flatMap((entry) => {
+      const path = resolve(directory, entry.name);
+      if (entry.isDirectory()) return [readClientProductionSource(path)];
+      if (!entry.name.endsWith('.ts') && !entry.name.endsWith('.vue')) return [];
+      if (entry.name.endsWith('.test.ts')) return [];
+      return [readFileSync(path, 'utf8')];
+    })
+    .join('\n');
+}
 import { RoomsApi } from '../api/rooms';
 import { ApiRequestError } from '../api/client';
 
@@ -295,8 +307,20 @@ describe('lobby views', () => {
   });
 
   it('contains no client combat legality dice opposed damage turn or round calculation', () => {
-    const source = readFileSync(resolve(process.cwd(), 'src/components/LobbyView.vue'), 'utf8');
-    expect(source).not.toMatch(/(?:calculate|rollDice|parseDice|opposed|combatLegality|nextActor|advanceRound)/i);
+    const source = readClientProductionSource(resolve(process.cwd(), 'src'));
+    expect(source).not.toMatch(/\b(?:rollDice|parseDice|calculateInitiative|calculateEligibleTargets|resolveOpposed|calculateDamage|applyDamage|advanceTurn|advanceRound)\b/);
+  });
+
+  it('exposes no public Start End Damage or NPC actor combat API', () => {
+    const methodNames = Object.getOwnPropertyNames(RoomsApi.prototype);
+    expect(methodNames).not.toEqual(expect.arrayContaining([
+      'startCombat', 'endCombat', 'damageCombat', 'resolveCombatDamage',
+      'npcAttack', 'npcMeleeAttack', 'npcPass',
+    ]));
+
+    const source = readClientProductionSource(resolve(process.cwd(), 'src'));
+    expect(source).not.toMatch(/combat\/(?:start|end|damage|resolve-damage)/i);
+    expect(source).not.toMatch(/\bNpc\w*(?:Attack|Pass)\b|\b(?:Attack|Pass)\w*Npc\b/);
   });
 
   it('renders only safe combat damage facts without damage authority controls', () => {
