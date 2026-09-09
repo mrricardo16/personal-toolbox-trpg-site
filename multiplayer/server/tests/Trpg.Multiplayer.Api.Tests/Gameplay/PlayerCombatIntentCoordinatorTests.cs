@@ -1,6 +1,14 @@
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.Http.Connections;
+using Microsoft.AspNetCore.SignalR.Client;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using System.Net;
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using System.Reflection;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using Trpg.Multiplayer.Api.Gameplay;
 using Trpg.Multiplayer.Api.Realtime;
@@ -242,6 +250,90 @@ public sealed class PlayerCombatIntentCoordinatorTests(WebApplicationFactory<Pro
     }
 
     [Fact]
+    public async Task PartialBeginThenResolvePreRngFailure_ReconnectSeesCommittedPendingWithoutWholeIntentRetry()
+    {
+        var recovery = await RunPartialFailureReconnectAsync("ResolvePendingExchangeAsync");
+
+        Assert.Equal(HttpStatusCode.Conflict, recovery.StatusCode);
+        Assert.Equal("stale_game_revision", recovery.ErrorCode);
+        Assert.Equal(3, recovery.CurrentRevision);
+        Assert.Equal(1, recovery.Proxy.BeginCalls);
+        Assert.Equal(1, recovery.Proxy.ResolveCalls);
+        Assert.Equal(0, recovery.Proxy.DamageCalls);
+        Assert.Equal(3, recovery.State.Revision);
+        Assert.NotNull(recovery.Recovered.Combat!.Pending);
+        Assert.Null(recovery.State.Combat!.LastExchange);
+        Assert.Equal(recovery.State.Revision, recovery.Recovered.Revision);
+        Assert.Same(recovery.State, recovery.AfterReconnectState);
+        Assert.Equal(
+            JsonSerializer.Serialize(GameProjection.Build(recovery.State, recovery.PlayerId)),
+            JsonSerializer.Serialize(recovery.Recovered));
+    }
+
+    [Fact]
+    public async Task PartialResolveThenDamagePreRngFailure_ReconnectSeesResolvedPendingDispositionWithoutWholeIntentRetry()
+    {
+        var recovery = await RunPartialFailureReconnectAsync("ResolveCombatDamageAsync");
+
+        Assert.Equal(HttpStatusCode.Conflict, recovery.StatusCode);
+        Assert.Equal("stale_game_revision", recovery.ErrorCode);
+        Assert.Equal(4, recovery.CurrentRevision);
+        Assert.Equal(1, recovery.Proxy.BeginCalls);
+        Assert.Equal(1, recovery.Proxy.ResolveCalls);
+        Assert.Equal(1, recovery.Proxy.DamageCalls);
+        Assert.Equal(4, recovery.State.Revision);
+        Assert.Null(recovery.State.Combat!.PendingExchange);
+        var exchangeId = recovery.State.Combat.LastExchange!.ExchangeId;
+        Assert.Equal(DamageDispositionStatus.Pending, recovery.State.Combat.DamageDispositions[exchangeId].Status);
+        Assert.True(recovery.Recovered.Combat!.LastExchange!.DispositionPending);
+        Assert.Equal(recovery.State.Revision, recovery.Recovered.Revision);
+        Assert.Same(recovery.State, recovery.AfterReconnectState);
+        Assert.Equal(
+            JsonSerializer.Serialize(GameProjection.Build(recovery.State, recovery.PlayerId)),
+            JsonSerializer.Serialize(recovery.Recovered));
+    }
+
+    [Fact]
+    public async Task PostRngDamageInvariantFailure_IsNotMappedRetryableAndNeverRerolls()
+    {
+        var rig = MeleeAttackRig.Create(hasPendingDamage: true);
+        rig.Combat.ExceptionMethod = "ResolveCombatDamageAsync";
+
+        var exception = await Assert.ThrowsAnyAsync<Exception>(
+            () => InvokeMeleeAttackAsync(rig.Coordinator, rig.Intent));
+
+        Assert.Equal("CombatDamageCommitInvariantException", exception.GetType().Name);
+        Assert.Single(rig.Combat.BeginCommands);
+        Assert.Single(rig.Combat.ResolveCommands);
+        Assert.Single(rig.Combat.DamageCommands);
+        Assert.Equal(3, rig.Combat.DiceRolls);
+        Assert.Equal(2, rig.Combat.Publications);
+        Assert.Equal(14, rig.Combat.CurrentState.Revision);
+        Assert.Equal(DamageDispositionStatus.Pending, rig.Combat.CurrentState.Combat!.DamageDispositions[rig.ExchangeId].Status);
+    }
+
+    [Fact]
+    public async Task LostSuccessRetryWithOldRevision_IsConflictWithoutDuplicateMutationOrPublish()
+    {
+        var rig = MeleeAttackRig.Create(hasPendingDamage: true);
+        var first = await InvokeMeleeAttackAsync(rig.Coordinator, rig.Intent);
+        rig.Games.Enqueue(rig.FinalProjection);
+
+        var retry = await InvokeMeleeAttackAsync(rig.Coordinator, rig.Intent);
+
+        Assert.True(GetProperty<bool>(first, "IsSuccess"));
+        Assert.False(GetProperty<bool>(retry, "IsSuccess"));
+        Assert.Equal("StaleGameRevision", GetProperty<object>(GetProperty<object>(retry, "Error")!, "Code")!.ToString());
+        Assert.Equal(15, GetProperty<long?>(GetProperty<object>(retry, "Error")!, "CurrentGameRevision"));
+        Assert.Single(rig.Combat.BeginCommands);
+        Assert.Single(rig.Combat.ResolveCommands);
+        Assert.Single(rig.Combat.DamageCommands);
+        Assert.Equal(1, rig.Combat.GeneratedExchangeIds);
+        Assert.Equal(3, rig.Combat.DiceRolls);
+        Assert.Equal(3, rig.Combat.Publications);
+    }
+
+    [Fact]
     public async Task Respond_ExactHumanDefenderOwner_ResolvesAndConsumesExactPendingDamage()
     {
         var rig = RespondRig.Create(hasPendingDamage: true);
@@ -422,6 +514,170 @@ public sealed class PlayerCombatIntentCoordinatorTests(WebApplicationFactory<Pro
             .Invoke(coordinator, [intent])!;
         await task;
         return task.GetType().GetProperty("Result")!.GetValue(task)!;
+    }
+
+    private async Task<PartialFailureRecovery> RunPartialFailureReconnectAsync(string failureMethod)
+    {
+        using var isolatedFactory = factory.WithWebHostBuilder(builder =>
+            builder.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<IDiceRoller>();
+                services.AddSingleton<IDiceRoller>(new IntegrationSequenceDiceRoller([1, 100]));
+                var contractType = GetRequiredGameplayType("IInternalCombatResolutionCoordinator");
+                services.RemoveAll(contractType);
+                services.AddSingleton(contractType, provider =>
+                {
+                    var proxyObject = DispatchProxy.Create(contractType, typeof(DelegatingCombatFailureProxy));
+                    var proxy = (DelegatingCombatFailureProxy)proxyObject;
+                    proxy.Inner = provider.GetRequiredService<IGameCoordinator>();
+                    proxy.FailureMethod = failureMethod;
+                    return proxyObject;
+                });
+            }));
+        using var client = isolatedFactory.CreateClient();
+        using var create = await client.PostAsJsonAsync("/api/rooms", new { nickname = "Actor", maxPlayers = 2 });
+        Assert.Equal(HttpStatusCode.Created, create.StatusCode);
+        var room = Assert.IsType<PartialRoomCreated>(await create.Content.ReadFromJsonAsync<PartialRoomCreated>());
+        using var initializeRequest = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"/api/rooms/{room.RoomId}/game/initialize")
+        {
+            Content = JsonContent.Create(new
+            {
+                characters = new[]
+                {
+                    new
+                    {
+                        playerId = room.PlayerId,
+                        name = "Actor",
+                        checkValues = new Dictionary<string, int>
+                        {
+                            ["dex"] = 80,
+                            ["fighting_brawl"] = 80,
+                            ["dodge"] = 40,
+                            ["str"] = 60,
+                            ["siz"] = 50
+                        },
+                        health = new { currentHp = 12, maxHp = 12, con = 60 }
+                    }
+                }
+            })
+        };
+        initializeRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", room.PlayerSessionToken);
+        using var initialize = await client.SendAsync(initializeRequest);
+        Assert.Equal(HttpStatusCode.Created, initialize.StatusCode);
+        var initialized = Assert.IsType<GameSnapshot>(await initialize.Content.ReadFromJsonAsync<GameSnapshot>());
+        var actorCharacterId = Assert.Single(initialized.Characters).CharacterId;
+        var realCoordinator = Assert.IsType<GameCoordinator>(isolatedFactory.Services.GetRequiredService<IGameCoordinator>());
+        await InvokeInternalCombatTransitionAsync(
+            realCoordinator,
+            "StartCombatAsync",
+            room.RoomId,
+            room.PlayerId,
+            1L,
+            new[] { actorCharacterId },
+            CreatePartialOpponentDefinitions());
+
+        using var attackRequest = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"/api/rooms/{room.RoomId}/game/combat/melee-attack")
+        {
+            Content = JsonContent.Create(new
+            {
+                expectedGameRevision = 2,
+                actorCharacterId,
+                targetParticipantId = "opponent:0"
+            })
+        };
+        attackRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", room.PlayerSessionToken);
+        using var attack = await client.SendAsync(attackRequest);
+        using var errorDocument = JsonDocument.Parse(await attack.Content.ReadAsStringAsync());
+        var errorCode = errorDocument.RootElement.GetProperty("code").GetString()!;
+        var currentRevision = errorDocument.RootElement.GetProperty("currentGameRevision").GetInt64();
+        var store = isolatedFactory.Services.GetRequiredService<IGameStateStore>();
+        Assert.True(store.TryGet(room.RoomId, out var committed));
+
+        var (firstConnection, _) = await AttachGameAsync(isolatedFactory, room.PlayerSessionToken);
+        await firstConnection.StopAsync();
+        await firstConnection.DisposeAsync();
+        var (secondConnection, recovered) = await AttachGameAsync(isolatedFactory, room.PlayerSessionToken);
+        await secondConnection.DisposeAsync();
+        Assert.True(store.TryGet(room.RoomId, out var afterReconnect));
+        var proxy = (DelegatingCombatFailureProxy)isolatedFactory.Services.GetRequiredService(
+            GetRequiredGameplayType("IInternalCombatResolutionCoordinator"));
+        return new PartialFailureRecovery(
+            attack.StatusCode,
+            errorCode,
+            currentRevision,
+            room.PlayerId,
+            committed!,
+            afterReconnect!,
+            recovered,
+            proxy);
+    }
+
+    private static async Task<(HubConnection Connection, GameSnapshot Snapshot)> AttachGameAsync(
+        WebApplicationFactory<Program> app,
+        string token)
+    {
+        var server = app.Server;
+        var connection = new HubConnectionBuilder()
+            .WithUrl(new Uri(server.BaseAddress, "/hubs/room"), options =>
+            {
+                options.HttpMessageHandlerFactory = _ => server.CreateHandler();
+                options.Transports = HttpTransportType.LongPolling;
+            })
+            .Build();
+        var snapshotCompletion = new TaskCompletionSource<GameSnapshot>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        connection.On<GameSnapshot>("GameSnapshot", snapshot => snapshotCompletion.TrySetResult(snapshot));
+        await connection.StartAsync();
+        await connection.InvokeAsync<RoomSnapshot>("AttachSession", token);
+        return (connection, await snapshotCompletion.Task.WaitAsync(TimeSpan.FromSeconds(5)));
+    }
+
+    private static async Task InvokeInternalCombatTransitionAsync(
+        GameCoordinator coordinator,
+        string methodName,
+        params object?[] arguments)
+    {
+        var method = typeof(GameCoordinator).GetMethod(
+            methodName,
+            BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var command = Activator.CreateInstance(method.GetParameters().Single().ParameterType, arguments)!;
+        var task = Assert.IsAssignableFrom<Task>(method.Invoke(coordinator, [command]));
+        await task;
+        var result = task.GetType().GetProperty("Result")!.GetValue(task)!;
+        Assert.True(GetProperty<bool>(result, "IsSuccess"));
+    }
+
+    private static Array CreatePartialOpponentDefinitions()
+    {
+        var type = GetRequiredGameplayType("OpponentDefinition");
+        var definitions = Array.CreateInstance(type, 1);
+        definitions.SetValue(
+            Activator.CreateInstance(
+                type,
+                "Target",
+                70,
+                50,
+                40,
+                new[] { CombatResponse.Dodge },
+                1,
+                CombatResponse.Dodge,
+                50,
+                50,
+                12,
+                12,
+                0,
+                new CombatWeaponProfile(
+                    "unarmed",
+                    "Unarmed",
+                    new DiceExpression("1d3", 1, 3, 0),
+                    true,
+                    "melee_non_impaling")),
+            0);
+        return definitions;
     }
 
     private static object CreatePassIntent(MeleeAttackRig rig) => Activator.CreateInstance(
@@ -987,9 +1243,28 @@ public sealed class PlayerCombatIntentCoordinatorTests(WebApplicationFactory<Pro
                     DamageDispositionStatus.Pending,
                     null),
                 StringComparer.Ordinal);
+            var lastExchange = dispositions.TryGetValue(exchangeId, out var exactDisposition)
+                ? new CombatExchange(
+                    exchangeId,
+                    1,
+                    0,
+                    actorId,
+                    defenderId,
+                    CombatResponse.Dodge,
+                    new CheckResolutionResult(1, 50, "regular", 50, "success", true, false, false),
+                    new CheckResolutionResult(100, 50, "regular", 50, "failure", false, false, false),
+                    0,
+                    0,
+                    1,
+                    "attacker_hits",
+                    actorId,
+                    exactDisposition,
+                    DateTimeOffset.UnixEpoch)
+                : null;
             var session = new CombatSession(
                 Guid.NewGuid(), true, 1, 0, [actorId, defenderId], participants,
-                new Dictionary<string, int>(), new Dictionary<string, int>(), pending, null, [],
+                new Dictionary<string, int>(), new Dictionary<string, int>(), pending, lastExchange,
+                lastExchange is null ? [] : [lastExchange],
                 dispositions, new Dictionary<Guid, DyingScheduleState>(),
                 DateTimeOffset.UnixEpoch, null, null);
             return new MultiplayerGameState(
@@ -1024,10 +1299,80 @@ public sealed class PlayerCombatIntentCoordinatorTests(WebApplicationFactory<Pro
                 npcResponsePolicy);
     }
 
+    private sealed record PartialRoomCreated(
+        Guid RoomId,
+        string InviteCode,
+        Guid PlayerId,
+        string PlayerSessionToken);
+
+    private sealed record PartialFailureRecovery(
+        HttpStatusCode StatusCode,
+        string ErrorCode,
+        long CurrentRevision,
+        Guid PlayerId,
+        MultiplayerGameState State,
+        MultiplayerGameState AfterReconnectState,
+        GameSnapshot Recovered,
+        DelegatingCombatFailureProxy Proxy);
+
+    public class DelegatingCombatFailureProxy : DispatchProxy
+    {
+        public object Inner { get; set; } = null!;
+        public string FailureMethod { get; set; } = string.Empty;
+        public int BeginCalls { get; private set; }
+        public int ResolveCalls { get; private set; }
+        public int DamageCalls { get; private set; }
+
+        protected override object? Invoke(MethodInfo? targetMethod, object?[]? args)
+        {
+            switch (targetMethod!.Name)
+            {
+                case "BeginOpposedExchangeAsync":
+                    BeginCalls++;
+                    break;
+                case "ResolvePendingExchangeAsync":
+                    ResolveCalls++;
+                    break;
+                case "ResolveCombatDamageAsync":
+                    DamageCalls++;
+                    break;
+            }
+
+            if (targetMethod.Name == FailureMethod)
+            {
+                var gameResultType = targetMethod.ReturnType.GetGenericArguments().Single();
+                var gameResult = gameResultType.GetMethod("Failure")!
+                    .Invoke(null, [GameErrorCode.StateConflict])!;
+                return typeof(Task)
+                    .GetMethod(nameof(Task.FromResult))!
+                    .MakeGenericMethod(gameResultType)
+                    .Invoke(null, [gameResult])!;
+            }
+
+            return targetMethod.Invoke(Inner, args);
+        }
+    }
+
+    private sealed class IntegrationSequenceDiceRoller(IEnumerable<int> rolls) : IDiceRoller
+    {
+        private readonly Queue<int> rolls = new(rolls);
+
+        public PercentileDiceRoll RollPercentile(int bonusDice, int penaltyDice)
+        {
+            Assert.True(rolls.TryDequeue(out var roll), "No deterministic percentile roll remains.");
+            return new PercentileDiceRoll(roll, [roll]);
+        }
+
+        public GenericDiceRoll RollDice(DiceRollRequest request) =>
+            throw new InvalidOperationException("Pre-RNG damage failure must not roll generic damage dice.");
+    }
+
     private sealed class RecordingGameCoordinator(params GameSnapshot[] snapshots) : IGameCoordinator
     {
         private readonly Queue<GameSnapshot> snapshots = new(snapshots);
         public int ProjectionCalls { get; private set; }
+
+        public void Enqueue(GameSnapshot snapshot) => snapshots.Enqueue(snapshot);
 
         public Task<GameResult<GameSnapshot>> GetProjectionAsync(Guid roomId, Guid viewerPlayerId)
         {
@@ -1057,10 +1402,30 @@ public sealed class PlayerCombatIntentCoordinatorTests(WebApplicationFactory<Pro
         public int GeneratedExchangeIds { get; private set; }
         public int DiceRolls { get; private set; }
         public int Publications { get; private set; }
+        public string? FailureMethod { get; set; }
+        public GameErrorCode FailureCode { get; set; } = GameErrorCode.StateConflict;
+        public string? ExceptionMethod { get; set; }
 
         protected override object? Invoke(MethodInfo? targetMethod, object?[]? args)
         {
             var command = args![0]!;
+            if (targetMethod!.Name == ExceptionMethod)
+            {
+                RecordAttempt(targetMethod.Name, command, postRng: true);
+                throw (Exception)Activator.CreateInstance(
+                    GetRequiredGameplayType("CombatDamageCommitInvariantException"),
+                    BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+                    null,
+                    ["Injected post-RNG commit invariant failure."],
+                    null)!;
+            }
+
+            if (targetMethod.Name == FailureMethod)
+            {
+                RecordAttempt(targetMethod.Name, command, postRng: false);
+                return RecordFailure(targetMethod.ReturnType, FailureCode);
+            }
+
             return targetMethod!.Name switch
             {
                 "BeginOpposedExchangeAsync" => RecordSuccess(
@@ -1073,6 +1438,31 @@ public sealed class PlayerCombatIntentCoordinatorTests(WebApplicationFactory<Pro
                     PassCommands, command, "PassCombatTurnResult", PassState, 0, 0),
                 _ => throw new NotSupportedException(targetMethod.Name)
             };
+        }
+
+        private void RecordAttempt(string methodName, object command, bool postRng)
+        {
+            var commands = methodName switch
+            {
+                "ResolvePendingExchangeAsync" => ResolveCommands,
+                "ResolveCombatDamageAsync" => DamageCommands,
+                _ => throw new NotSupportedException(methodName)
+            };
+            commands.Add(command);
+            if (postRng)
+            {
+                DiceRolls++;
+            }
+        }
+
+        private static object RecordFailure(Type taskType, GameErrorCode code)
+        {
+            var gameResultType = taskType.GetGenericArguments().Single();
+            var gameResult = gameResultType.GetMethod("Failure")!.Invoke(null, [code])!;
+            return typeof(Task)
+                .GetMethod(nameof(Task.FromResult))!
+                .MakeGenericMethod(gameResultType)
+                .Invoke(null, [gameResult])!;
         }
 
         private object RecordSuccess(

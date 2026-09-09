@@ -2,10 +2,14 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Collections.Concurrent;
 using Microsoft.AspNetCore.Http.Connections;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.SignalR.Client;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Trpg.Multiplayer.Api.Gameplay;
 using Trpg.Multiplayer.Api.Realtime;
 using Xunit;
@@ -541,6 +545,99 @@ public sealed class SignalRGameDeliveryTests(WebApplicationFactory<Program> fact
         await reattached.StopAsync();
     }
 
+    [Fact]
+    public async Task PlayerMeleeAttack_NpcDamage_PublishesBeginResolveDamageOnlyAfterEachCommitInRevisionOrder()
+    {
+        var delivery = await RunNpcMeleeAttackAsync([1, 100], [2]);
+
+        Assert.Equal([3L, 4L, 5L], delivery.Actor.Select(item => item.Snapshot.Revision));
+        Assert.All(delivery.Actor, item => Assert.True(item.Committed));
+        Assert.All(delivery.Actor, item => Assert.True(item.Snapshot.Revision > delivery.RequestRevision));
+        Assert.Equal(3, delivery.Actor.Select(item => item.Snapshot.Revision).Distinct().Count());
+        Assert.Equal(delivery.HttpSnapshot.Revision, delivery.Actor[^1].Snapshot.Revision);
+    }
+
+    [Fact]
+    public async Task PlayerMeleeAttack_NpcNoDamage_PublishesBeginAndResolveExactlyOnce()
+    {
+        var delivery = await RunNpcMeleeAttackAsync([100, 1], []);
+
+        Assert.Equal([3L, 4L], delivery.Actor.Select(item => item.Snapshot.Revision));
+        Assert.All(delivery.Actor, item => Assert.True(item.Committed));
+        Assert.Equal(4, delivery.HttpSnapshot.Revision);
+        Assert.Null(delivery.HttpSnapshot.Combat!.LastDamage);
+    }
+
+    [Fact]
+    public async Task PlayerMeleeAttack_HumanDefender_PublishesBeginOnlyWithViewerSpecificAffordances()
+    {
+        var delivery = await RunHumanDefenderMeleeAttackAsync();
+
+        var actor = Assert.Single(delivery.Actor);
+        var defender = Assert.Single(delivery.Defender);
+        var observer = Assert.Single(delivery.Nonparticipant);
+        Assert.True(actor.Committed);
+        Assert.True(defender.Committed);
+        Assert.True(observer.Committed);
+        Assert.Equal(3, actor.Snapshot.Revision);
+        Assert.Null(actor.Snapshot.Combat!.ViewerActions?.PendingResponse);
+        var pendingResponse = Assert.IsType<CombatPendingResponseSnapshot>(
+            defender.Snapshot.Combat!.ViewerActions!.PendingResponse);
+        Assert.Equal(delivery.ExchangeId, pendingResponse.ExchangeId);
+        Assert.Equal(["dodge", "fight_back"], pendingResponse.AvailableResponses);
+        Assert.Null(observer.Snapshot.Combat);
+        Assert.Equal(3, delivery.HttpSnapshot.Revision);
+        AssertViewerSafeParticipantStats(actor.Snapshot);
+        AssertViewerSafeParticipantStats(defender.Snapshot);
+    }
+
+    [Fact]
+    public async Task PlayerCombatIntent_NonparticipantReceivesNullCombatAtEveryPublishedRevision()
+    {
+        var delivery = await RunNpcMeleeAttackAsync([1, 100], [2]);
+
+        Assert.Equal([3L, 4L, 5L], delivery.Nonparticipant.Select(item => item.Snapshot.Revision));
+        Assert.All(delivery.Nonparticipant, item => Assert.Null(item.Snapshot.Combat));
+    }
+
+    [Fact]
+    public async Task PlayerCombatIntent_RealtimeJsonNeverContainsPolicyAllowanceRollsStatsRegistryScheduleHistorySourceOrProvenance()
+    {
+        var npcDelivery = await RunNpcMeleeAttackAsync([1, 100], [2]);
+        var humanDelivery = await RunHumanDefenderMeleeAttackAsync();
+        var snapshots = npcDelivery.Actor.Select(item => item.Snapshot)
+            .Concat(npcDelivery.Nonparticipant.Select(item => item.Snapshot))
+            .Concat(humanDelivery.Actor.Select(item => item.Snapshot))
+            .Concat(humanDelivery.Defender.Select(item => item.Snapshot))
+            .Concat(humanDelivery.Nonparticipant.Select(item => item.Snapshot));
+
+        foreach (var snapshot in snapshots)
+        {
+            AssertViewerSafeParticipantStats(snapshot);
+            var json = JsonSerializer.Serialize(snapshot);
+            foreach (var forbidden in new[]
+            {
+                "NpcResponsePolicy", "ResponseAllowance", "AttackerCheck", "DefenderCheck",
+                "RawRolls", "DamageDispositions", "DyingSchedule", "History", "SourceId", "Provenance"
+            })
+            {
+                Assert.DoesNotContain(forbidden, json, StringComparison.OrdinalIgnoreCase);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task PlayerCombatIntent_ApplicationCoordinatorAddsNoDuplicatePublish()
+    {
+        var delivery = await RunNpcMeleeAttackAsync([1, 100], [2]);
+
+        Assert.Equal(3, delivery.Actor.Count);
+        Assert.Equal(3, delivery.Nonparticipant.Count);
+        Assert.Equal(3, delivery.Actor.Select(item => item.Snapshot.Revision).Distinct().Count());
+        Assert.Equal(3, delivery.Nonparticipant.Select(item => item.Snapshot.Revision).Distinct().Count());
+        Assert.Equal([3L, 4L, 5L], delivery.PublishedRevisions);
+    }
+
     public Task InitializeAsync() => Task.CompletedTask;
 
     public async Task DisposeAsync()
@@ -551,9 +648,9 @@ public sealed class SignalRGameDeliveryTests(WebApplicationFactory<Program> fact
         }
     }
 
-    private HubConnection CreateHubConnection()
+    private HubConnection CreateHubConnection(WebApplicationFactory<Program>? app = null)
     {
-        var server = factory.Server;
+        var server = (app ?? factory).Server;
         var connection = new HubConnectionBuilder()
             .WithUrl(new Uri(server.BaseAddress, "/hubs/room"), options =>
             {
@@ -565,44 +662,249 @@ public sealed class SignalRGameDeliveryTests(WebApplicationFactory<Program> fact
         return connection;
     }
 
-    private async Task<HubConnection> AttachAsync(string token)
+    private async Task<HubConnection> AttachAsync(string token, WebApplicationFactory<Program>? app = null)
     {
-        var connection = CreateHubConnection();
+        var connection = CreateHubConnection(app);
         await connection.StartAsync();
         await connection.InvokeAsync<RoomSnapshot>("AttachSession", token);
         return connection;
     }
 
-    private async Task<RoomCreatedResponse> CreateRoomAsync(string nickname, int maxPlayers)
+    private async Task<CombatDelivery> RunNpcMeleeAttackAsync(
+        IReadOnlyList<int> percentileRolls,
+        IReadOnlyList<int> genericRolls)
     {
-        using var response = await factory.CreateClient().PostAsJsonAsync(
+        using var isolatedFactory = CreateDeterministicFactory(percentileRolls, genericRolls);
+        var setup = await CreatePlayerCombatSetupAsync(isolatedFactory, humanDefender: false);
+        return await ExecuteMeleeAttackAsync(isolatedFactory, setup, expectedPublishedCount: genericRolls.Count > 0 ? 3 : 2);
+    }
+
+    private async Task<CombatDelivery> RunHumanDefenderMeleeAttackAsync()
+    {
+        using var isolatedFactory = CreateDeterministicFactory([], []);
+        var setup = await CreatePlayerCombatSetupAsync(isolatedFactory, humanDefender: true);
+        return await ExecuteMeleeAttackAsync(isolatedFactory, setup, expectedPublishedCount: 1);
+    }
+
+    private WebApplicationFactory<Program> CreateDeterministicFactory(
+        IReadOnlyList<int> percentileRolls,
+        IReadOnlyList<int> genericRolls) => factory.WithWebHostBuilder(builder =>
+        builder.ConfigureTestServices(services =>
+        {
+            services.RemoveAll<IDiceRoller>();
+            services.AddSingleton<IDiceRoller>(new SequenceDiceRoller(percentileRolls, genericRolls));
+            services.RemoveAll<IGameRealtimeNotifier>();
+            services.AddSingleton<CommitTrackingGameRealtimeNotifier>();
+            services.AddSingleton<IGameRealtimeNotifier>(provider =>
+                provider.GetRequiredService<CommitTrackingGameRealtimeNotifier>());
+        }));
+
+    private async Task<PlayerCombatSetup> CreatePlayerCombatSetupAsync(
+        WebApplicationFactory<Program> app,
+        bool humanDefender)
+    {
+        var room = await CreateRoomAsync("Actor", 4, app);
+        var defender = await JoinRoomAsync(room.InviteCode, "Defender", app);
+        var observer = await JoinRoomAsync(room.InviteCode, "Observer", app);
+        using var initialize = await PostAuthorizedAsync(
+            $"/api/rooms/{room.RoomId}/game/initialize",
+            room.PlayerSessionToken,
+            new
+            {
+                characters = new[]
+                {
+                    new { playerId = room.PlayerId, name = "Actor", checkValues = new Dictionary<string, int> { ["dex"] = 80, ["fighting_brawl"] = 80, ["dodge"] = 40, ["str"] = 60, ["siz"] = 50 }, health = new { currentHp = 12, maxHp = 12, con = 60 } },
+                    new { playerId = defender.PlayerId, name = "Defender", checkValues = new Dictionary<string, int> { ["dex"] = 70, ["fighting_brawl"] = 50, ["dodge"] = 60, ["str"] = 50, ["siz"] = 50 }, health = new { currentHp = 12, maxHp = 12, con = 60 } }
+                }
+            },
+            app);
+        Assert.Equal(HttpStatusCode.Created, initialize.StatusCode);
+        var initialized = Assert.IsType<GameSnapshot>(await initialize.Content.ReadFromJsonAsync<GameSnapshot>());
+        var actorCharacterId = initialized.Characters.Single(character => character.OwnerPlayerId == room.PlayerId).CharacterId;
+        var defenderCharacterId = initialized.Characters.Single(character => character.OwnerPlayerId == defender.PlayerId).CharacterId;
+        var coordinator = Assert.IsType<GameCoordinator>(app.Services.GetRequiredService<IGameCoordinator>());
+        var started = await InvokeInternalCombatAsync(
+            coordinator,
+            "StartCombatAsync",
+            room.RoomId,
+            room.PlayerId,
+            1L,
+            new[] { actorCharacterId },
+            CreateOpponentDefinitions(coordinator));
+        var startValue = GetProperty<object>(started, "Value")!;
+        var startedState = GetProperty<MultiplayerGameState>(startValue, "State")!;
+
+        if (humanDefender)
+        {
+            var store = app.Services.GetRequiredService<IGameStateStore>();
+            var participants = startedState!.Combat!.Participants
+                .Select(participant => participant.ParticipantId.Value == "opponent:0"
+                    ? participant with
+                    {
+                        CharacterId = defenderCharacterId,
+                        OwnerPlayerId = defender.PlayerId,
+                        Kind = "investigator"
+                    }
+                    : participant)
+                .ToArray();
+            var replacement = new MultiplayerGameState(
+                startedState.RoomId,
+                startedState.Revision,
+                startedState.Status,
+                startedState.CreatedAt,
+                startedState.Characters,
+                startedState.LastCheck,
+                startedState.Combat with { Participants = participants });
+            Assert.True(store.TryReplace(startedState, replacement));
+        }
+
+        return new PlayerCombatSetup(room, defender, observer, actorCharacterId);
+    }
+
+    private async Task<CombatDelivery> ExecuteMeleeAttackAsync(
+        WebApplicationFactory<Program> app,
+        PlayerCombatSetup setup,
+        int expectedPublishedCount)
+    {
+        var store = app.Services.GetRequiredService<IGameStateStore>();
+        var publicationTracker = app.Services.GetRequiredService<CommitTrackingGameRealtimeNotifier>();
+        var publicationBaseline = publicationTracker.GetPublishedRevisions().Count;
+        var actorConnection = await AttachAsync(setup.Room.PlayerSessionToken, app);
+        var defenderConnection = await AttachAsync(setup.Defender.PlayerSessionToken, app);
+        var observerConnection = await AttachAsync(setup.Observer.PlayerSessionToken, app);
+        var actor = new ConcurrentQueue<ObservedSnapshot>();
+        var defender = new ConcurrentQueue<ObservedSnapshot>();
+        var nonparticipant = new ConcurrentQueue<ObservedSnapshot>();
+        var actorComplete = NewCompletion();
+        var defenderComplete = NewCompletion();
+        var observerComplete = NewCompletion();
+
+        Register(actorConnection, actor, actorComplete);
+        Register(defenderConnection, defender, defenderComplete);
+        Register(observerConnection, nonparticipant, observerComplete);
+
+        using var response = await PostAuthorizedAsync(
+            $"/api/rooms/{setup.Room.RoomId}/game/combat/melee-attack",
+            setup.Room.PlayerSessionToken,
+            new
+            {
+                expectedGameRevision = 2,
+                actorCharacterId = setup.ActorCharacterId,
+                targetParticipantId = "opponent:0"
+            },
+            app);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var httpSnapshot = Assert.IsType<GameSnapshot>(await response.Content.ReadFromJsonAsync<GameSnapshot>());
+        await Task.WhenAll(
+            actorComplete.Task.WaitAsync(EventTimeout),
+            defenderComplete.Task.WaitAsync(EventTimeout),
+            observerComplete.Task.WaitAsync(EventTimeout));
+
+        return new CombatDelivery(
+            2,
+            actor.ToArray(),
+            defender.ToArray(),
+            nonparticipant.ToArray(),
+            httpSnapshot,
+            store.TryGet(setup.Room.RoomId, out var state)
+                ? state!.Combat!.PendingExchange?.ExchangeId
+                : null,
+            publicationTracker.GetPublishedRevisions().Skip(publicationBaseline).ToArray());
+
+        void Register(
+            HubConnection connection,
+            ConcurrentQueue<ObservedSnapshot> snapshots,
+            TaskCompletionSource completion)
+        {
+            connection.On<GameSnapshot>("GameSnapshot", snapshot =>
+            {
+                var committed = publicationTracker.WasCommittedBeforePublish(snapshot.Revision);
+                snapshots.Enqueue(new ObservedSnapshot(snapshot, committed));
+                if (snapshots.Count >= expectedPublishedCount)
+                {
+                    completion.TrySetResult();
+                }
+            });
+        }
+    }
+
+    private async Task<RoomCreatedResponse> CreateRoomAsync(
+        string nickname,
+        int maxPlayers,
+        WebApplicationFactory<Program>? app = null)
+    {
+        using var response = await (app ?? factory).CreateClient().PostAsJsonAsync(
             "/api/rooms",
             new { nickname, maxPlayers });
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         return Assert.IsType<RoomCreatedResponse>(await response.Content.ReadFromJsonAsync<RoomCreatedResponse>());
     }
 
-    private async Task<RoomJoinedResponse> JoinRoomAsync(string inviteCode, string nickname)
+    private async Task<RoomJoinedResponse> JoinRoomAsync(
+        string inviteCode,
+        string nickname,
+        WebApplicationFactory<Program>? app = null)
     {
-        using var response = await factory.CreateClient().PostAsJsonAsync(
+        using var response = await (app ?? factory).CreateClient().PostAsJsonAsync(
             "/api/rooms/join",
             new { inviteCode, nickname });
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         return Assert.IsType<RoomJoinedResponse>(await response.Content.ReadFromJsonAsync<RoomJoinedResponse>());
     }
 
-    private async Task<HttpResponseMessage> PostAuthorizedAsync(string path, string token, object body)
+    private async Task<HttpResponseMessage> PostAuthorizedAsync(
+        string path,
+        string token,
+        object body,
+        WebApplicationFactory<Program>? app = null)
     {
         using var request = new HttpRequestMessage(HttpMethod.Post, path)
         {
             Content = JsonContent.Create(body)
         };
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
-        return await factory.CreateClient().SendAsync(request);
+        return await (app ?? factory).CreateClient().SendAsync(request);
     }
 
     private static TaskCompletionSource<T> NewCompletion<T>() =>
         new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    private static TaskCompletionSource NewCompletion() =>
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    private static T? GetProperty<T>(object instance, string propertyName) =>
+        (T?)instance.GetType().GetProperty(propertyName)!.GetValue(instance);
+
+    private static void AssertViewerSafeParticipantStats(GameSnapshot snapshot)
+    {
+        if (snapshot.Combat is null)
+        {
+            return;
+        }
+
+        Assert.Single(snapshot.Combat.Participants, participant => participant.ViewerOwned && participant.Stats is not null);
+        Assert.All(
+            snapshot.Combat.Participants.Where(participant => !participant.ViewerOwned),
+            participant => Assert.Null(participant.Stats));
+
+        using var document = JsonDocument.Parse(JsonSerializer.Serialize(snapshot));
+        var participants = document.RootElement.GetProperty("Combat").GetProperty("Participants");
+        foreach (var participant in participants.EnumerateArray())
+        {
+            var viewerOwned = participant.GetProperty("ViewerOwned").GetBoolean();
+            var stats = participant.GetProperty("Stats");
+            if (!viewerOwned)
+            {
+                Assert.Equal(JsonValueKind.Null, stats.ValueKind);
+                continue;
+            }
+
+            Assert.Equal(JsonValueKind.Object, stats.ValueKind);
+            Assert.Equal(
+                ["Dex", "Dodge", "Fighting"],
+                stats.EnumerateObject().Select(property => property.Name).Order().ToArray());
+        }
+    }
 
     private static Array CreateOpponentDefinitions(GameCoordinator coordinator)
     {
@@ -615,7 +917,7 @@ public sealed class SignalRGameDeliveryTests(WebApplicationFactory<Program> fact
                 70,
                 55,
                 40,
-                new[] { CombatResponse.Dodge },
+                new[] { CombatResponse.Dodge, CombatResponse.FightBack },
                 1,
                 CombatResponse.Dodge,
                 90,
@@ -722,4 +1024,77 @@ public sealed class SignalRGameDeliveryTests(WebApplicationFactory<Program> fact
         string PlayerSessionToken);
 
     private sealed record RoomJoinedResponse(Guid PlayerId, string PlayerSessionToken);
+
+    private sealed record PlayerCombatSetup(
+        RoomCreatedResponse Room,
+        RoomJoinedResponse Defender,
+        RoomJoinedResponse Observer,
+        Guid ActorCharacterId);
+
+    private sealed record ObservedSnapshot(GameSnapshot Snapshot, bool Committed);
+
+    private sealed record CombatDelivery(
+        long RequestRevision,
+        IReadOnlyList<ObservedSnapshot> Actor,
+        IReadOnlyList<ObservedSnapshot> Defender,
+        IReadOnlyList<ObservedSnapshot> Nonparticipant,
+        GameSnapshot HttpSnapshot,
+        string? ExchangeId,
+        IReadOnlyList<long> PublishedRevisions);
+
+    private sealed class CommitTrackingGameRealtimeNotifier(
+        IHubContext<RoomHub, IRoomClient> hubContext,
+        IGameStateStore states,
+        IPlayerConnectionRegistry connections) : IGameRealtimeNotifier
+    {
+        private readonly SignalRGameRealtimeNotifier inner = new(hubContext, states, connections);
+        private readonly ConcurrentDictionary<long, byte> committedBeforePublish = new();
+        private readonly ConcurrentQueue<long> publishedRevisions = new();
+
+        public async Task PublishGameSnapshotAsync(Guid roomId)
+        {
+            if (states.TryGet(roomId, out var state) && state is not null)
+            {
+                committedBeforePublish.TryAdd(state.Revision, 0);
+                publishedRevisions.Enqueue(state.Revision);
+            }
+
+            await inner.PublishGameSnapshotAsync(roomId);
+        }
+
+        public Task PublishCheckResolvedAsync(Guid roomId, CheckResolvedEvent message) =>
+            inner.PublishCheckResolvedAsync(roomId, message);
+
+        public Task SendGameSnapshotAsync(string connectionId, Guid roomId, Guid playerId) =>
+            inner.SendGameSnapshotAsync(connectionId, roomId, playerId);
+
+        public bool WasCommittedBeforePublish(long revision) => committedBeforePublish.ContainsKey(revision);
+
+        public IReadOnlyList<long> GetPublishedRevisions() => publishedRevisions.ToArray();
+    }
+
+    private sealed class SequenceDiceRoller(
+        IEnumerable<int> percentileRolls,
+        IEnumerable<int> genericRolls) : IDiceRoller
+    {
+        private readonly Queue<int> percentileRolls = new(percentileRolls);
+        private readonly Queue<int> genericRolls = new(genericRolls);
+
+        public PercentileDiceRoll RollPercentile(int bonusDice, int penaltyDice)
+        {
+            Assert.True(percentileRolls.TryDequeue(out var roll), "No deterministic percentile roll remains.");
+            return new PercentileDiceRoll(roll, [roll]);
+        }
+
+        public GenericDiceRoll RollDice(DiceRollRequest request)
+        {
+            var rolls = new int[request.Count];
+            for (var index = 0; index < rolls.Length; index++)
+            {
+                Assert.True(genericRolls.TryDequeue(out rolls[index]), "No deterministic generic roll remains.");
+            }
+
+            return new GenericDiceRoll(request.Count, request.Faces, rolls, rolls.Sum());
+        }
+    }
 }

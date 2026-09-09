@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Extensions.DependencyInjection;
+using Trpg.Multiplayer.Api.Gameplay;
 using Trpg.Multiplayer.Api.Realtime;
 using Trpg.Multiplayer.Api.Rooms;
 using Xunit;
@@ -149,6 +150,70 @@ public sealed class DisconnectReconnectTests(WebApplicationFactory<Program> fact
         await AssertAttachRejectedAsync(player.PlayerSessionToken);
     }
 
+    [Fact]
+    public async Task PendingHumanResponse_DisconnectReconnectPreservesExactStateAndRestoresOwnerAffordance()
+    {
+        var setup = await CreatePendingHumanCombatAsync();
+        var store = factory.Services.GetRequiredService<IGameStateStore>();
+        Assert.True(store.TryGet(setup.Room.RoomId, out var before));
+
+        await StopAndWaitAsync(setup.DefenderConnection);
+        await WaitForCanonicalPlayerAsync(setup.Room.RoomId, setup.Defender.PlayerId, false, 5);
+        var defenderRecovered = await AttachForGameAsync(setup.Defender.PlayerSessionToken);
+        var attackerRecovered = await AttachForGameAsync(setup.Room.PlayerSessionToken);
+        var observerRecovered = await AttachForGameAsync(setup.Observer.PlayerSessionToken);
+
+        Assert.True(store.TryGet(setup.Room.RoomId, out var after));
+        AssertCombatStateEqual(before!, after!);
+        var pending = Assert.IsType<CombatPendingResponseSnapshot>(
+            defenderRecovered.Combat!.ViewerActions!.PendingResponse);
+        Assert.Equal(setup.ExchangeId, pending.ExchangeId);
+        Assert.Equal(["dodge", "fight_back"], pending.AvailableResponses);
+        Assert.NotNull(attackerRecovered.Combat!.Pending);
+        Assert.Null(attackerRecovered.Combat.ViewerActions?.PendingResponse);
+        Assert.Null(observerRecovered.Combat);
+    }
+
+    [Fact]
+    public async Task Disconnect_DoesNotResolveRespondPassAdvanceRoundAdvanceTurnOrConsumeDamage()
+    {
+        var setup = await CreatePendingHumanCombatAsync();
+        var store = factory.Services.GetRequiredService<IGameStateStore>();
+        Assert.True(store.TryGet(setup.Room.RoomId, out var before));
+
+        await StopAndWaitAsync(setup.DefenderConnection);
+        await WaitForCanonicalPlayerAsync(setup.Room.RoomId, setup.Defender.PlayerId, false, 5);
+
+        Assert.True(store.TryGet(setup.Room.RoomId, out var after));
+        AssertCombatStateEqual(before!, after!);
+        Assert.Equal(setup.ExchangeId, after!.Combat!.PendingExchange!.ExchangeId);
+        Assert.Null(after.Combat.LastExchange);
+        Assert.Empty(after.Combat.DamageDispositions);
+    }
+
+    [Fact]
+    public async Task Reconnect_DoesNotMutateGameRevisionOrCanonicalCombat()
+    {
+        var setup = await CreatePendingHumanCombatAsync();
+        var store = factory.Services.GetRequiredService<IGameStateStore>();
+        Assert.True(store.TryGet(setup.Room.RoomId, out var before));
+        await StopAndWaitAsync(setup.DefenderConnection);
+        await WaitForCanonicalPlayerAsync(setup.Room.RoomId, setup.Defender.PlayerId, false, 5);
+
+        var defenderRecovered = await AttachForGameAsync(setup.Defender.PlayerSessionToken);
+        var attackerRecovered = await AttachForGameAsync(setup.Room.PlayerSessionToken);
+        var observerRecovered = await AttachForGameAsync(setup.Observer.PlayerSessionToken);
+
+        Assert.True(store.TryGet(setup.Room.RoomId, out var after));
+        AssertCombatStateEqual(before!, after!);
+        Assert.Equal(before!.Revision, defenderRecovered.Revision);
+        Assert.Equal(before.Revision, attackerRecovered.Revision);
+        Assert.Equal(before.Revision, observerRecovered.Revision);
+        Assert.Equal(setup.ExchangeId, defenderRecovered.Combat!.ViewerActions!.PendingResponse!.ExchangeId);
+        Assert.Null(attackerRecovered.Combat!.ViewerActions?.PendingResponse);
+        Assert.Null(observerRecovered.Combat);
+    }
+
     public Task InitializeAsync() => Task.CompletedTask;
 
     public async Task DisposeAsync()
@@ -179,6 +244,148 @@ public sealed class DisconnectReconnectTests(WebApplicationFactory<Program> fact
         await connection.StartAsync();
         var snapshot = await connection.InvokeAsync<RoomSnapshot>("AttachSession", playerSessionToken);
         return (connection, snapshot);
+    }
+
+    private async Task<GameSnapshot> AttachForGameAsync(string playerSessionToken)
+    {
+        var connection = CreateHubConnection();
+        var gameSnapshot = NewCompletion<GameSnapshot>();
+        connection.On<GameSnapshot>("GameSnapshot", snapshot => gameSnapshot.TrySetResult(snapshot));
+        await connection.StartAsync();
+        await connection.InvokeAsync<RoomSnapshot>("AttachSession", playerSessionToken);
+        return await gameSnapshot.Task.WaitAsync(EventTimeout);
+    }
+
+    private async Task<PendingHumanCombatSetup> CreatePendingHumanCombatAsync()
+    {
+        var room = await CreateRoomAsync("Actor");
+        var defender = await JoinRoomAsync(room.InviteCode, "Defender");
+        var observer = await JoinRoomAsync(room.InviteCode, "Observer");
+        using var initialize = await PostAuthorizedAsync(
+            $"/api/rooms/{room.RoomId}/game/initialize",
+            room.PlayerSessionToken,
+            new
+            {
+                characters = new[]
+                {
+                    new { playerId = room.PlayerId, name = "Actor", checkValues = CombatValues(80, 80, 40), health = new { currentHp = 12, maxHp = 12, con = 60 } },
+                    new { playerId = defender.PlayerId, name = "Defender", checkValues = CombatValues(70, 50, 60), health = new { currentHp = 12, maxHp = 12, con = 60 } }
+                }
+            });
+        Assert.Equal(HttpStatusCode.Created, initialize.StatusCode);
+        var initialized = Assert.IsType<GameSnapshot>(await initialize.Content.ReadFromJsonAsync<GameSnapshot>());
+        var actorCharacterId = initialized.Characters.Single(character => character.OwnerPlayerId == room.PlayerId).CharacterId;
+        var defenderCharacterId = initialized.Characters.Single(character => character.OwnerPlayerId == defender.PlayerId).CharacterId;
+        var coordinator = Assert.IsType<GameCoordinator>(factory.Services.GetRequiredService<IGameCoordinator>());
+        await InvokeInternalCombatAsync(
+            coordinator,
+            "StartCombatAsync",
+            room.RoomId,
+            room.PlayerId,
+            1L,
+            new[] { actorCharacterId },
+            CreateOpponentDefinitions());
+
+        var store = factory.Services.GetRequiredService<IGameStateStore>();
+        Assert.True(store.TryGet(room.RoomId, out var started));
+        var participants = started!.Combat!.Participants
+            .Select(participant => participant.ParticipantId.Value == "opponent:0"
+                ? participant with
+                {
+                    CharacterId = defenderCharacterId,
+                    OwnerPlayerId = defender.PlayerId,
+                    Kind = "investigator"
+                }
+                : participant)
+            .ToArray();
+        var replacement = new MultiplayerGameState(
+            started.RoomId,
+            started.Revision,
+            started.Status,
+            started.CreatedAt,
+            started.Characters,
+            started.LastCheck,
+            started.Combat with { Participants = participants });
+        Assert.True(store.TryReplace(started, replacement));
+        await InvokeInternalCombatAsync(
+            coordinator,
+            "BeginOpposedExchangeAsync",
+            room.RoomId,
+            room.PlayerId,
+            2L,
+            $"character:{actorCharacterId}",
+            "opponent:0");
+        Assert.True(store.TryGet(room.RoomId, out var pendingState));
+        var exchangeId = pendingState!.Combat!.PendingExchange!.ExchangeId;
+
+        var (connection, _) = await AttachAsync(defender.PlayerSessionToken);
+        return new PendingHumanCombatSetup(room, defender, observer, connection, exchangeId);
+    }
+
+    private static IReadOnlyDictionary<string, int> CombatValues(int dex, int fighting, int dodge) =>
+        new Dictionary<string, int>
+        {
+            ["dex"] = dex,
+            ["fighting_brawl"] = fighting,
+            ["dodge"] = dodge,
+            ["str"] = 60,
+            ["siz"] = 50
+        };
+
+    private static Array CreateOpponentDefinitions()
+    {
+        var type = typeof(GameCoordinator).Assembly.GetType("Trpg.Multiplayer.Api.Gameplay.OpponentDefinition")!;
+        var definitions = Array.CreateInstance(type, 1);
+        definitions.SetValue(
+            Activator.CreateInstance(
+                type,
+                "Defender",
+                70,
+                50,
+                60,
+                new[] { CombatResponse.Dodge, CombatResponse.FightBack },
+                1,
+                CombatResponse.Dodge,
+                50,
+                50,
+                12,
+                12,
+                0,
+                new CombatWeaponProfile(
+                    "unarmed",
+                    "Unarmed",
+                    new DiceExpression("1d3", 1, 3, 0),
+                    true,
+                    "melee_non_impaling")),
+            0);
+        return definitions;
+    }
+
+    private static async Task InvokeInternalCombatAsync(
+        GameCoordinator coordinator,
+        string methodName,
+        params object?[] arguments)
+    {
+        var method = typeof(GameCoordinator).GetMethod(
+            methodName,
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        var command = Activator.CreateInstance(method.GetParameters().Single().ParameterType, arguments)!;
+        var task = Assert.IsAssignableFrom<Task>(method.Invoke(coordinator, [command]));
+        await task;
+        var result = task.GetType().GetProperty("Result")!.GetValue(task)!;
+        Assert.True((bool)result.GetType().GetProperty("IsSuccess")!.GetValue(result)!);
+    }
+
+    private static void AssertCombatStateEqual(MultiplayerGameState before, MultiplayerGameState after)
+    {
+        Assert.Equal(before.Revision, after.Revision);
+        Assert.Equal(before.Combat!.Round, after.Combat!.Round);
+        Assert.Equal(before.Combat.TurnIndex, after.Combat.TurnIndex);
+        Assert.Equal(before.Combat.PendingExchange, after.Combat.PendingExchange);
+        Assert.Equal(before.Combat.DamageDispositions, after.Combat.DamageDispositions);
+        Assert.Equal(before.Combat.DyingSchedule, after.Combat.DyingSchedule);
+        Assert.Equal(before.Combat.ActionCounts, after.Combat.ActionCounts);
+        Assert.Equal(before.Combat.ResponseCounts, after.Combat.ResponseCounts);
     }
 
     private async Task StopAndWaitAsync(HubConnection connection)
@@ -290,4 +497,11 @@ public sealed class DisconnectReconnectTests(WebApplicationFactory<Program> fact
 
     private static TaskCompletionSource NewCompletion() =>
         new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    private sealed record PendingHumanCombatSetup(
+        RoomCreatedResponse Room,
+        RoomJoinedResponse Defender,
+        RoomJoinedResponse Observer,
+        HubConnection DefenderConnection,
+        string ExchangeId);
 }
