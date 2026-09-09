@@ -379,6 +379,27 @@ The owner projection adds only the simplified `stabilized` boolean alongside the
 
 The Vue client treats this snapshot as display-only: it renders semantic labels using the existing projected participant list and retains the established monotonic GameSnapshot revision acceptance. The browser performs no Combat Damage calculation or mutation and adds no Combat Damage route, API method, action control, input, or handler. Existing own-only Health projection remains the sole HP display boundary.
 
+## Phase 2H Player Combat Intent Boundary
+
+The public Multiplayer Combat surface contains exactly three authenticated `POST` intents: melee attack, respond, and pass. There is no public Start, End, Damage, ResolveDamage, NPC actor/pass, firearm, or weapon-authority route. Player identity comes from the bearer session and cannot be supplied by the request body; Host identity grants no gameplay superuser capability.
+
+`PlayerCombatIntentCoordinator` is a thin application coordinator with exactly two dependencies: `IGameCoordinator` for viewer-specific projections and `IInternalCombatResolutionCoordinator` for canonical transitions. It does not read `IGameStateStore`, roll dice, calculate legality/damage/turn order, publish realtime events, or access persistence/AI services.
+
+The orchestration boundary is:
+
+```text
+viewer projection prevalidation
+→ canonical Begin / Resolve / Damage / Pass revalidation and commit
+→ transition-owned ordered viewer-safe publication
+→ fresh viewer-specific projection returned to HTTP
+```
+
+NPC defender policy is typed, snapshotted, server-private, and consumed only from `BeginOpposedExchangeResult.State`. Pending damage is selected only from the exact `ResolvePendingExchangeResult.State` disposition and returned revision. A human defender commits Begin only and receives the exact projected response affordance only as that defender's owner.
+
+Each committed internal transition is independently canonical. If a later transition fails, earlier commits remain reconnectable and are not rolled back or replayed as one intent. Post-RNG invariant failures are non-retryable; stale requests cannot duplicate mutation, dice, exchange IDs, revisions, or publication. Disconnect and reconnect do not resolve/pass/advance/damage and do not change Game revision.
+
+The Vue client owns only selection and submission UI. Action availability, eligible targets, and response choices come from `CombatViewerActionsSnapshot`; the client does not implement dice, target legality, defender ownership, opposed resolution, damage/HP mutation, or turn/round advancement. Stale conflicts refresh authoritative state once without automatic replay.
+
 ### Future Team Status Visibility Policy (Documentation Only)
 
 Future team status visibility is classified as:

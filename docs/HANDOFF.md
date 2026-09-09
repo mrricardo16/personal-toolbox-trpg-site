@@ -8,7 +8,7 @@
 
 ## Current Phase
 
-Current verified phase (2026-09-07): Phase 2G Combat Damage client summary validated; repository-wide validation and publication remain pending aggregation.
+Current verified phase (2026-09-08): Phase 2H Player Combat Intent Protocol implementation and aggregate validation complete.
 
 Completed:
 
@@ -62,7 +62,8 @@ Dedicated Repo Bootstrap    ✅ complete
 Multiplayer Phase 1         ✅ Lobby MVP complete
 Historical Phase 2B         ✅ Realtime GameState + Minimal Check client complete
 Multiplayer Phase 2E        ✅ Health Stabilization complete
-Multiplayer Phase 2G        ⏳ client read-only summary validated; aggregate validation pending
+Multiplayer Phase 2G        ✅ Combat Damage projection boundary complete
+Multiplayer Phase 2H        ✅ Player Combat Intent Protocol complete
 ```
 
 ---
@@ -188,7 +189,15 @@ Phase 1 Memory Only。
 
 Phase 2E 已完成：JS-to-C# stabilization conformance、canonical dying episode/treatment state、internal coordinator dying-round/First Aid transitions、owner-safe stabilized projection/privacy、existing GameSnapshot realtime/reconnect coverage、read-only Vue stabilized display，以及 omitted internal CON roll 的 injected `IDiceRoller` fallback correction。详细 health records remains owner/server-internal only；non-owner receives `Health = null`，且没有新增 health action API 或 route。
 
-Phase 2G 当前 client 记录：`CombatSnapshot.lastDamage` 仅接收 server projection 的六个安全字段（exchange ID、owner/target participant ID、semantic outcome、net damage、defeated）。Lobby 只显示该摘要、现有 current actor/order 与已有 own Health，不推导 HP、伤害、Armor、defeat、turn 或 round，且没有新增 Combat Damage API、输入、按钮、handler 或本地 dice/damage calculation。client focused GREEN 为 8/8，完整 client suite 为 23/23，`npm run build` 已通过；repository-wide server/Single Player aggregate validation、发布与 Phase 2G 完成声明仍待主流程确认。
+Phase 2G 已由 Phase 2H aggregate gate 覆盖：`CombatSnapshot.lastDamage` 仍只接收 server projection 的六个安全字段。Lobby 只显示该摘要、现有 current actor/order 与已有 own Health，不推导 HP、伤害、Armor、defeat、turn 或 round。
+
+Phase 2H 已完成：公开 Combat 路由严格为 melee attack、respond、pass 三条。玩家身份只来自 bearer session；Host 无 NPC gameplay bypass。`PlayerCombatIntentCoordinator` 只依赖 `IGameCoordinator` 与 `IInternalCombatResolutionCoordinator`，从 viewer projection 做安全预检，并把 canonical Begin/Resolve/Damage/Pass transition 作为最终权威。NPC policy 保持 server-private；最终成功响应是 fresh viewer-specific projection。
+
+Task 8 delivery evidence confirms committed revision-ordered SignalR snapshots, viewer privacy, canonical partial-commit recovery, no whole-intent replay/reroll, and disconnect/reconnect revision neutrality. Vue 仅消费 projected actions/targets；stale 409 只刷新一次并要求重新选择，不自动重放 intent。
+
+最终 aggregate gates：server `396/396`、client `39/39`、format PASS、conformance `19/10/21/19/48`、Single Player authoritative `37/37` + legacy alias、JS syntax `69/69`、formal SHA unchanged、strict UTF-8 PASS。real API credentialed scripts 未运行且本阶段不要求。
+
+下一步必须从新的明确授权开始。仍 deferred：public Start/End/Damage/ResolveDamage、NPC attacker/pass、PvP、IntentId registry、Firearms/Impaling、weapon switching、movement/range、timeout/forfeit、AI gameplay、Scenario、persistence、DB、Redis、matchmaking 与 Azure SignalR。
 
 未来 Team Status Visibility 只保留 policy 定义：`AlwaysVisible`（产品规则明确对所有玩家可见）、`Contextual`（按场景/交互/权限可见）、`Last Known Status`（玩家曾合法获知的最后状态，不等同于 live canonical truth）、`PlayerKnowledgeState`（按玩家记录已获知状态、范围与新鲜度）。Location、Communication、knowledge propagation 与 runtime `PlayerKnowledgeState` 尚未实现。
 

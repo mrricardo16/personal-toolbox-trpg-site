@@ -4,7 +4,7 @@
 
 这是动态状态文档。任何 Codex 开始工作前 MUST 重新从 current Repository 验证动态事实。
 
-Current verification date：**2026-08-17**
+Current verification date：**2026-09-08**
 
 ---
 
@@ -81,6 +81,7 @@ Phase 0 Architecture Audit       ✅ completed
 Project Context Consolidation    ✅ completed
 Dedicated Repository Bootstrap   ✅ completed
 Multiplayer Phase 1              ✅ Host Provided Credential Foundation complete
+Multiplayer Phase 2H             ✅ Player Combat Intent Protocol complete
 ```
 
 ---
@@ -139,7 +140,7 @@ Multiplayer Phase 1              ✅ Host Provided Credential Foundation complet
 
 # 7. Current Phase Status
 
-Current verified phase (2026-09-07): Phase 2G Combat Damage client summary validated; repository-wide validation and publication remain pending aggregation.
+Current verified phase (2026-09-08): Phase 2H Player Combat Intent Protocol implementation and aggregate validation complete.
 
 Completed in this phase:
 
@@ -339,6 +340,20 @@ The owner-safe projection exposes HP and only simplified booleans (`stabilized`,
 The client contract now recognizes nullable `CombatSnapshot.lastDamage` with exactly six server-projected fields: `exchangeId`, owner/target participant IDs, semantic `outcome`, `netDamage`, and `targetDefeated`. `LobbyView` renders those facts together with the existing server-projected current actor, stable participant order, and owner-only Health. It derives no damage, HP, defeat, Armor, turn, or round value.
 
 The client adds no Combat Damage button, input, handler, API method, dice routine, or local damage calculation. The existing monotonic GameSnapshot revision acceptance remains the stale-snapshot guard. Focused client RED recorded the missing summary; focused GREEN passed 8/8. A fresh `npm ci` completed with 0 vulnerabilities (with the existing transitive `glob@10.5.0` deprecation warning), the full client suite passed 23/23, and the production build passed. Full server and Single Player aggregation, publication, and any repository-wide Phase 2G completion claim remain outside this client validation record.
+
+# Phase 2H — Player Combat Intent Protocol
+
+Phase 2H exposes exactly three authenticated player intents: melee attack, respond, and pass. The application coordinator depends only on `IGameCoordinator` and `IInternalCombatResolutionCoordinator`; it has no direct state-store, dice, damage-engine, notifier, Hub, persistence, or AI dependency. It prevalidates from the viewer projection, while every internal transition remains the canonical authority.
+
+NPC defender response selection uses only the typed private policy in the Begin-returned state. Damage selection uses only the exact disposition and revision in the Resolve-returned state. A successful request returns a fresh viewer-specific `GameSnapshot`; it never returns internal state. Human defenders stop after Begin so only the exact owner receives the projected response affordance.
+
+Committed Begin/Resolve/Damage transitions publish once in revision order. Partial commits are retained as canonical and reconnectable; there is no rollback, whole-intent replay, automatic reroll, or application-layer duplicate publication. Disconnect and reconnect do not mutate the Game revision or advance combat.
+
+The Vue client renders and submits only server-projected actions and targets. A stale conflict refreshes once and requires the player to choose again; it never auto-replays the mutation. The client contains no Combat dice, target-legality, opposed-resolution, damage, HP, turn, or round authority.
+
+Aggregate validation passed: server `396/396`, client `39/39`, format verification, conformance counts `19/10/21/19/48`, workflow-derived Single Player regressions `37/37` plus the legacy alias, JavaScript syntax `69/69`, strict UTF-8, and formal HTML double-build SHA `0A635D94CDD7284B35433092C834D92BCAD44961C14E30DBD565AB48B7E14D4D`. Credentialed real-API tests were not run and are not required for this gate.
+
+Still deferred for Multiplayer: public Start/End/Damage/ResolveDamage, NPC attacker/pass authority, Host gameplay bypass, PvP, IntentId registry, Firearms/Impaling, weapon switching, movement/range, timeout/forfeit, AI gameplay, Scenario progression, persistence, database, Redis, matchmaking, and Azure SignalR.
 
 ## Future Team Status Visibility Policy (Not Implemented)
 
