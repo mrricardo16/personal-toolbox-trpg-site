@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Reflection;
+using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -281,6 +282,12 @@ public sealed class GameApiTests(WebApplicationFactory<Program> factory)
         var missing = await client.PostAsJsonAsync(
             $"/api/rooms/{first.RoomId}/game/combat/pass",
             new { expectedGameRevision = 7, actorCharacterId = Guid.NewGuid() });
+        var invalid = await SendAuthorizedAsync(
+            client,
+            HttpMethod.Post,
+            $"/api/rooms/{first.RoomId}/game/combat/pass",
+            "invalid-session-token",
+            new { expectedGameRevision = 7, actorCharacterId = Guid.NewGuid() });
         var crossRoom = await SendAuthorizedAsync(
             client,
             HttpMethod.Post,
@@ -288,8 +295,118 @@ public sealed class GameApiTests(WebApplicationFactory<Program> factory)
             first.PlayerSessionToken,
             new { expectedGameRevision = 7, actorCharacterId = Guid.NewGuid() });
 
-        Assert.Equal(HttpStatusCode.Unauthorized, missing.StatusCode);
-        Assert.Equal(HttpStatusCode.Forbidden, crossRoom.StatusCode);
+        await AssertExactCombatErrorAsync(missing, HttpStatusCode.Unauthorized, "invalid_session");
+        await AssertExactCombatErrorAsync(invalid, HttpStatusCode.Unauthorized, "invalid_session");
+        await AssertExactCombatErrorAsync(crossRoom, HttpStatusCode.Forbidden, "not_member");
+        Assert.Empty(proxy.Invocations);
+    }
+
+    [Fact]
+    public async Task CombatIntentRoutes_AuthenticateBeforeBindingAndReturnExactValidationErrors()
+    {
+        var (isolatedFactory, proxy) = CreateCombatIntentFactory();
+        await using var factoryLease = isolatedFactory;
+        var client = isolatedFactory.CreateClient();
+        var created = await ReadCreatedAsync(await client.PostAsJsonAsync("/api/rooms", new { nickname = "Host", maxPlayers = 2 }));
+
+        using var unauthenticatedMalformed = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"/api/rooms/{created.RoomId}/game/combat/pass")
+        {
+            Content = new StringContent("{", Encoding.UTF8, "application/json")
+        };
+        using var unauthenticatedResponse = await client.SendAsync(unauthenticatedMalformed);
+        await AssertExactCombatErrorAsync(
+            unauthenticatedResponse,
+            HttpStatusCode.Unauthorized,
+            "invalid_session");
+
+        var invalidCases = new (string Route, HttpContent? Content, string Code)[]
+        {
+            ("pass", null, "invalid_intent"),
+            ("pass", new StringContent("{", Encoding.UTF8, "application/json"), "invalid_intent"),
+            ("pass", JsonContent.Create(new { expectedGameRevision = 1 }), "invalid_intent"),
+            ("pass", new StringContent(
+                "{\"expectedGameRevision\":1,\"actorCharacterId\":\"not-a-guid\"}",
+                Encoding.UTF8,
+                "application/json"), "invalid_intent"),
+            ("respond", JsonContent.Create(new
+            {
+                expectedGameRevision = 1,
+                exchangeId = "exchange-1",
+                response = "block"
+            }), "invalid_response")
+        };
+
+        foreach (var (route, content, code) in invalidCases)
+        {
+            using var request = new HttpRequestMessage(
+                HttpMethod.Post,
+                $"/api/rooms/{created.RoomId}/game/combat/{route}")
+            {
+                Content = content
+            };
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", created.PlayerSessionToken);
+            using var response = await client.SendAsync(request);
+            await AssertExactCombatErrorAsync(response, HttpStatusCode.BadRequest, code);
+        }
+
+        Assert.Empty(proxy.Invocations);
+    }
+
+    [Fact]
+    public async Task CombatIntentRoutes_RejectNonJsonMediaTypesAfterAuthorityChecks()
+    {
+        var (isolatedFactory, proxy) = CreateCombatIntentFactory();
+        await using var factoryLease = isolatedFactory;
+        var client = isolatedFactory.CreateClient();
+        var created = await ReadCreatedAsync(await client.PostAsJsonAsync("/api/rooms", new { nickname = "Host", maxPlayers = 2 }));
+        proxy.ResultFactory = _ => CreateCombatIntentSuccess(CreateSnapshot(created.RoomId, created.PlayerId, 8));
+        var actorCharacterId = Guid.NewGuid();
+        var cases = new (string Route, string Json)[]
+        {
+            ("melee-attack", JsonSerializer.Serialize(new
+            {
+                expectedGameRevision = 7,
+                actorCharacterId,
+                targetParticipantId = "opponent:0"
+            })),
+            ("respond", JsonSerializer.Serialize(new
+            {
+                expectedGameRevision = 7,
+                exchangeId = "exchange-1",
+                response = "dodge"
+            })),
+            ("pass", JsonSerializer.Serialize(new
+            {
+                expectedGameRevision = 7,
+                actorCharacterId
+            }))
+        };
+
+        foreach (var (route, json) in cases)
+        {
+            using var textRequest = new HttpRequestMessage(
+                HttpMethod.Post,
+                $"/api/rooms/{created.RoomId}/game/combat/{route}")
+            {
+                Content = new StringContent(json, Encoding.UTF8, "text/plain")
+            };
+            textRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", created.PlayerSessionToken);
+            using var textResponse = await client.SendAsync(textRequest);
+            await AssertExactCombatErrorAsync(textResponse, HttpStatusCode.BadRequest, "invalid_intent");
+
+            using var noContentTypeRequest = new HttpRequestMessage(
+                HttpMethod.Post,
+                $"/api/rooms/{created.RoomId}/game/combat/{route}")
+            {
+                Content = new ByteArrayContent(Encoding.UTF8.GetBytes(json))
+            };
+            noContentTypeRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", created.PlayerSessionToken);
+            using var noContentTypeResponse = await client.SendAsync(noContentTypeRequest);
+            await AssertExactCombatErrorAsync(noContentTypeResponse, HttpStatusCode.BadRequest, "invalid_intent");
+        }
+
         Assert.Empty(proxy.Invocations);
     }
 
@@ -400,7 +517,12 @@ public sealed class GameApiTests(WebApplicationFactory<Program> factory)
         {
             var response = await SendAuthorizedAsync(client, HttpMethod.Post,
                 $"/api/rooms/{created.RoomId}/game/combat/{path}", created.PlayerSessionToken, body);
-            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+            await AssertExactCombatErrorAsync(
+                response,
+                HttpStatusCode.BadRequest,
+                path == "respond" && GetPropertyValue(body, "response") is "Dodge" or "block"
+                    ? "invalid_response"
+                    : "invalid_intent");
         }
 
         var malformedRoomId = await SendAuthorizedAsync(client, HttpMethod.Post,
@@ -428,7 +550,7 @@ public sealed class GameApiTests(WebApplicationFactory<Program> factory)
             ("TargetNotEligible", HttpStatusCode.Conflict, "target_not_eligible", 19),
             ("ExchangeNotPending", HttpStatusCode.Conflict, "exchange_not_pending", 19),
             ("ProgressionBlocked", HttpStatusCode.Conflict, "progression_blocked", 19),
-            ("CombatConsistencyFailure", HttpStatusCode.InternalServerError, "combat_consistency_failure", 19)
+            ("CombatConsistencyFailure", HttpStatusCode.InternalServerError, "combat_consistency_failure", null)
         };
 
         var (isolatedFactory, proxy) = CreateCombatIntentFactory();
@@ -458,19 +580,26 @@ public sealed class GameApiTests(WebApplicationFactory<Program> factory)
     }
 
     [Theory]
-    [InlineData("melee-attack", "MeleeAttackAsync")]
-    [InlineData("respond", "RespondAsync")]
-    [InlineData("pass", "PassAsync")]
+    [InlineData("melee-attack", "MeleeAttackAsync", "CombatDamageCommitInvariantException")]
+    [InlineData("melee-attack", "MeleeAttackAsync", "CombatDamageStateInvariantException")]
+    [InlineData("melee-attack", "MeleeAttackAsync", "PlayerCombatIntentInvariantException")]
+    [InlineData("respond", "RespondAsync", "CombatDamageCommitInvariantException")]
+    [InlineData("respond", "RespondAsync", "CombatDamageStateInvariantException")]
+    [InlineData("respond", "RespondAsync", "PlayerCombatIntentInvariantException")]
+    [InlineData("pass", "PassAsync", "CombatDamageCommitInvariantException")]
+    [InlineData("pass", "PassAsync", "CombatDamageStateInvariantException")]
+    [InlineData("pass", "PassAsync", "PlayerCombatIntentInvariantException")]
     public async Task CombatIntentRoutes_InvariantFailureReturnsSafeStructuredError(
         string route,
-        string coordinatorMethod)
+        string coordinatorMethod,
+        string exceptionType)
     {
         const string sensitiveExceptionText = "secret canonical damage commit detail";
         var (isolatedFactory, proxy) = CreateCombatIntentFactory();
         await using var factoryLease = isolatedFactory;
         var client = isolatedFactory.CreateClient();
         var created = await ReadCreatedAsync(await client.PostAsJsonAsync("/api/rooms", new { nickname = "Host", maxPlayers = 2 }));
-        proxy.ExceptionFactory = _ => CreateCombatDamageCommitInvariantException(sensitiveExceptionText);
+        proxy.ExceptionFactory = _ => CreateGameplayException(exceptionType, sensitiveExceptionText);
         var actorCharacterId = Guid.NewGuid();
         object body = route switch
         {
@@ -503,7 +632,7 @@ public sealed class GameApiTests(WebApplicationFactory<Program> factory)
         Assert.Equal("code", property.Name);
         Assert.Equal("combat_consistency_failure", property.Value.GetString());
         Assert.DoesNotContain(sensitiveExceptionText, responseBody, StringComparison.Ordinal);
-        Assert.DoesNotContain("CombatDamageCommitInvariantException", responseBody, StringComparison.Ordinal);
+        Assert.DoesNotContain(exceptionType, responseBody, StringComparison.Ordinal);
         Assert.DoesNotContain("PlayerCombatIntentErrorCode", responseBody, StringComparison.Ordinal);
         Assert.False(json.RootElement.TryGetProperty("currentGameRevision", out _));
         Assert.Equal(coordinatorMethod, Assert.Single(proxy.Invocations).MethodName);
@@ -526,6 +655,26 @@ public sealed class GameApiTests(WebApplicationFactory<Program> factory)
         using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         Assert.Equal("stale_game_revision", json.RootElement.GetProperty("code").GetString());
         Assert.Equal(23, json.RootElement.GetProperty("currentGameRevision").GetInt64());
+    }
+
+    [Fact]
+    public async Task CombatIntentRoutes_ReturnedConsistencyFailureSuppressesRevisionAndIsNotRetried()
+    {
+        var (isolatedFactory, proxy) = CreateCombatIntentFactory();
+        await using var factoryLease = isolatedFactory;
+        var client = isolatedFactory.CreateClient();
+        var created = await ReadCreatedAsync(await client.PostAsJsonAsync("/api/rooms", new { nickname = "Host", maxPlayers = 2 }));
+        proxy.ResultFactory = _ => CreateCombatIntentFailure("CombatConsistencyFailure", 23);
+
+        using var response = await SendAuthorizedAsync(client, HttpMethod.Post,
+            $"/api/rooms/{created.RoomId}/game/combat/pass", created.PlayerSessionToken,
+            new { expectedGameRevision = 22, actorCharacterId = Guid.NewGuid() });
+
+        await AssertExactCombatErrorAsync(
+            response,
+            HttpStatusCode.InternalServerError,
+            "combat_consistency_failure");
+        Assert.Single(proxy.Invocations);
     }
 
     [Fact]
@@ -659,13 +808,32 @@ public sealed class GameApiTests(WebApplicationFactory<Program> factory)
             .Invoke(null, [parsedCode, currentGameRevision])!;
     }
 
-    private static Exception CreateCombatDamageCommitInvariantException(string message) =>
+    private static Exception CreateGameplayException(string typeName, string message) =>
         (Exception)Activator.CreateInstance(
-            GetRequiredGameplayType("CombatDamageCommitInvariantException"),
+            GetRequiredGameplayType(typeName),
             BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
             null,
             [message],
             null)!;
+
+    private static object? GetPropertyValue(object instance, string propertyName) =>
+        instance.GetType().GetProperty(propertyName)?.GetValue(instance);
+
+    private static async Task AssertExactCombatErrorAsync(
+        HttpResponseMessage response,
+        HttpStatusCode expectedStatus,
+        string expectedCode)
+    {
+        Assert.Equal(expectedStatus, response.StatusCode);
+        var responseBody = await response.Content.ReadAsStringAsync();
+        using var json = JsonDocument.Parse(responseBody);
+        var property = Assert.Single(json.RootElement.EnumerateObject());
+        Assert.Equal("code", property.Name);
+        Assert.Equal(expectedCode, property.Value.GetString());
+        Assert.DoesNotContain("currentGameRevision", responseBody, StringComparison.Ordinal);
+        Assert.DoesNotContain("Exception", responseBody, StringComparison.Ordinal);
+        Assert.DoesNotContain("stack", responseBody, StringComparison.OrdinalIgnoreCase);
+    }
 
     private static Type GetRequiredGameplayType(string typeName) =>
         typeof(GameCoordinator).Assembly.GetType($"Trpg.Multiplayer.Api.Gameplay.{typeName}")

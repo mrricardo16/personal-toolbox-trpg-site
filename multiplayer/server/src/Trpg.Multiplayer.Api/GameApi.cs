@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using Trpg.Multiplayer.Api.Gameplay;
 using Trpg.Multiplayer.Api.Realtime;
@@ -8,6 +9,8 @@ namespace Trpg.Multiplayer.Api;
 
 public static class GameApi
 {
+    private static readonly JsonSerializerOptions CombatRequestJsonOptions = new(JsonSerializerDefaults.Web);
+
     public static void MapGameEndpoints(this WebApplication app)
     {
         app.MapPost("/api/rooms/{roomId:guid}/game/initialize", InitializeAsync);
@@ -20,7 +23,6 @@ public static class GameApi
 
     private static async Task<IResult> MeleeAttackAsync(
         Guid roomId,
-        MeleeAttackRequest? request,
         HttpRequest httpRequest,
         IPlayerSessionStore sessions,
         RoomMutationDeliveryGate mutationGate,
@@ -29,20 +31,26 @@ public static class GameApi
     {
         if (!TryGetSession(httpRequest, sessions, out var session))
         {
-            return Results.Unauthorized();
+            return CombatIntentError(StatusCodes.Status401Unauthorized, "invalid_session");
         }
 
         if (session!.RoomId != roomId)
         {
-            return Results.StatusCode((int)HttpStatusCode.Forbidden);
+            return CombatIntentError(StatusCodes.Status403Forbidden, "not_member");
         }
 
+        if (!httpRequest.HasJsonContentType())
+        {
+            return CombatIntentError(StatusCodes.Status400BadRequest, "invalid_intent");
+        }
+
+        var request = await ReadCombatRequestAsync<MeleeAttackRequest>(httpRequest);
         if (request is null
             || request.ExpectedGameRevision <= 0
             || request.ActorCharacterId == Guid.Empty
             || string.IsNullOrWhiteSpace(request.TargetParticipantId))
         {
-            return Results.BadRequest();
+            return CombatIntentError(StatusCodes.Status400BadRequest, "invalid_intent");
         }
 
         return await RunCombatIntentAsync(
@@ -59,7 +67,6 @@ public static class GameApi
 
     private static async Task<IResult> RespondAsync(
         Guid roomId,
-        CombatRespondRequest? request,
         HttpRequest httpRequest,
         IPlayerSessionStore sessions,
         RoomMutationDeliveryGate mutationGate,
@@ -68,20 +75,30 @@ public static class GameApi
     {
         if (!TryGetSession(httpRequest, sessions, out var session))
         {
-            return Results.Unauthorized();
+            return CombatIntentError(StatusCodes.Status401Unauthorized, "invalid_session");
         }
 
         if (session!.RoomId != roomId)
         {
-            return Results.StatusCode((int)HttpStatusCode.Forbidden);
+            return CombatIntentError(StatusCodes.Status403Forbidden, "not_member");
         }
 
+        if (!httpRequest.HasJsonContentType())
+        {
+            return CombatIntentError(StatusCodes.Status400BadRequest, "invalid_intent");
+        }
+
+        var request = await ReadCombatRequestAsync<CombatRespondRequest>(httpRequest);
         if (request is null
             || request.ExpectedGameRevision <= 0
-            || string.IsNullOrWhiteSpace(request.ExchangeId)
-            || !TryParseCombatResponse(request.Response, out var response))
+            || string.IsNullOrWhiteSpace(request.ExchangeId))
         {
-            return Results.BadRequest();
+            return CombatIntentError(StatusCodes.Status400BadRequest, "invalid_intent");
+        }
+
+        if (!TryParseCombatResponse(request.Response, out var response))
+        {
+            return CombatIntentError(StatusCodes.Status400BadRequest, "invalid_response");
         }
 
         return await RunCombatIntentAsync(
@@ -98,7 +115,6 @@ public static class GameApi
 
     private static async Task<IResult> PassCombatAsync(
         Guid roomId,
-        CombatPassRequest? request,
         HttpRequest httpRequest,
         IPlayerSessionStore sessions,
         RoomMutationDeliveryGate mutationGate,
@@ -107,17 +123,23 @@ public static class GameApi
     {
         if (!TryGetSession(httpRequest, sessions, out var session))
         {
-            return Results.Unauthorized();
+            return CombatIntentError(StatusCodes.Status401Unauthorized, "invalid_session");
         }
 
         if (session!.RoomId != roomId)
         {
-            return Results.StatusCode((int)HttpStatusCode.Forbidden);
+            return CombatIntentError(StatusCodes.Status403Forbidden, "not_member");
         }
 
+        if (!httpRequest.HasJsonContentType())
+        {
+            return CombatIntentError(StatusCodes.Status400BadRequest, "invalid_intent");
+        }
+
+        var request = await ReadCombatRequestAsync<CombatPassRequest>(httpRequest);
         if (request is null || request.ExpectedGameRevision <= 0 || request.ActorCharacterId == Guid.Empty)
         {
-            return Results.BadRequest();
+            return CombatIntentError(StatusCodes.Status400BadRequest, "invalid_intent");
         }
 
         return await RunCombatIntentAsync(
@@ -144,20 +166,56 @@ public static class GameApi
                 var result = await invokeIntent();
                 return result.IsSuccess
                     ? Results.Ok(result.Snapshot)
-                    : ToCombatIntentError(result.Error!);
+                    : ToCombatIntentError(result.Error!, roomId, loggerFactory);
             }
             catch (CombatDamageCommitInvariantException exception)
             {
-                loggerFactory.CreateLogger(typeof(GameApi).FullName ?? nameof(GameApi)).LogError(
-                    exception,
-                    "Combat intent invariant failure. RoomId: {RoomId}",
-                    roomId);
-                return Results.Json(
-                    new CombatIntentErrorResponse("combat_consistency_failure"),
-                    statusCode: StatusCodes.Status500InternalServerError);
+                return CombatInvariantError(roomId, loggerFactory, exception);
+            }
+            catch (CombatDamageStateInvariantException exception)
+            {
+                return CombatInvariantError(roomId, loggerFactory, exception);
+            }
+            catch (PlayerCombatIntentInvariantException exception)
+            {
+                return CombatInvariantError(roomId, loggerFactory, exception);
             }
         });
     }
+
+    private static IResult CombatInvariantError(
+        Guid roomId,
+        ILoggerFactory loggerFactory,
+        Exception exception)
+    {
+        loggerFactory.CreateLogger(typeof(GameApi).FullName ?? nameof(GameApi)).LogError(
+            exception,
+            "Combat intent invariant failure. RoomId: {RoomId}",
+            roomId);
+        return CombatIntentError(
+            StatusCodes.Status500InternalServerError,
+            "combat_consistency_failure");
+    }
+
+    private static async Task<T?> ReadCombatRequestAsync<T>(HttpRequest request)
+        where T : class
+    {
+        try
+        {
+            return await JsonSerializer.DeserializeAsync<T>(
+                request.Body,
+                CombatRequestJsonOptions,
+                request.HttpContext.RequestAborted);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static IResult CombatIntentError(int statusCode, string code) => Results.Json(
+        new CombatIntentErrorResponse(code),
+        statusCode: statusCode);
 
     private static async Task<IResult> InitializeAsync(
         Guid roomId,
@@ -316,7 +374,10 @@ public static class GameApi
         return value is "dodge" or "fight_back";
     }
 
-    private static IResult ToCombatIntentError(PlayerCombatIntentError error)
+    private static IResult ToCombatIntentError(
+        PlayerCombatIntentError error,
+        Guid roomId,
+        ILoggerFactory loggerFactory)
     {
         var (statusCode, wireCode) = error.Code switch
         {
@@ -337,6 +398,14 @@ public static class GameApi
             PlayerCombatIntentErrorCode.CombatConsistencyFailure => (StatusCodes.Status500InternalServerError, "combat_consistency_failure"),
             _ => (StatusCodes.Status500InternalServerError, "combat_consistency_failure")
         };
+
+        if (statusCode == StatusCodes.Status500InternalServerError)
+        {
+            loggerFactory.CreateLogger(typeof(GameApi).FullName ?? nameof(GameApi)).LogError(
+                "Combat intent coordinator reported a consistency failure. RoomId: {RoomId}",
+                roomId);
+            return CombatIntentError(statusCode, wireCode);
+        }
 
         return Results.Json(
             new CombatIntentErrorResponse(wireCode, error.CurrentGameRevision),

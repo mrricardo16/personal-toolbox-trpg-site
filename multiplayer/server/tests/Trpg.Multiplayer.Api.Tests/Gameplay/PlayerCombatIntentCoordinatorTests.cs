@@ -312,6 +312,66 @@ public sealed class PlayerCombatIntentCoordinatorTests(WebApplicationFactory<Pro
         Assert.Equal(DamageDispositionStatus.Pending, rig.Combat.CurrentState.Combat!.DamageDispositions[rig.ExchangeId].Status);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CommittedBeginAndResolveResultContractFailures_UseDedicatedInvariantException(
+        bool failResolvedState)
+    {
+        var rig = MeleeAttackRig.Create(hasPendingDamage: failResolvedState);
+        var invalidState = new MultiplayerGameState(
+            rig.RoomId,
+            failResolvedState ? 14 : 13,
+            MultiplayerGameStatus.Active,
+            DateTimeOffset.UnixEpoch,
+            []);
+        if (failResolvedState)
+        {
+            rig.Combat.ResolvedState = invalidState;
+        }
+        else
+        {
+            rig.Combat.BeginState = invalidState;
+        }
+
+        var exception = await Assert.ThrowsAnyAsync<Exception>(
+            () => InvokeMeleeAttackAsync(rig.Coordinator, rig.Intent));
+
+        Assert.Equal("PlayerCombatIntentInvariantException", exception.GetType().Name);
+        Assert.Single(rig.Combat.BeginCommands);
+        Assert.Equal(failResolvedState ? 1 : 0, rig.Combat.ResolveCommands.Count);
+        Assert.Empty(rig.Combat.DamageCommands);
+    }
+
+    [Fact]
+    public async Task CommittedBeginWithoutPendingExchange_ThrowsDedicatedInvariantException()
+    {
+        var rig = MeleeAttackRig.Create();
+        rig.Combat.BeginState = rig.InitialCanonicalState;
+
+        var exception = await Assert.ThrowsAnyAsync<Exception>(
+            () => InvokeMeleeAttackAsync(rig.Coordinator, rig.Intent));
+
+        Assert.IsType(GetRequiredGameplayType("PlayerCombatIntentInvariantException"), exception);
+        Assert.Single(rig.Combat.BeginCommands);
+        Assert.Empty(rig.Combat.ResolveCommands);
+        Assert.Empty(rig.Combat.DamageCommands);
+    }
+
+    [Fact]
+    public async Task CommittedBeginWithNpcMissingResponsePolicy_ThrowsDedicatedInvariantException()
+    {
+        var rig = MeleeAttackRig.Create(npcResponsePolicy: null);
+
+        var exception = await Assert.ThrowsAnyAsync<Exception>(
+            () => InvokeMeleeAttackAsync(rig.Coordinator, rig.Intent));
+
+        Assert.IsType(GetRequiredGameplayType("PlayerCombatIntentInvariantException"), exception);
+        Assert.Single(rig.Combat.BeginCommands);
+        Assert.Empty(rig.Combat.ResolveCommands);
+        Assert.Empty(rig.Combat.DamageCommands);
+    }
+
     [Fact]
     public async Task LostSuccessRetryWithOldRevision_IsConflictWithoutDuplicateMutationOrPublish()
     {

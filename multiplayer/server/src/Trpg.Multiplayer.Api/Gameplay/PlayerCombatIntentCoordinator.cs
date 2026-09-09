@@ -146,16 +146,16 @@ internal sealed class PlayerCombatIntentCoordinator(
 
         var beginState = begin.Value!.State;
         var beginCombat = beginState.Combat
-            ?? throw new InvalidOperationException("Committed Begin result omitted its combat session.");
+            ?? throw new PlayerCombatIntentInvariantException("Committed Begin result omitted its combat session.");
         var pending = beginCombat.PendingExchange
-            ?? throw new InvalidOperationException("Committed Begin result omitted its pending exchange.");
+            ?? throw new PlayerCombatIntentInvariantException("Committed Begin result omitted its pending exchange.");
         var defender = beginCombat.Participants.Single(
             participant => participant.ParticipantId == pending.DefenderParticipantId);
 
         if (defender.OwnerPlayerId is null)
         {
             var policy = defender.NpcResponsePolicy
-                ?? throw new InvalidOperationException("Committed NPC defender omitted its response policy.");
+                ?? throw new PlayerCombatIntentInvariantException("Committed NPC defender omitted its response policy.");
             if (!pending.AvailableResponses.Contains(policy))
             {
                 return PlayerCombatIntentResult.Failure(
@@ -341,7 +341,7 @@ internal sealed class PlayerCombatIntentCoordinator(
         MultiplayerGameState resolvedState)
     {
         var resolvedCombat = resolvedState.Combat
-            ?? throw new InvalidOperationException("Committed Resolve result omitted its combat session.");
+            ?? throw new PlayerCombatIntentInvariantException("Committed Resolve result omitted its combat session.");
         if (!resolvedCombat.DamageDispositions.TryGetValue(exchangeId, out var disposition)
             || disposition.Status != DamageDispositionStatus.Pending)
         {

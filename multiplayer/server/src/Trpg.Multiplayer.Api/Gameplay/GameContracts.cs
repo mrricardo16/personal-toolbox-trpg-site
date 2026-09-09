@@ -83,6 +83,8 @@ internal sealed class CombatDamageStateInvariantException(string message) : Exce
 
 internal sealed class CombatDamageCommitInvariantException(string message) : Exception(message);
 
+internal sealed class PlayerCombatIntentInvariantException(string message) : Exception(message);
+
 public sealed record ResolveCheckCommand(
     Guid RoomId,
     Guid PlayerId,
