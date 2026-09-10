@@ -1,3 +1,7 @@
+using System.Runtime.CompilerServices;
+
+[assembly: InternalsVisibleTo("Trpg.Multiplayer.Api.Tests")]
+
 namespace Trpg.Multiplayer.Api.Gameplay;
 
 public sealed record InitializeGameCommand(
@@ -97,6 +101,23 @@ internal sealed class CombatDamageCommitInvariantException(string message) : Exc
 internal sealed class PlayerCombatIntentInvariantException(string message) : Exception(message);
 
 internal sealed class NpcCombatContinuationInvariantException(string message) : Exception(message);
+
+internal enum NpcCombatActionKind
+{
+    BeginOpposedExchange,
+    Pass
+}
+
+internal sealed record NpcCombatTurnDecision(
+    NpcCombatActionKind Kind,
+    string NpcParticipantId,
+    string? TargetParticipantId);
+
+internal sealed record ValidatedNpcCombatTurn(
+    MultiplayerGameState State,
+    CombatSession Session,
+    CombatParticipantState CurrentNpc,
+    IReadOnlyList<CombatParticipantState> LegalTargets);
 
 public sealed record ResolveCheckCommand(
     Guid RoomId,
