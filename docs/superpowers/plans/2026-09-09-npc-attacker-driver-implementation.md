@@ -273,7 +273,7 @@ Register `NpcCombatTurnDriver` as a singleton and `ICombatContinuationCoordinato
 
 - [ ] **Step 1: Write failing coordinator tests.**
 
-Cover inactive = `CombatEnded`/zero calls; pending exchange = `WaitingForPlayerResponse`/zero calls; human current = `NoChange`; pending damage = exception/zero calls; NPC+target = one Begin then stop at returned pending; consecutive legal Pass states consume returned state; maximum successful automatic actions equals entry `Order.Count`; fail before action `Count+1`; iteration not recursion; unexpected executor failure throws; no store/query/dice/engine/notifier/Hub/connection/AI/gate dependency.
+Cover inactive = `CombatEnded`/zero calls; pending exchange = `WaitingForPlayerResponse`/zero calls; human current = `NoChange`; pending damage = exception/zero calls; NPC+target = one Begin using the exact entry revision/actor/target, then uses the exact returned state and stops at its pending exchange; maximum successful automatic actions is defensively bounded by entry `Order.Count` and the `Count+1` action is never invoked; iteration not recursion; unexpected executor failure throws; no store/query/dice/engine/notifier/Hub/connection/AI/gate dependency. Do not manufacture a runtime NPC Pass chain: under current valid two-side melee rules, the validated current NPC always has a legal investigator target.
 
 - [ ] **Step 2: Run RED.**
 
@@ -285,11 +285,11 @@ Expected RED: missing continuation contract/coordinator/status types.
 
 - [ ] **Step 3: Implement the minimum iterative loop.**
 
-Capture `maxActions = entryState.Combat?.Order.Count ?? 0`; examine only the current returned state. At entry and after every returned state, check pending damage first and fail closed. Then stop at inactive Combat, pending human exchange, or human actor. Validate every active continuation state before selection. Before invoking another executor action, require `automaticActions < maxActions`; invoke Begin or Pass with the current state's exact revision/actor/target; increment count only after a successful changed action; replace local state with `result.Value.State`; never refresh or retry.
+Capture `maxActions = entryState.Combat?.Order.Count ?? 0`; examine only the current returned state. At entry and after every returned state, check pending damage first and fail closed. Then stop at inactive Combat, pending human exchange, or human actor. Validate every active continuation state before selection. Before invoking another executor action, require `automaticActions < maxActions`; invoke Begin or Pass with the current state's exact revision/actor/target; increment count only after a successful changed action; replace local state with `result.Value.State`; never refresh or retry. After a successful current-rule Begin, require the returned active Combat state to contain the exact canonical pending exchange for the selected NPC attacker and investigator defender; otherwise throw the dedicated invariant rather than continuing. Keep the Pass branch for a future validated legal empty-action rule, but do not claim it is currently reachable.
 
 - [ ] **Step 4: Run GREEN and record evidence.**
 
-Run the Step 2 command. Expected GREEN: all stop, bound, dependency, and returned-state tests pass. Strict UTF-8 and `git diff --check` pass.
+Run the Step 2 command. Expected GREEN: all stop, defensive bound, dependency, and Begin-returned-state tests pass. The bound coverage is structural/control-flow only because exhaustion is unreachable under the current valid runtime policy. Strict UTF-8 and `git diff --check` pass.
 
 **Invariants:** exactly two coordinator dependencies; zero publication; no outer gate; no private lock; no recursion; no pending-damage recovery.
 
@@ -364,7 +364,7 @@ Run the Step 2 command and all `PlayerCombatIntentCoordinatorTests`. Expected GR
 
 - [ ] **Step 1: Add failing Pass integration tests.**
 
-Add `Pass_LatestCommittedStateContinuesNpcTurn`, `Pass_NpcBeginPreMutationFailurePreservesCommittedPlayerPassWithoutRetry`, realtime `PlayerPassThenNpcBegin_PublishesNPlusOneThenNPlusTwoExactlyOnce`, and `NpcPassThenNpcBegin_PublishesEachCommitExactlyOnce`. Assert ordered viewer-specific payloads, nonparticipant `Combat=null`, no raw policy/roll/stats/registry/schedule/history/source/provenance, and no duplicate final application publication.
+Add `Pass_LatestCommittedStateContinuesNpcTurn`, `Pass_NpcBeginPreMutationFailurePreservesCommittedPlayerPassWithoutRetry`, and realtime `PlayerPassThenNpcBegin_PublishesNPlusOneThenNPlusTwoExactlyOnce`. Assert ordered viewer-specific payloads, nonparticipant `Combat=null`, no raw policy/roll/stats/registry/schedule/history/source/provenance, and no duplicate final application publication. Do not require an unreachable runtime `NpcPassThenNpcBegin` sequence; the Task 3 lower-layer NPC Pass executor coverage remains authoritative.
 
 - [ ] **Step 2: Run RED.**
 
@@ -453,7 +453,7 @@ Run Step 2 and all coordinator/realtime Combat intent tests. Expected GREEN: lat
 
 - [ ] **Step 1: Add failing safety tests.**
 
-Cover two continuations with the same entry revision: one canonical action, no second `ExchangeId`, loser does not refresh/retry; NPC Pass committed then next action failure remains; a lost HTTP success retried with the old player revision is stale and replays neither player nor NPC work; safety bound fails before action `Order.Count+1`; pending damage means zero action; disconnected active owner remains targetable, Begin creates pending, no auto-response; reconnect restores exact owner-only affordance without revision change; other viewers/nonparticipants remain safe; route enumeration stays exactly three; dedicated invariant wire response is minimal and generic catches absent.
+Cover two continuations with the same entry revision: one canonical Begin action, no second `ExchangeId`, loser does not refresh/retry; Player Pass commits then NPC Begin pre-mutation failure preserves the Player Pass; NPC Begin commits then later HTTP/application/final-projection failure preserves the pending exchange; Human Respond Resolve commits then Damage fails before commit preserves the resolved exchange and pending disposition; post-RNG Damage invariant remains non-retryable without reroll; a lost HTTP success retried with the old player revision is stale and replays neither player nor NPC work; defensive safety bound fails before action `Order.Count+1`; pending damage means zero action; disconnected active owner remains targetable, Begin creates pending, no auto-response; reconnect restores exact owner-only affordance without revision change; other viewers/nonparticipants remain safe; route enumeration stays exactly three; dedicated invariant wire response is minimal and generic catches absent. Do not fabricate an unreachable runtime NPC Pass partial-failure chain.
 
 - [ ] **Step 2: Run RED.**
 

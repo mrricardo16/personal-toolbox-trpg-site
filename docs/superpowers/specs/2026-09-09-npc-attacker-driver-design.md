@@ -209,6 +209,8 @@ else:
 
 Pass does not end Combat or invent a target. It reuses `PassCombatTurn`, preserving action counts, stable active scanning, round wrap, and dying scheduling. It is available only for a genuinely valid empty legal-action condition under canonical rules, deterministic future policy extension, and direct coverage of the trusted NPC Pass seam. It is not a repair mechanism for malformed state. Under the current two-side non-impaling melee rules, an active NPC with an active opposing investigator normally attacks and stops at human `PendingExchange`. The driver never calls `EndCombat`; existing damage/turn rules remain responsible for canonical termination.
 
+Under the current two-side non-impaling melee eligibility model, a structurally valid active NPC turn always has an active investigator target. The Pass branch is therefore a retained future-compatible internal seam, not a reachable normal runtime branch in Phase 2I; it must not be made reachable by weakening validation or adding gameplay rules.
+
 No `NpcAttackerPolicy` is added to the Combat snapshot in Phase 2I. `NpcResponsePolicy` remains a distinct existing field used only when an NPC is the defender. Aggressive/passive or tactical attacker policies are deferred until a demonstrated product need justifies new canonical state.
 
 ## Deterministic Target Policy
