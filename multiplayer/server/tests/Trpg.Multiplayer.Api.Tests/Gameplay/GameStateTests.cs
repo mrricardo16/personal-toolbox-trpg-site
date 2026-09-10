@@ -657,6 +657,66 @@ public sealed class GameStateTests
     }
 
     [Fact]
+    public async Task InternalCombat_PlayerPassUsesSeparatedAuthorityAndSharedMutationCore()
+    {
+        var flags = System.Reflection.BindingFlags.Instance
+            | System.Reflection.BindingFlags.Static
+            | System.Reflection.BindingFlags.NonPublic;
+        Assert.NotNull(typeof(GameCoordinator).GetMethod("LoadPassCombatTurnContext", flags));
+        Assert.NotNull(typeof(GameCoordinator).GetMethod("ValidatePlayerPassAuthority", flags));
+        Assert.NotNull(typeof(GameCoordinator).GetMethod("CommitPassCombatTurn", flags));
+
+        var fixture = await CreateCombatDamageGameAsync([]);
+        var started = await StartCombatAsync(
+            fixture.Coordinator,
+            fixture.Room.RoomId,
+            fixture.HostId,
+            1,
+            [fixture.HostCharacterId, fixture.MemberCharacterId],
+            [Opponent("Cultist", 60)]);
+        Assert.True(started.IsSuccess);
+
+        var order = started.State!.Combat!.Order;
+        var firstReplacementAttempts = fixture.StateStore.ReplacementAttempts;
+        fixture.Notifier.Reset();
+
+        var ownerPass = await PassCombatTurnAsync(
+            fixture.Coordinator,
+            fixture.Room.RoomId,
+            fixture.HostId,
+            started.State.Revision);
+
+        Assert.True(ownerPass.IsSuccess);
+        Assert.Equal(started.State.Revision + 1, ownerPass.State!.Revision);
+        Assert.Equal(order, ownerPass.State.Combat!.Order);
+        Assert.Equal(1, ownerPass.State.Combat.ActionCounts["character:" + fixture.HostCharacterId]);
+        Assert.Equal(firstReplacementAttempts + 1, fixture.StateStore.ReplacementAttempts);
+        Assert.Equal(1, fixture.Notifier.GameSnapshotCalls);
+
+        fixture.Notifier.Reset();
+        var memberPass = await PassCombatTurnAsync(
+            fixture.Coordinator,
+            fixture.Room.RoomId,
+            fixture.MemberId,
+            ownerPass.State.Revision);
+        Assert.True(memberPass.IsSuccess);
+        Assert.Equal(ownerPass.State.Revision + 1, memberPass.State!.Revision);
+        Assert.Equal(1, fixture.Notifier.GameSnapshotCalls);
+
+        fixture.Notifier.Reset();
+        var hostControlledOpponentPass = await PassCombatTurnAsync(
+            fixture.Coordinator,
+            fixture.Room.RoomId,
+            fixture.HostId,
+            memberPass.State.Revision);
+        Assert.True(hostControlledOpponentPass.IsSuccess);
+        Assert.Equal(memberPass.State.Revision + 1, hostControlledOpponentPass.State!.Revision);
+        Assert.Equal(2, hostControlledOpponentPass.State.Combat!.Round);
+        Assert.Equal(order, hostControlledOpponentPass.State.Combat.Order);
+        Assert.Equal(1, fixture.Notifier.GameSnapshotCalls);
+    }
+
+    [Fact]
     public async Task CombatDamageGate_ResolvedHitBlocksBeginPassAndManualEndWithoutMutationOrDice()
     {
         var fixture = await CreateResolvableCombatGameAsync([1, 100]);

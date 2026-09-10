@@ -1005,36 +1005,75 @@ public sealed class GameCoordinator : IGameCoordinator, IInternalCombatResolutio
             return GameResult<PassCombatTurnResult>.Failure(access.Value);
         }
 
-        if (!stateStore.TryGet(command.RoomId, out var state) || state?.Combat is not { Active: true } session)
+        var context = LoadPassCombatTurnContext(command.RoomId, command.ExpectedGameRevision, out var errorCode);
+        if (context is null)
         {
-            return GameResult<PassCombatTurnResult>.Failure(GameErrorCode.InvalidCombat);
+            return GameResult<PassCombatTurnResult>.Failure(errorCode!.Value);
+        }
+
+        return !ValidatePlayerPassAuthority(context, command.RequestingPlayerId, room!)
+            ? GameResult<PassCombatTurnResult>.Failure(GameErrorCode.InvalidParticipant)
+            : CommitPassCombatTurn(context);
+    }
+
+    private PassCombatTurnContext? LoadPassCombatTurnContext(
+        Guid roomId,
+        long expectedGameRevision,
+        out GameErrorCode? errorCode)
+    {
+        errorCode = null;
+        if (!stateStore.TryGet(roomId, out var state) || state?.Combat is not { Active: true } session)
+        {
+            errorCode = GameErrorCode.InvalidCombat;
+            return null;
         }
 
         if (FindBlockingDamageDisposition(session.DamageDispositions) is not null)
         {
-            return GameResult<PassCombatTurnResult>.Failure(GameErrorCode.PendingConflict);
+            errorCode = GameErrorCode.PendingConflict;
+            return null;
         }
 
-        if (state.Revision != command.ExpectedGameRevision)
+        if (state.Revision != expectedGameRevision)
         {
-            return GameResult<PassCombatTurnResult>.Failure(GameErrorCode.StateConflict);
+            errorCode = GameErrorCode.StateConflict;
+            return null;
         }
 
         if (session.PendingExchange is not null)
         {
-            return GameResult<PassCombatTurnResult>.Failure(GameErrorCode.PendingConflict);
+            errorCode = GameErrorCode.PendingConflict;
+            return null;
         }
 
-        var actor = session.Participants.SingleOrDefault(participant => participant.ParticipantId == session.Order.ElementAtOrDefault(session.TurnIndex));
-        if (actor is null || !actor.Active || !CanControlActor(actor, command.RequestingPlayerId, room!))
+        var actor = session.Participants.SingleOrDefault(
+            participant => participant.ParticipantId == session.Order.ElementAtOrDefault(session.TurnIndex));
+        if (actor is null || !actor.Active)
         {
-            return GameResult<PassCombatTurnResult>.Failure(GameErrorCode.InvalidParticipant);
+            errorCode = GameErrorCode.InvalidParticipant;
+            return null;
         }
 
-        var actionCounts = session.ActionCounts.ToDictionary(pair => pair.Key, pair => pair.Value);
-        actionCounts[actor.ParticipantId.Value] = actionCounts.GetValueOrDefault(actor.ParticipantId.Value) + 1;
-        var advance = AdvanceTurn(state, session, actionCounts, session.ResponseCounts);
-        return ReplaceCombatState(state, advance.Session, replacement => new PassCombatTurnResult(replacement), advance.Characters);
+        return new PassCombatTurnContext(state, session, actor);
+    }
+
+    private static bool ValidatePlayerPassAuthority(
+        PassCombatTurnContext context,
+        Guid requestingPlayerId,
+        RoomSession room) =>
+        CanControlActor(context.Actor, requestingPlayerId, room);
+
+    private GameResult<PassCombatTurnResult> CommitPassCombatTurn(PassCombatTurnContext context)
+    {
+        var actionCounts = context.Session.ActionCounts.ToDictionary(pair => pair.Key, pair => pair.Value);
+        actionCounts[context.Actor.ParticipantId.Value] =
+            actionCounts.GetValueOrDefault(context.Actor.ParticipantId.Value) + 1;
+        var advance = AdvanceTurn(context.State, context.Session, actionCounts, context.Session.ResponseCounts);
+        return ReplaceCombatState(
+            context.State,
+            advance.Session,
+            replacement => new PassCombatTurnResult(replacement),
+            advance.Characters);
     }
 
     private GameResult<EndCombatResult> EndCombatCore(EndCombatCommand command)
@@ -1365,6 +1404,11 @@ public sealed class GameCoordinator : IGameCoordinator, IInternalCombatResolutio
     }
 
     private sealed record CombatTurnAdvance(IReadOnlyList<CharacterState> Characters, CombatSession Session);
+
+    private sealed record PassCombatTurnContext(
+        MultiplayerGameState State,
+        CombatSession Session,
+        CombatParticipantState Actor);
 
     private sealed record CombatDamageRepair(
         IReadOnlyList<CharacterState> Characters,
