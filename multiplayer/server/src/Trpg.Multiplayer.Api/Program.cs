@@ -27,6 +27,7 @@ builder.Services.AddSingleton<RoomCoordinator>();
 builder.Services.AddSingleton<GameCoordinator>();
 builder.Services.AddSingleton<IGameCoordinator>(services => services.GetRequiredService<GameCoordinator>());
 builder.Services.AddSingleton<IInternalCombatResolutionCoordinator>(services => services.GetRequiredService<GameCoordinator>());
+builder.Services.AddSingleton<IInternalNpcCombatTurnExecutor>(services => services.GetRequiredService<GameCoordinator>());
 builder.Services.AddSingleton<IPlayerCombatIntentCoordinator, PlayerCombatIntentCoordinator>();
 builder.Services.AddSingleton<RoomMutationDeliveryGate>();
 builder.Services.AddSingleton<IPlayerSessionStore, InMemoryPlayerSessionStore>();

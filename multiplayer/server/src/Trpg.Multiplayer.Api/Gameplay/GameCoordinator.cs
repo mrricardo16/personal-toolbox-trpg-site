@@ -4,7 +4,7 @@ using Trpg.Multiplayer.Api.Rooms;
 
 namespace Trpg.Multiplayer.Api.Gameplay;
 
-public sealed class GameCoordinator : IGameCoordinator, IInternalCombatResolutionCoordinator
+public sealed class GameCoordinator : IGameCoordinator, IInternalCombatResolutionCoordinator, IInternalNpcCombatTurnExecutor
 {
     private const long InitialRevision = 1;
     private const int MaxCombatParticipants = 16;
@@ -198,6 +198,20 @@ public sealed class GameCoordinator : IGameCoordinator, IInternalCombatResolutio
         });
     }
 
+    private async Task<GameResult<BeginOpposedExchangeResult>> BeginNpcOpposedExchangeAsync(BeginNpcOpposedExchangeCommand command)
+    {
+        return await WithRoomLockAsync(command.RoomId, async () =>
+        {
+            var result = BeginNpcOpposedExchangeCore(command);
+            if (result.IsSuccess && result.Changed && realtimeNotifier is not null)
+            {
+                await realtimeNotifier.PublishGameSnapshotAsync(command.RoomId);
+            }
+
+            return result;
+        });
+    }
+
     internal async Task<GameResult<ResolvePendingExchangeResult>> ResolvePendingExchangeAsync(ResolvePendingExchangeCommand command)
     {
         return await WithRoomLockAsync(command.RoomId, async () =>
@@ -244,6 +258,20 @@ public sealed class GameCoordinator : IGameCoordinator, IInternalCombatResolutio
         });
     }
 
+    private async Task<GameResult<PassCombatTurnResult>> PassNpcCombatTurnAsync(PassNpcCombatTurnCommand command)
+    {
+        return await WithRoomLockAsync(command.RoomId, async () =>
+        {
+            var result = PassNpcCombatTurnCore(command);
+            if (result.IsSuccess && result.Changed && realtimeNotifier is not null)
+            {
+                await realtimeNotifier.PublishGameSnapshotAsync(command.RoomId);
+            }
+
+            return result;
+        });
+    }
+
     internal async Task<GameResult<EndCombatResult>> EndCombatAsync(EndCombatCommand command)
     {
         return await WithRoomLockAsync(command.RoomId, async () =>
@@ -275,6 +303,12 @@ public sealed class GameCoordinator : IGameCoordinator, IInternalCombatResolutio
 
     Task<GameResult<EndCombatResult>> IInternalCombatResolutionCoordinator.EndCombatAsync(EndCombatCommand command) =>
         EndCombatAsync(command);
+
+    Task<GameResult<BeginOpposedExchangeResult>> IInternalNpcCombatTurnExecutor.BeginNpcOpposedExchangeAsync(BeginNpcOpposedExchangeCommand command) =>
+        BeginNpcOpposedExchangeAsync(command);
+
+    Task<GameResult<PassCombatTurnResult>> IInternalNpcCombatTurnExecutor.PassNpcCombatTurnAsync(PassNpcCombatTurnCommand command) =>
+        PassNpcCombatTurnAsync(command);
 
     private GameResult<StartCombatResult> StartCombatCore(StartCombatCommand command)
     {
@@ -448,12 +482,45 @@ public sealed class GameCoordinator : IGameCoordinator, IInternalCombatResolutio
         return CommitBeginOpposedExchange(context);
     }
 
+    private GameResult<BeginOpposedExchangeResult> BeginNpcOpposedExchangeCore(BeginNpcOpposedExchangeCommand command)
+    {
+        var contextError = LoadBeginOpposedExchangeContext(
+            command.RoomId,
+            command.ExpectedGameRevision,
+            command.NpcParticipantId,
+            command.TargetParticipantId,
+            out var context,
+            validateNpcCanonicalState: true);
+        if (contextError is not null)
+        {
+            return GameResult<BeginOpposedExchangeResult>.Failure(contextError.Value);
+        }
+
+        return ValidateNpcBeginAuthority(context!, command.NpcParticipantId, command.TargetParticipantId)
+            ? CommitBeginOpposedExchange(context!)
+            : GameResult<BeginOpposedExchangeResult>.Failure(GameErrorCode.InvalidParticipant);
+    }
+
     private GameErrorCode? LoadBeginOpposedExchangeContext(
         BeginOpposedExchangeCommand command,
         out BeginOpposedExchangeContext? context)
+        => LoadBeginOpposedExchangeContext(
+            command.RoomId,
+            command.ExpectedGameRevision,
+            command.AttackerParticipantId,
+            command.DefenderParticipantId,
+            out context);
+
+    private GameErrorCode? LoadBeginOpposedExchangeContext(
+        Guid roomId,
+        long expectedGameRevision,
+        string attackerParticipantId,
+        string defenderParticipantId,
+        out BeginOpposedExchangeContext? context,
+        bool validateNpcCanonicalState = false)
     {
         context = null;
-        if (!stateStore.TryGet(command.RoomId, out var state) || state?.Combat is not { Active: true } session)
+        if (!stateStore.TryGet(roomId, out var state) || state?.Combat is not { Active: true } session)
         {
             return GameErrorCode.InvalidCombat;
         }
@@ -463,7 +530,7 @@ public sealed class GameCoordinator : IGameCoordinator, IInternalCombatResolutio
             return GameErrorCode.PendingConflict;
         }
 
-        if (state.Revision != command.ExpectedGameRevision)
+        if (state.Revision != expectedGameRevision)
         {
             return GameErrorCode.StateConflict;
         }
@@ -474,13 +541,24 @@ public sealed class GameCoordinator : IGameCoordinator, IInternalCombatResolutio
         }
 
         var currentActorId = session.Order.ElementAtOrDefault(session.TurnIndex);
-        if (currentActorId is null || currentActorId.Value != command.AttackerParticipantId)
+        if (currentActorId is null || currentActorId.Value != attackerParticipantId)
         {
             return GameErrorCode.InvalidParticipant;
         }
 
-        var attacker = session.Participants.SingleOrDefault(participant => participant.ParticipantId.Value == command.AttackerParticipantId);
-        var defender = session.Participants.SingleOrDefault(participant => participant.ParticipantId.Value == command.DefenderParticipantId);
+        var attackers = session.Participants
+            .Where(participant => participant.ParticipantId.Value == attackerParticipantId)
+            .ToArray();
+        var defenders = session.Participants
+            .Where(participant => participant.ParticipantId.Value == defenderParticipantId)
+            .ToArray();
+        if (validateNpcCanonicalState && (attackers.Length > 1 || defenders.Length > 1))
+        {
+            throw new NpcCombatContinuationInvariantException("Canonical NPC actor or target participant is duplicated.");
+        }
+
+        var attacker = attackers.SingleOrDefault();
+        var defender = defenders.SingleOrDefault();
         if (attacker is null || defender is null || !attacker.Active || !defender.Active
             || attacker.ParticipantId == defender.ParticipantId || attacker.Side == defender.Side
             || defender.AvailableResponses.Count == 0)
@@ -501,6 +579,25 @@ public sealed class GameCoordinator : IGameCoordinator, IInternalCombatResolutio
             || (attacker.OwnerPlayerId is null && room.HostPlayerId != requestingPlayerId)
             ? GameErrorCode.InvalidParticipant
             : null;
+    }
+
+    private static bool ValidateNpcBeginAuthority(
+        BeginOpposedExchangeContext context,
+        string npcParticipantId,
+        string targetParticipantId)
+    {
+        EnsureUniqueCanonicalParticipant(context.Session, npcParticipantId, "NPC actor");
+        EnsureUniqueCanonicalParticipant(context.Session, targetParticipantId, "NPC target");
+        EnsureCanonicalOrderMembership(context.Session, context.Attacker.ParticipantId, "NPC actor");
+        EnsureCanonicalOrderMembership(context.Session, context.Defender.ParticipantId, "NPC target");
+        return EnsureNpcActorShape(context.Attacker, "NPC actor")
+            && EnsureInvestigatorTargetShape(context.Defender, "NPC target")
+            && context.Attacker.ParticipantId.Value == npcParticipantId
+            && context.Defender.ParticipantId.Value == targetParticipantId
+            && context.Attacker.Active
+            && context.Defender.Active
+            && context.Attacker.Side != context.Defender.Side
+            && context.Defender.AvailableResponses.Count > 0;
     }
 
     private GameResult<BeginOpposedExchangeResult> CommitBeginOpposedExchange(BeginOpposedExchangeContext context)
@@ -1016,10 +1113,31 @@ public sealed class GameCoordinator : IGameCoordinator, IInternalCombatResolutio
             : CommitPassCombatTurn(context);
     }
 
+    private GameResult<PassCombatTurnResult> PassNpcCombatTurnCore(PassNpcCombatTurnCommand command)
+    {
+        var context = LoadPassCombatTurnContext(
+            command.RoomId,
+            command.ExpectedGameRevision,
+            out var errorCode,
+            validateNpcCanonicalState: true);
+        if (context is null)
+        {
+            return GameResult<PassCombatTurnResult>.Failure(errorCode!.Value);
+        }
+
+        EnsureUniqueCanonicalParticipant(context.Session, command.NpcParticipantId, "NPC actor");
+        EnsureCanonicalOrderMembership(context.Session, context.Actor.ParticipantId, "NPC actor");
+        return EnsureNpcActorShape(context.Actor, "NPC actor")
+            && context.Actor.ParticipantId.Value == command.NpcParticipantId
+            ? CommitPassCombatTurn(context)
+            : GameResult<PassCombatTurnResult>.Failure(GameErrorCode.InvalidParticipant);
+    }
+
     private PassCombatTurnContext? LoadPassCombatTurnContext(
         Guid roomId,
         long expectedGameRevision,
-        out GameErrorCode? errorCode)
+        out GameErrorCode? errorCode,
+        bool validateNpcCanonicalState = false)
     {
         errorCode = null;
         if (!stateStore.TryGet(roomId, out var state) || state?.Combat is not { Active: true } session)
@@ -1046,8 +1164,16 @@ public sealed class GameCoordinator : IGameCoordinator, IInternalCombatResolutio
             return null;
         }
 
-        var actor = session.Participants.SingleOrDefault(
-            participant => participant.ParticipantId == session.Order.ElementAtOrDefault(session.TurnIndex));
+        var currentActorId = session.Order.ElementAtOrDefault(session.TurnIndex);
+        var actors = session.Participants
+            .Where(participant => participant.ParticipantId == currentActorId)
+            .ToArray();
+        if (validateNpcCanonicalState && actors.Length > 1)
+        {
+            throw new NpcCombatContinuationInvariantException("Canonical NPC actor participant is duplicated.");
+        }
+
+        var actor = actors.SingleOrDefault();
         if (actor is null || !actor.Active)
         {
             errorCode = GameErrorCode.InvalidParticipant;
@@ -1062,6 +1188,60 @@ public sealed class GameCoordinator : IGameCoordinator, IInternalCombatResolutio
         Guid requestingPlayerId,
         RoomSession room) =>
         CanControlActor(context.Actor, requestingPlayerId, room);
+
+    private static void EnsureUniqueCanonicalParticipant(
+        CombatSession session,
+        string participantId,
+        string role)
+    {
+        if (session.Participants.Count(participant => participant.ParticipantId.Value == participantId) != 1)
+        {
+            throw new NpcCombatContinuationInvariantException($"Canonical {role} participant '{participantId}' is missing or duplicated.");
+        }
+    }
+
+    private static void EnsureCanonicalOrderMembership(
+        CombatSession session,
+        CombatParticipantId participantId,
+        string role)
+    {
+        if (!session.Order.Contains(participantId))
+        {
+            throw new NpcCombatContinuationInvariantException($"Canonical {role} is absent from Combat order.");
+        }
+    }
+
+    private static bool EnsureNpcActorShape(CombatParticipantState participant, string role)
+    {
+        if (participant.Kind == "opponent" && participant.Side == "opponent"
+            && participant.CharacterId is null && participant.OwnerPlayerId is null)
+        {
+            return true;
+        }
+
+        if (participant.Kind == "investigator" && participant.Side == "investigator")
+        {
+            return false;
+        }
+
+        throw new NpcCombatContinuationInvariantException($"Canonical {role} has an invalid NPC participant shape.");
+    }
+
+    private static bool EnsureInvestigatorTargetShape(CombatParticipantState participant, string role)
+    {
+        if (participant.Kind == "investigator" && participant.Side == "investigator"
+            && participant.CharacterId is not null && participant.OwnerPlayerId is not null)
+        {
+            return true;
+        }
+
+        if (participant.Kind == "opponent" && participant.Side == "opponent")
+        {
+            return false;
+        }
+
+        throw new NpcCombatContinuationInvariantException($"Canonical {role} has an invalid investigator participant shape.");
+    }
 
     private GameResult<PassCombatTurnResult> CommitPassCombatTurn(PassCombatTurnContext context)
     {

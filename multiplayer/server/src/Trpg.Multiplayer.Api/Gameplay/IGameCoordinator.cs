@@ -36,3 +36,10 @@ internal interface IInternalCombatResolutionCoordinator : IInternalCombatCoordin
 
     Task<GameResult<EndCombatResult>> EndCombatAsync(EndCombatCommand command);
 }
+
+internal interface IInternalNpcCombatTurnExecutor
+{
+    Task<GameResult<BeginOpposedExchangeResult>> BeginNpcOpposedExchangeAsync(BeginNpcOpposedExchangeCommand command);
+
+    Task<GameResult<PassCombatTurnResult>> PassNpcCombatTurnAsync(PassNpcCombatTurnCommand command);
+}

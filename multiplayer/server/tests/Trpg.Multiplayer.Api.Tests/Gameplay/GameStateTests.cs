@@ -1,4 +1,6 @@
 using System.Text.Json;
+using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.DependencyInjection;
 using Trpg.Multiplayer.Api.Gameplay;
 using Trpg.Multiplayer.Api.Realtime;
 using Trpg.Multiplayer.Api.Rooms;
@@ -525,6 +527,177 @@ public sealed class GameStateTests
         Assert.Equal(
             new[] { "BeginOpposedExchangeAsync", "StartCombatAsync" },
             internalCombat.GetMethods().Select(method => method.Name).OrderBy(name => name));
+    }
+
+    [Fact]
+    public void InternalNpcCombat_ContractsContainNoPlayerAuthorityOrTrustedFlags()
+    {
+        var assembly = typeof(GameCoordinator).Assembly;
+        var executor = assembly.GetType("Trpg.Multiplayer.Api.Gameplay.IInternalNpcCombatTurnExecutor");
+        var begin = assembly.GetType("Trpg.Multiplayer.Api.Gameplay.BeginNpcOpposedExchangeCommand");
+        var pass = assembly.GetType("Trpg.Multiplayer.Api.Gameplay.PassNpcCombatTurnCommand");
+
+        Assert.NotNull(executor);
+        Assert.NotNull(begin);
+        Assert.NotNull(pass);
+        Assert.True(executor!.IsAssignableFrom(typeof(GameCoordinator)));
+        Assert.Equal(["BeginNpcOpposedExchangeAsync", "PassNpcCombatTurnAsync"], executor.GetMethods().Select(method => method.Name).Order().ToArray());
+        Assert.Equal(["ExpectedGameRevision", "NpcParticipantId", "RoomId", "TargetParticipantId"], begin!.GetProperties().Select(property => property.Name).Order().ToArray());
+        Assert.Equal(["ExpectedGameRevision", "NpcParticipantId", "RoomId"], pass!.GetProperties().Select(property => property.Name).Order().ToArray());
+        Assert.DoesNotContain(begin.GetProperties(), property => property.Name.Contains("Player", StringComparison.Ordinal)
+            || property.Name.Contains("Host", StringComparison.Ordinal)
+            || property.Name.Contains("Trusted", StringComparison.Ordinal));
+        Assert.DoesNotContain(pass.GetProperties(), property => property.Name.Contains("Player", StringComparison.Ordinal)
+            || property.Name.Contains("Host", StringComparison.Ordinal)
+            || property.Name.Contains("Trusted", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task InternalNpcCombat_BeginCommitsOnceForTheExactCurrentUnownedOpponent()
+    {
+        var fixture = await CreateCombatDamageGameAsync([1]);
+        var started = await StartCombatAsync(
+            fixture.Coordinator, fixture.Room.RoomId, fixture.HostId, 1,
+            [fixture.HostCharacterId], [Opponent("Cultist", 90)]);
+        Assert.True(started.IsSuccess);
+        fixture.Notifier.Reset();
+        var replacementsBefore = fixture.StateStore.ReplacementAttempts;
+
+        var result = await BeginNpcOpposedExchangeAsync(
+            fixture.Coordinator, fixture.Room.RoomId, started.State!.Revision, "opponent:0", $"character:{fixture.HostCharacterId}");
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(started.State.Revision + 1, result.State!.Revision);
+        Assert.Equal("opponent:0", result.State.Combat!.PendingExchange!.AttackerParticipantId.Value);
+        Assert.Equal(replacementsBefore + 1, fixture.StateStore.ReplacementAttempts);
+        Assert.Equal(1, fixture.Notifier.GameSnapshotCalls);
+    }
+
+    [Fact]
+    public async Task InternalNpcCombat_RejectsWrongActorAndIllegalTargetsWithoutMutation()
+    {
+        var fixture = await CreateCombatDamageGameAsync([1]);
+        var started = await StartCombatAsync(
+            fixture.Coordinator, fixture.Room.RoomId, fixture.HostId, 1,
+            [fixture.HostCharacterId, fixture.MemberCharacterId], [Opponent("Cultist", 90)]);
+        Assert.True(started.IsSuccess);
+        var before = started.State!;
+        fixture.Notifier.Reset();
+        var replacementsBefore = fixture.StateStore.ReplacementAttempts;
+
+        var wrongActor = await BeginNpcOpposedExchangeAsync(
+            fixture.Coordinator, fixture.Room.RoomId, before.Revision, $"character:{fixture.HostCharacterId}", $"character:{fixture.MemberCharacterId}");
+        var sameSide = await BeginNpcOpposedExchangeAsync(
+            fixture.Coordinator, fixture.Room.RoomId, before.Revision, "opponent:0", "opponent:0");
+        var missingTarget = await BeginNpcOpposedExchangeAsync(
+            fixture.Coordinator, fixture.Room.RoomId, before.Revision, "opponent:0", "missing");
+        var hostParticipant = before.Combat!.Participants.Single(participant => participant.ParticipantId.Value == $"character:{fixture.HostCharacterId}");
+        ReplaceCombatParticipant(fixture.StateStore, fixture.Room.RoomId, hostParticipant.ParticipantId.Value, hostParticipant with { Active = false });
+        var inactiveTarget = await BeginNpcOpposedExchangeAsync(
+            fixture.Coordinator, fixture.Room.RoomId, before.Revision, "opponent:0", hostParticipant.ParticipantId.Value);
+
+        Assert.Equal(GameErrorCode.InvalidParticipant, wrongActor.ErrorCode);
+        Assert.Equal(GameErrorCode.InvalidParticipant, sameSide.ErrorCode);
+        Assert.Equal(GameErrorCode.InvalidParticipant, missingTarget.ErrorCode);
+        Assert.Equal(GameErrorCode.InvalidParticipant, inactiveTarget.ErrorCode);
+        Assert.Equal(replacementsBefore + 1, fixture.StateStore.ReplacementAttempts);
+        Assert.Equal(0, fixture.Notifier.GameSnapshotCalls);
+    }
+
+    [Fact]
+    public async Task InternalNpcCombat_RejectsAnExactCurrentOwnedInvestigator()
+    {
+        var fixture = await CreateCombatDamageGameAsync([1]);
+        var started = await StartCombatAsync(
+            fixture.Coordinator, fixture.Room.RoomId, fixture.HostId, 1,
+            [fixture.HostCharacterId], [Opponent("Cultist", 70)]);
+        Assert.True(started.IsSuccess);
+        Assert.Equal($"character:{fixture.HostCharacterId}", started.State!.Combat!.Order[0].Value);
+        fixture.Notifier.Reset();
+        var replacementsBefore = fixture.StateStore.ReplacementAttempts;
+
+        var result = await BeginNpcOpposedExchangeAsync(
+            fixture.Coordinator, fixture.Room.RoomId, started.State.Revision,
+            $"character:{fixture.HostCharacterId}", "opponent:0");
+
+        Assert.Equal(GameErrorCode.InvalidParticipant, result.ErrorCode);
+        Assert.Equal(replacementsBefore, fixture.StateStore.ReplacementAttempts);
+        Assert.Equal(0, fixture.Notifier.GameSnapshotCalls);
+    }
+
+    [Fact]
+    public async Task InternalNpcCombat_PassCommitsOneCurrentNpcTurnAndRejectsStaleOrPendingState()
+    {
+        var fixture = await CreateCombatDamageGameAsync([1]);
+        var started = await StartCombatAsync(
+            fixture.Coordinator, fixture.Room.RoomId, fixture.HostId, 1,
+            [fixture.HostCharacterId], [Opponent("Cultist", 90)]);
+        Assert.True(started.IsSuccess);
+        fixture.Notifier.Reset();
+
+        var stale = await PassNpcCombatTurnAsync(fixture.Coordinator, fixture.Room.RoomId, started.State!.Revision - 1, "opponent:0");
+        var passed = await PassNpcCombatTurnAsync(fixture.Coordinator, fixture.Room.RoomId, started.State.Revision, "opponent:0");
+
+        Assert.Equal(GameErrorCode.StateConflict, stale.ErrorCode);
+        Assert.True(passed.IsSuccess);
+        Assert.Equal(started.State.Revision + 1, passed.State!.Revision);
+        Assert.Equal(1, fixture.Notifier.GameSnapshotCalls);
+    }
+
+    [Fact]
+    public async Task InternalNpcCombat_PendingExchangeNeverMutates()
+    {
+        var fixture = await CreateCombatDamageGameAsync([1]);
+        var started = await StartCombatAsync(
+            fixture.Coordinator, fixture.Room.RoomId, fixture.HostId, 1,
+            [fixture.HostCharacterId], [Opponent("Cultist", 90)]);
+        Assert.True(started.IsSuccess);
+        var pending = await BeginNpcOpposedExchangeAsync(
+            fixture.Coordinator, fixture.Room.RoomId, started.State!.Revision, "opponent:0", $"character:{fixture.HostCharacterId}");
+        Assert.True(pending.IsSuccess);
+        var replacementAttempts = fixture.StateStore.ReplacementAttempts;
+        fixture.Notifier.Reset();
+
+        var blocked = await PassNpcCombatTurnAsync(
+            fixture.Coordinator, fixture.Room.RoomId, pending.State!.Revision, "opponent:0");
+
+        Assert.Equal(GameErrorCode.PendingConflict, blocked.ErrorCode);
+        Assert.Equal(replacementAttempts, fixture.StateStore.ReplacementAttempts);
+        Assert.Equal(0, fixture.Notifier.GameSnapshotCalls);
+    }
+
+    [Fact]
+    public async Task InternalNpcCombat_MalformedCanonicalNpcStateThrowsDedicatedInvariantBeforeMutation()
+    {
+        var fixture = await CreateCombatDamageGameAsync([1]);
+        var started = await StartCombatAsync(
+            fixture.Coordinator, fixture.Room.RoomId, fixture.HostId, 1,
+            [fixture.HostCharacterId], [Opponent("Cultist", 90)]);
+        Assert.True(started.IsSuccess);
+        var npc = started.State!.Combat!.Participants.Single(participant => participant.ParticipantId.Value == "opponent:0");
+        ReplaceCombatParticipant(fixture.StateStore, fixture.Room.RoomId, "opponent:0", npc with { OwnerPlayerId = fixture.HostId });
+        var before = GetRequiredState(fixture.StateStore, fixture.Room.RoomId);
+        fixture.Notifier.Reset();
+        var replacementAttempts = fixture.StateStore.ReplacementAttempts;
+
+        var exception = await Record.ExceptionAsync(() => BeginNpcOpposedExchangeAsync(
+            fixture.Coordinator, fixture.Room.RoomId, before.Revision, "opponent:0", $"character:{fixture.HostCharacterId}"));
+
+        Assert.NotNull(exception);
+        Assert.Equal("NpcCombatContinuationInvariantException", exception.GetType().Name);
+        Assert.Equal(replacementAttempts, fixture.StateStore.ReplacementAttempts);
+        Assert.Equal(0, fixture.Notifier.GameSnapshotCalls);
+    }
+
+    [Fact]
+    public void InternalNpcCombat_ExecutorUsesTheCanonicalGameCoordinatorSingleton()
+    {
+        using var factory = new WebApplicationFactory<Program>();
+        var executorType = typeof(GameCoordinator).Assembly.GetType("Trpg.Multiplayer.Api.Gameplay.IInternalNpcCombatTurnExecutor")!;
+        var coordinator = factory.Services.GetRequiredService<GameCoordinator>();
+        var executor = factory.Services.GetRequiredService(executorType);
+
+        Assert.Same(coordinator, executor);
     }
 
     [Fact]
@@ -3237,6 +3410,20 @@ public sealed class GameStateTests
             attackerParticipantId,
             defenderParticipantId);
 
+    private static async Task<InternalCombatResult> BeginNpcOpposedExchangeAsync(
+        GameCoordinator coordinator,
+        Guid roomId,
+        long expectedRevision,
+        string npcParticipantId,
+        string targetParticipantId) =>
+        await InvokeInternalCombatAsync(
+            coordinator,
+            "BeginNpcOpposedExchangeAsync",
+            roomId,
+            expectedRevision,
+            npcParticipantId,
+            targetParticipantId);
+
     private static async Task<InternalCombatResult> ResolvePendingExchangeAsync(
         GameCoordinator coordinator, Guid roomId, Guid? requestingPlayerId, long expectedRevision, string exchangeId, CombatResponse response) =>
         await InvokeInternalCombatAsync(coordinator, "ResolvePendingExchangeAsync", roomId, requestingPlayerId, expectedRevision, exchangeId, response);
@@ -3244,6 +3431,15 @@ public sealed class GameStateTests
     private static async Task<InternalCombatResult> PassCombatTurnAsync(
         GameCoordinator coordinator, Guid roomId, Guid requestingPlayerId, long expectedRevision) =>
         await InvokeInternalCombatAsync(coordinator, "PassCombatTurnAsync", roomId, requestingPlayerId, expectedRevision);
+
+    private static async Task<InternalCombatResult> PassNpcCombatTurnAsync(
+        GameCoordinator coordinator, Guid roomId, long expectedRevision, string npcParticipantId) =>
+        await InvokeInternalCombatAsync(
+            coordinator,
+            "PassNpcCombatTurnAsync",
+            roomId,
+            expectedRevision,
+            npcParticipantId);
 
     private static async Task<InternalCombatResult> EndCombatAsync(
         GameCoordinator coordinator, Guid roomId, Guid authorizedPlayerId, long expectedRevision, string reason) =>

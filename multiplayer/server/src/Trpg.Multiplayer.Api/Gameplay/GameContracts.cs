@@ -27,6 +27,12 @@ internal sealed record BeginOpposedExchangeCommand(
     string AttackerParticipantId,
     string DefenderParticipantId);
 
+internal sealed record BeginNpcOpposedExchangeCommand(
+    Guid RoomId,
+    long ExpectedGameRevision,
+    string NpcParticipantId,
+    string TargetParticipantId);
+
 internal sealed record ResolvePendingExchangeCommand(
     Guid RoomId,
     Guid? RequestingPlayerId,
@@ -38,6 +44,11 @@ internal sealed record PassCombatTurnCommand(
     Guid RoomId,
     Guid RequestingPlayerId,
     long ExpectedGameRevision);
+
+internal sealed record PassNpcCombatTurnCommand(
+    Guid RoomId,
+    long ExpectedGameRevision,
+    string NpcParticipantId);
 
 internal sealed record EndCombatCommand(
     Guid RoomId,
@@ -84,6 +95,8 @@ internal sealed class CombatDamageStateInvariantException(string message) : Exce
 internal sealed class CombatDamageCommitInvariantException(string message) : Exception(message);
 
 internal sealed class PlayerCombatIntentInvariantException(string message) : Exception(message);
+
+internal sealed class NpcCombatContinuationInvariantException(string message) : Exception(message);
 
 public sealed record ResolveCheckCommand(
     Guid RoomId,
