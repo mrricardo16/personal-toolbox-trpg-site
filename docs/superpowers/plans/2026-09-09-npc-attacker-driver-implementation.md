@@ -12,6 +12,7 @@
 
 - Start from approved design commit plus its boundary correction. Preserve every existing uncommitted change; never reset, stash, revert, amend, rebase, or force-push.
 - TDD is mandatory. Add the named test first, run the exact RED command, record the actual failure, then make only the minimum implementation and run the exact GREEN command.
+- Never break working behavior to manufacture RED. A feature RED must prove behavior genuinely absent at that task boundary; if a later task adds only regression coverage for intentionally earlier behavior, label it integration/regression GREEN-on-add rather than a feature RED.
 - Every edited text file must decode with strict UTF-8. Stop before editing any authorized existing file that fails strict UTF-8.
 - Keep public Combat routes exactly `melee-attack`, `respond`, and `pass`. Add no public NPC, Start, End, Damage, or ResolveDamage route.
 - Do not add client NPC triggers, controls, timers, polling, calculations, or a second Combat state machine. `GameSnapshot` remains authoritative.
@@ -298,7 +299,7 @@ Run the Step 2 command. Expected GREEN: all stop, bound, dependency, and returne
 
 ---
 
-### Task 6: Preserve Latest State and Add the Third Player Coordinator Dependency
+### Task 6: Prepare Latest-State Retention and Add the Third Player Coordinator Dependency
 
 **Files:**
 - Modify: `multiplayer/server/src/Trpg.Multiplayer.Api/Gameplay/PlayerCombatIntentCoordinator.cs`
@@ -319,11 +320,13 @@ internal sealed class PlayerCombatIntentCoordinator(
     ICombatContinuationCoordinator continuation);
 ```
 
-`ResolveExactPendingDamageAsync` returns the Resolve state when no pending damage exists, the Damage state when Damage commits, and the last committed state plus mapped failure when Damage fails.
+`ResolveExactPendingDamageAsync` returns the Resolve state when no Damage follows, the Damage state when Damage commits, and the last committed state plus mapped failure when Damage fails. Pass state is retained in the same narrow application form for later delegation.
+
+Task 6 creates the dependency and state-retention seam only. It must not call `ICombatContinuationCoordinator.ContinueAsync` from any production Pass, Melee, or Respond success path; existing Phase 2H public behavior remains unchanged.
 
 - [ ] **Step 1: Add failing latest-state and dependency tests.**
 
-Require exactly the three constructor dependencies in exact order; forbid every listed direct dependency category. Assert Pass forwards `PassCombatTurnResult.State`; no-damage Melee/Respond forward `ResolvePendingExchangeResult.State`; damage Melee/Respond forward `ResolveCombatDamageResult.State`; human-defender Begin forwards/stops through `BeginOpposedExchangeResult.State`; final projection occurs after continuation; prevalidation and transition failures do not call continuation.
+Require exactly the three constructor dependencies in exact order; forbid every listed direct dependency category. Assert the private/application helpers retain the exact `PassCombatTurnResult.State`, no-Damage `ResolvePendingExchangeResult.State`, and Damage `ResolveCombatDamageResult.State` without reconstruction or a state query. Assert all public Pass/Melee/Respond success paths invoke the continuation fake zero times, while existing Phase 2H behavior remains green.
 
 - [ ] **Step 2: Run RED.**
 
@@ -331,17 +334,17 @@ Require exactly the three constructor dependencies in exact order; forbid every 
 dotnet test multiplayer/server/Trpg.Multiplayer.slnx --no-restore --filter "FullyQualifiedName~PlayerCombatIntentCoordinatorTests.PlayerCombatIntentCoordinator_HasOnlyApprovedStateAndTransitionDependencies|FullyQualifiedName~PlayerCombatIntentCoordinatorTests.LatestState|FullyQualifiedName~PlayerCombatIntentCoordinatorTests.HumanDefenderBegin" --nologo -v:minimal
 ```
 
-Expected RED: constructor count is two and returned Pass/Damage states are discarded.
+Expected RED: constructor count is two, the latest-state outcome/helper is absent, and the successful Damage helper discards the final committed state. This RED must not require actual NPC continuation.
 
 - [ ] **Step 3: Implement delegation-only state retention.**
 
-Add only `ICombatContinuationCoordinator`. Refactor the damage helper to return `PlayerCombatTransitionOutcome`; after each successful player flow call `ContinueAsync(latestState)` once and only then request the fresh viewer projection. Do not put NPC selection, target, loop, authority, dice, damage, or turn logic in this class.
+Add only `ICombatContinuationCoordinator`. Refactor the damage helper to return `PlayerCombatTransitionOutcome`, and retain successful Pass/Resolve/Damage state in the narrow private/application helper needed by Tasks 7 and 8. Do not call `ContinueAsync` yet. Do not put NPC selection, target, loop, authority, dice, damage, or turn logic in this class.
 
 - [ ] **Step 4: Run GREEN and record evidence.**
 
-Run the Step 2 command and all `PlayerCombatIntentCoordinatorTests`. Expected GREEN: latest state and exact dependency tests pass with existing failures unchanged. Run strict UTF-8 and `git diff --check`.
+Run the Step 2 command and all `PlayerCombatIntentCoordinatorTests`. Expected GREEN: the dependency/state-retention seam passes, the continuation fake records zero public-success calls, and Phase 2H behavior is unchanged. Run strict UTF-8 and `git diff --check`.
 
-**Invariants:** constructor dependency count exactly three; application publications zero; no store recovery; no extra public intent.
+**Invariants:** constructor dependency count exactly three; continuation call count is zero in Task 6 public flows; application publications zero; no store recovery; no extra public intent.
 
 **Commit:** `refactor: retain combat state for continuation`
 
@@ -357,7 +360,7 @@ Run the Step 2 command and all `PlayerCombatIntentCoordinatorTests`. Expected GR
 - Modify: `multiplayer/server/tests/Trpg.Multiplayer.Api.Tests/Realtime/SignalRGameDeliveryTests.cs`
 - Create: `.superpowers/sdd/phase-2i-task-7-report.md`
 
-**Contracts:** Player Pass commit `N→N+1`, then continuation consumes exactly that state. If NPC attacks, Begin commits/publishes `N+1→N+2`; final HTTP projection is revision `N+2` and application layers publish zero times.
+**Contracts:** This is the first production continuation call site. Player Pass commits `N→N+1`, then continuation consumes exactly that returned state once. If NPC attacks, Begin commits/publishes `N+1→N+2`; final HTTP projection is revision `N+2` and application layers publish zero times.
 
 - [ ] **Step 1: Add failing Pass integration tests.**
 
@@ -369,11 +372,11 @@ Add `Pass_LatestCommittedStateContinuesNpcTurn`, `Pass_NpcBeginPreMutationFailur
 dotnet test multiplayer/server/Trpg.Multiplayer.slnx --no-restore --filter "FullyQualifiedName~PlayerCombatIntentCoordinatorTests.Pass_|FullyQualifiedName~SignalRGameDeliveryTests.PlayerPassThenNpc" --nologo -v:minimal
 ```
 
-Expected RED: Pass returns after its own commit; no NPC Begin or `N+2` publication exists.
+Expected RED: Pass commits, the continuation fake invocation count is zero, no NPC Begin/Pass follows, and no `N+2` NPC publication exists.
 
 - [ ] **Step 3: Complete only the Pass call site.**
 
-Forward `passed.Value.State` to continuation and use the continuation's latest state only as orchestration evidence; preserve the final fresh viewer projection. Do not catch and retry executor failure.
+Forward the exact `passed.Value.State` once to continuation before the final fresh viewer projection. Preserve partial Pass state if continuation fails; do not catch and retry executor failure or publish from the application layer.
 
 - [ ] **Step 4: Run GREEN and record evidence.**
 
@@ -395,11 +398,22 @@ Run Step 2. Expected GREEN: ordered two-revision publication and partial-commit 
 - Modify: `multiplayer/server/tests/Trpg.Multiplayer.Api.Tests/Realtime/SignalRGameDeliveryTests.cs`
 - Create: `.superpowers/sdd/phase-2i-task-8-report.md`
 
-**Contracts:** no-damage paths continue from Resolve state; damage paths continue from Damage state; human defender Begin enters continuation but stops without executor mutation because pending exists; NPC Begin against a human always stops before Resolve/Damage.
+**Contracts:** This task adds the remaining production continuation call sites. NPC-defender Melee and human Respond continue exactly once from the latest Resolve/Damage state. Human-defender Melee forwards the exact Begin state once; continuation observes `PendingExchange`, performs zero NPC executor mutation, and returns before the final fresh projection. NPC Begin against a human always stops before Resolve/Damage.
+
+The final per-intent call matrix is:
+
+```text
+Pass → ContinueAsync once
+Melee vs NPC defender → ContinueAsync once after latest Resolve/Damage
+Melee vs human defender → ContinueAsync once with Begin State → pending stop
+Respond → ContinueAsync once after latest Resolve/Damage
+```
+
+Neither the Task 6 helper nor the Damage helper invokes continuation internally. No player intent calls continuation before and after final projection.
 
 - [ ] **Step 1: Add failing Melee/Respond integration tests.**
 
-Cover NPC-defender Melee no-damage and Damage returned revisions; human Respond no-damage and Damage; Fight Back defeat/order repair uses Damage state with no duplicate wrap; human defender Begin stops; normal NPC-attacker Begin invokes no Resolve/Damage; partial Resolve then Damage failure leaves disposition; NPC Begin commit then later application/final-projection failure leaves exact `PendingExchange` and never replays Begin.
+Cover NPC-defender Melee no-damage and Damage returned revisions; human Respond no-damage and Damage; Fight Back defeat/order repair uses Damage state with no duplicate wrap; human defender Begin stops; normal NPC-attacker Begin invokes no Resolve/Damage; partial Resolve then Damage failure leaves disposition; NPC Begin commit then later application/final-projection failure leaves exact `PendingExchange` and never replays Begin. Assert exactly one continuation call for each successful Melee/Respond path, the exact latest returned State argument, zero executor mutation for human-defender Begin, and no second continuation before or after final projection.
 
 - [ ] **Step 2: Run RED.**
 
@@ -407,7 +421,7 @@ Cover NPC-defender Melee no-damage and Damage returned revisions; human Respond 
 dotnet test multiplayer/server/Trpg.Multiplayer.slnx --no-restore --filter "FullyQualifiedName~PlayerCombatIntentCoordinatorTests.MeleeAttack_|FullyQualifiedName~PlayerCombatIntentCoordinatorTests.Respond_|FullyQualifiedName~SignalRGameDeliveryTests.PlayerCombatContinuation" --nologo -v:minimal
 ```
 
-Expected RED: successful Resolve/Damage flows do not yet drive from the retained latest state and new continuation publication assertions fail.
+Expected RED: after Task 7 only Pass is integrated; successful Melee/Respond flows still do not invoke continuation from the retained latest state, and the new continuation/publication assertions fail.
 
 - [ ] **Step 3: Complete Melee/Respond call sites.**
 
@@ -480,11 +494,16 @@ Expected GREEN: all safety/delivery/reconnect tests pass; route count is three; 
 - Create: `.superpowers/sdd/phase-2i-task-10-report.md`
 - Inspect only: all Phase 2I production/test files listed above plus `multiplayer/client/src/`
 
-**Contracts:** documentation records actual evidence only. No client or Single Player functionality changes. Formal HTML SHA remains `0A635D94CDD7284B35433092C834D92BCAD44961C14E30DBD565AB48B7E14D4D`.
+**Contracts:** documentation records actual evidence only. No client or Single Player functionality changes. The locked Phase 2I baseline is `639216b3f80384f6889ecac4b2343bf6f7b32f87`. Every aggregate scope, UTF-8, and evidence inventory audit compares that committed baseline through `HEAD` plus current working-tree Phase 2I work; it must not infer phase scope from the final uncommitted diff alone. Formal HTML SHA remains `0A635D94CDD7284B35433092C834D92BCAD44961C14E30DBD565AB48B7E14D4D`.
 
 - [ ] **Step 1: Run documentation RED before factual updates.**
 
 ```powershell
+$phaseBaseline = '639216b3f80384f6889ecac4b2343bf6f7b32f87'
+git cat-file -e "$phaseBaseline^{commit}"
+if ($LASTEXITCODE -ne 0) { throw "Missing Phase 2I baseline commit: $phaseBaseline" }
+git merge-base --is-ancestor $phaseBaseline HEAD
+if ($LASTEXITCODE -ne 0) { throw "Phase 2I baseline is not an ancestor of HEAD: $phaseBaseline" }
 $requiredReports = @('.superpowers/sdd/phase-2i-implementation-report.md','.superpowers/sdd/phase-2i-task-10-report.md')
 foreach ($path in $requiredReports) { if (-not (Test-Path -LiteralPath $path)) { throw "Missing Phase 2I factual report: $path" } }
 if ((Get-Content -Raw docs/CURRENT_STATE.md) -notmatch 'Phase 2I.*NPC Attacker Driver') { throw 'CURRENT_STATE lacks Phase 2I factual state' }
@@ -543,10 +562,11 @@ node multiplayer/server/tests/Fixtures/export-combat-damage-conformance.js
 $damageSha1 = (Get-FileHash multiplayer/server/tests/Trpg.Multiplayer.Api.Tests/Fixtures/combat-damage.json -Algorithm SHA256).Hash
 node multiplayer/server/tests/Fixtures/export-combat-damage-conformance.js
 $damageSha2 = (Get-FileHash multiplayer/server/tests/Trpg.Multiplayer.Api.Tests/Fixtures/combat-damage.json -Algorithm SHA256).Hash
-if ($damageSha1 -ne $damageSha2) { throw 'Combat Damage fixture SHA mismatch' }
+$approvedCombatDamageSha = '0036133BF2BF1F37CBEF7DC7707832C258DE869870B46C17ADCA748FE905CEE7'
+if ($damageSha1 -ne $damageSha2 -or $damageSha2 -ne $approvedCombatDamageSha) { throw "Combat Damage fixture SHA mismatch: $damageSha1 / $damageSha2" }
 ```
 
-Expected: Check 19, HP 10, Stabilization 21, Combat Opposed 19, Combat Damage 48, and identical exporter SHA.
+Expected: Check 19, HP 10, Stabilization 21, Combat Opposed 19, Combat Damage 48, and both exporter SHA values equal `0036133BF2BF1F37CBEF7DC7707832C258DE869870B46C17ADCA748FE905CEE7`.
 
 - [ ] **Step 6: Run the exact authoritative Single Player regressions and legacy alias.**
 
@@ -563,16 +583,30 @@ $regressions = @(
   'build/test-v167-healing-recovery.js','build/test-v168-combat-opposed.js','build/test-v169-combat-damage.js','build/test-v1610-firearms-impaling.js'
 )
 if ($regressions.Count -ne 37) { throw "Expected 37 regressions, got $($regressions.Count)" }
+$workflowRegressions = @(
+  Get-Content -LiteralPath '.github/workflows/trpg-ci.yml' -Encoding UTF8 | ForEach-Object {
+    if ($_ -match '^\s*run:\s+node\s+(build/test-[^\s]+\.js)\s*$') { $Matches[1] }
+  }
+)
+$credentialed = @('build/test-real-api-v1513.js','build/test-real-api-v152.js')
+$workflowOfflineRegressions = @($workflowRegressions | Where-Object { $_ -notin $credentialed })
+if ($workflowOfflineRegressions.Count -ne 37) { throw "Workflow authoritative offline count must be 37, got $($workflowOfflineRegressions.Count)" }
+if (@(Compare-Object -ReferenceObject $regressions -DifferenceObject $workflowOfflineRegressions -SyncWindow 0).Count -ne 0) { throw 'Workflow offline regression sequence differs from the Phase 2I allowlist' }
+if (@($workflowOfflineRegressions | Where-Object { $_ -in $credentialed }).Count -ne 0) { throw 'Credentialed real-API tests entered the offline workflow gate' }
+Write-Host 'workflow authoritative count = 37'
+Write-Host 'plan allowlist count = 37'
+Write-Host 'sequence identical = YES'
 foreach ($test in $regressions) { node $test; if ($LASTEXITCODE -ne 0) { throw "Failed: $test" } }
 node build/test-protocol-stability.js
 if ($LASTEXITCODE -ne 0) { throw 'legacy protocol-stability alias failed' }
 ```
 
-Expected: 37/37 workflow-listed regressions and the legacy alias PASS. Credentialed real API tests are not required.
+Expected: workflow authoritative count 37, plan allowlist count 37, sequence identical YES, 37/37 authoritative offline regressions, and the legacy alias PASS. `build/test-real-api-v1513.js` and `build/test-real-api-v152.js` remain outside this gate and are not required.
 
 - [ ] **Step 7: Run JavaScript syntax and formal artifact validation.**
 
 ```powershell
+$phaseBaseline = '639216b3f80384f6889ecac4b2343bf6f7b32f87'
 $scripts = @(Get-ChildItem src,build -Recurse -File -Filter '*.js' | Sort-Object FullName)
 if ($scripts.Count -ne 69) { throw "Expected 69 JS files, got $($scripts.Count)" }
 foreach ($script in $scripts) { node --check $script.FullName; if ($LASTEXITCODE -ne 0) { throw "Syntax failed: $($script.FullName)" } }
@@ -586,7 +620,10 @@ node build/build-single-html.js
 $second = (Get-FileHash outputs/trpg-dm-assistant.html -Algorithm SHA256).Hash
 if ($first -ne $second -or $second -ne $approvedFormalSha) { throw "Formal artifact changed: $first / $second" }
 if (@(Get-ChildItem outputs -File -Filter '*.html').Count -ne 1) { throw 'Formal output inventory changed' }
+git diff --exit-code "$phaseBaseline..HEAD" -- outputs
+if ($LASTEXITCODE -ne 0) { throw 'Committed Phase 2I formal output diff detected' }
 git diff --exit-code -- outputs/trpg-dm-assistant.html
+if ($LASTEXITCODE -ne 0) { throw 'Working-tree formal output diff detected' }
 ```
 
 Expected: 69/69 syntax, verifier PASS, one HTML, byte-identical double build, approved SHA unchanged.
@@ -594,20 +631,40 @@ Expected: 69/69 syntax, verifier PASS, one HTML, byte-identical double build, ap
 - [ ] **Step 8: Run strict scope, dependency, route, UTF-8, and diff audit.**
 
 ```powershell
+$phaseBaseline = '639216b3f80384f6889ecac4b2343bf6f7b32f87'
 git diff --check
+$committedWhitespace = git diff --check "$phaseBaseline..HEAD"
+if ($LASTEXITCODE -ne 0) { throw "Committed Phase 2I whitespace error: $committedWhitespace" }
+$committedPhaseFiles = @(git diff --name-only --diff-filter=ACMRT "$phaseBaseline..HEAD")
+$workingPhaseFiles = @(
+  git diff --name-only --diff-filter=ACMRT
+  git diff --cached --name-only --diff-filter=ACMRT
+  '.superpowers/sdd/phase-2i-implementation-report.md', '.superpowers/sdd/phase-2i-task-10-report.md' |
+    Where-Object { Test-Path -LiteralPath $_ }
+)
+$phaseFiles = @($committedPhaseFiles + $workingPhaseFiles | Sort-Object -Unique)
+$phaseFiles
 $strictUtf8 = [Text.UTF8Encoding]::new($false, $true)
-$changedText = @(git diff --name-only --diff-filter=ACMRT | Where-Object { $_ -match '\.(cs|ts|vue|md|json|js|yml|yaml|slnx|csproj)$' })
-foreach ($path in $changedText) { [void][IO.File]::ReadAllText((Resolve-Path $path), $strictUtf8) }
+$changedText = @($phaseFiles | Where-Object { $_ -match '\.(cs|ts|vue|md|json|js|yml|yaml|slnx|csproj)$' })
+foreach ($path in $changedText) {
+  $text = $strictUtf8.GetString([IO.File]::ReadAllBytes((Resolve-Path $path)))
+  if ($text.Contains([char]0xFFFD)) { throw "Replacement character found: $path" }
+}
+foreach ($protectedPath in @('multiplayer/client', 'src', 'build', 'outputs', 'multiplayer/server/tests/Trpg.Multiplayer.Api.Tests/Fixtures')) {
+  git diff --exit-code "$phaseBaseline..HEAD" -- $protectedPath
+  if ($LASTEXITCODE -ne 0) { throw "Committed Phase 2I protected-scope diff: $protectedPath" }
+  git diff --exit-code -- $protectedPath
+  if ($LASTEXITCODE -ne 0) { throw "Working-tree protected-scope diff: $protectedPath" }
+}
 rg -n -S 'IGameStateStore|IDiceRoller|ICheckResolutionEngine|ICombatDamageEngine|IHpDamageEngine|IGameRealtimeNotifier|HubContext|IPlayerConnectionRegistry|RoomMutationDeliveryGate' multiplayer/server/src/Trpg.Multiplayer.Api/Gameplay/NpcCombatContinuation.cs
 rg -n -S 'IGameStateStore|IDiceRoller|ICheckResolutionEngine|ICombatDamageEngine|IHpDamageEngine|IGameRealtimeNotifier|HubContext|IPlayerConnectionRegistry' multiplayer/server/src/Trpg.Multiplayer.Api/Gameplay/PlayerCombatIntentCoordinator.cs
 rg -n -S 'Guid.Empty|trusted\s*=|RequestingPlayerId|HostPlayerId|AuthorizedPlayerId' multiplayer/server/src/Trpg.Multiplayer.Api/Gameplay/NpcCombatContinuation.cs
 rg -n -S 'BeginNpcOpposedExchangeCommand|PassNpcCombatTurnCommand' multiplayer/server/src/Trpg.Multiplayer.Api/Gameplay/GameContracts.cs
 rg -n -S 'combat/(npc|start|end|damage|resolve-damage)' multiplayer/server/src multiplayer/client/src
 rg -n -S 'continueNpc|autoNpc|npcMode|npc-attack|npc-pass|Npc.*Button' multiplayer/client/src
-git diff --name-only -- multiplayer/client src build outputs multiplayer/server/tests/Trpg.Multiplayer.Api.Tests/Fixtures
 ```
 
-Expected: diff/UTF-8 pass; dependency/forbidden/public/client scans have no disallowed production matches; client, Single Player, fixtures, and formal artifact have no diff. Inspect `GameApi.MapGameEndpoints` and assert exactly three Combat routes.
+Expected: current and committed-range diff/UTF-8 checks pass; `$phaseFiles` inventories every committed and current Phase 2I file; dependency/forbidden/public/client scans have no disallowed production matches; client, Single Player, fixtures, and formal artifact have no baseline-range or working-tree diff. Report the exact Phase 2I server production/test inventory rather than requiring it to be empty. Inspect `GameApi.MapGameEndpoints` and assert exactly three Combat routes.
 
 - [ ] **Step 9: Write the minimum factual reports and docs.**
 
