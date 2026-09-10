@@ -433,57 +433,92 @@ public sealed class GameCoordinator : IGameCoordinator, IInternalCombatResolutio
             return GameResult<BeginOpposedExchangeResult>.Failure(access.Value);
         }
 
+        var contextError = LoadBeginOpposedExchangeContext(command, out var context);
+        if (contextError is not null)
+        {
+            return GameResult<BeginOpposedExchangeResult>.Failure(contextError.Value);
+        }
+
+        var authorityError = ValidatePlayerBeginAuthority(room!, command.RequestingPlayerId, context!.Attacker);
+        if (authorityError is not null)
+        {
+            return GameResult<BeginOpposedExchangeResult>.Failure(authorityError.Value);
+        }
+
+        return CommitBeginOpposedExchange(context);
+    }
+
+    private GameErrorCode? LoadBeginOpposedExchangeContext(
+        BeginOpposedExchangeCommand command,
+        out BeginOpposedExchangeContext? context)
+    {
+        context = null;
         if (!stateStore.TryGet(command.RoomId, out var state) || state?.Combat is not { Active: true } session)
         {
-            return GameResult<BeginOpposedExchangeResult>.Failure(GameErrorCode.InvalidCombat);
+            return GameErrorCode.InvalidCombat;
         }
 
         if (FindBlockingDamageDisposition(session.DamageDispositions) is not null)
         {
-            return GameResult<BeginOpposedExchangeResult>.Failure(GameErrorCode.PendingConflict);
+            return GameErrorCode.PendingConflict;
         }
 
         if (state.Revision != command.ExpectedGameRevision)
         {
-            return GameResult<BeginOpposedExchangeResult>.Failure(GameErrorCode.StateConflict);
+            return GameErrorCode.StateConflict;
         }
 
         if (session.PendingExchange is not null)
         {
-            return GameResult<BeginOpposedExchangeResult>.Failure(GameErrorCode.PendingConflict);
+            return GameErrorCode.PendingConflict;
         }
 
         var currentActorId = session.Order.ElementAtOrDefault(session.TurnIndex);
         if (currentActorId is null || currentActorId.Value != command.AttackerParticipantId)
         {
-            return GameResult<BeginOpposedExchangeResult>.Failure(GameErrorCode.InvalidParticipant);
+            return GameErrorCode.InvalidParticipant;
         }
 
         var attacker = session.Participants.SingleOrDefault(participant => participant.ParticipantId.Value == command.AttackerParticipantId);
         var defender = session.Participants.SingleOrDefault(participant => participant.ParticipantId.Value == command.DefenderParticipantId);
         if (attacker is null || defender is null || !attacker.Active || !defender.Active
             || attacker.ParticipantId == defender.ParticipantId || attacker.Side == defender.Side
-            || defender.AvailableResponses.Count == 0
-            || (attacker.OwnerPlayerId is Guid owner && owner != command.RequestingPlayerId)
-            || (attacker.OwnerPlayerId is null && room!.HostPlayerId != command.RequestingPlayerId))
+            || defender.AvailableResponses.Count == 0)
         {
-            return GameResult<BeginOpposedExchangeResult>.Failure(GameErrorCode.InvalidParticipant);
+            return GameErrorCode.InvalidParticipant;
         }
 
+        context = new BeginOpposedExchangeContext(state, session, attacker, defender);
+        return null;
+    }
+
+    private static GameErrorCode? ValidatePlayerBeginAuthority(
+        RoomSession room,
+        Guid requestingPlayerId,
+        CombatParticipantState attacker)
+    {
+        return (attacker.OwnerPlayerId is Guid owner && owner != requestingPlayerId)
+            || (attacker.OwnerPlayerId is null && room.HostPlayerId != requestingPlayerId)
+            ? GameErrorCode.InvalidParticipant
+            : null;
+    }
+
+    private GameResult<BeginOpposedExchangeResult> CommitBeginOpposedExchange(BeginOpposedExchangeContext context)
+    {
         var exchangeId = Guid.NewGuid().ToString("N");
         PendingCombatExchange pending;
         try
         {
             pending = CombatSessionState.CreatePendingExchange(
                 exchangeId,
-                session.Round,
-                session.TurnIndex,
-                attacker.ParticipantId,
-                defender.ParticipantId,
-                defender.OwnerPlayerId,
-                defender.AvailableResponses,
-                session.ResponseCounts.GetValueOrDefault(defender.ParticipantId.Value),
-                state.Revision,
+                context.Session.Round,
+                context.Session.TurnIndex,
+                context.Attacker.ParticipantId,
+                context.Defender.ParticipantId,
+                context.Defender.OwnerPlayerId,
+                context.Defender.AvailableResponses,
+                context.Session.ResponseCounts.GetValueOrDefault(context.Defender.ParticipantId.Value),
+                context.State.Revision,
                 DateTimeOffset.UtcNow);
         }
         catch (ArgumentException)
@@ -491,16 +526,16 @@ public sealed class GameCoordinator : IGameCoordinator, IInternalCombatResolutio
             return GameResult<BeginOpposedExchangeResult>.Failure(GameErrorCode.InvalidResponse);
         }
 
-        var nextSession = session with { PendingExchange = pending };
+        var nextSession = context.Session with { PendingExchange = pending };
         var replacement = new MultiplayerGameState(
-            state.RoomId,
-            state.Revision + 1,
-            state.Status,
-            state.CreatedAt,
-            state.Characters,
-            state.LastCheck,
+            context.State.RoomId,
+            context.State.Revision + 1,
+            context.State.Status,
+            context.State.CreatedAt,
+            context.State.Characters,
+            context.State.LastCheck,
             nextSession);
-        if (!stateStore.TryReplace(state, replacement))
+        if (!stateStore.TryReplace(context.State, replacement))
         {
             return GameResult<BeginOpposedExchangeResult>.Failure(GameErrorCode.StateConflict);
         }
@@ -1802,6 +1837,12 @@ public sealed class GameCoordinator : IGameCoordinator, IInternalCombatResolutio
     }
 
     private sealed record HealthResolution(HealthStabilizationResolutionResult? Value, HealthStabilizationError? Error);
+
+    private sealed record BeginOpposedExchangeContext(
+        MultiplayerGameState State,
+        CombatSession Session,
+        CombatParticipantState Attacker,
+        CombatParticipantState Defender);
 
     private GameErrorCode? TryGetMember(Guid roomId, Guid playerId, out RoomSession? room)
     {

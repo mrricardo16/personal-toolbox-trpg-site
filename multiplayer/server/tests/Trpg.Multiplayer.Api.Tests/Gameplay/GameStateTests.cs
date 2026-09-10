@@ -503,6 +503,19 @@ public sealed class GameStateTests
     }
 
     [Fact]
+    public void InternalCombat_PlayerBeginUsesSeparatedAuthorityAndSharedMutationCore()
+    {
+        var coordinatorSource = File.ReadAllText(
+            Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Trpg.Multiplayer.Api", "Gameplay", "GameCoordinator.cs"));
+
+        Assert.Contains("ValidatePlayerBeginAuthority", coordinatorSource, StringComparison.Ordinal);
+        Assert.Contains("LoadBeginOpposedExchangeContext", coordinatorSource, StringComparison.Ordinal);
+        Assert.Contains("CommitBeginOpposedExchange", coordinatorSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("trusted =", coordinatorSource, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Guid.Empty", coordinatorSource, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void InternalCombatInterface_IsConsumedByGameCoordinatorAndContainsOnlyAuthorizedSurface()
     {
         var assembly = typeof(GameCoordinator).Assembly;
